@@ -56,12 +56,21 @@ Distanz interpoliert — nötig, weil die Telemetrie nicht synchron abgetastet w
 Die naive Auswertung aller Rundenzeiten ist wertlos: Out-Laps, In-Laps,
 Safety-Car-Phasen und gestrichene Runden verzerren jede Verteilung. Nach dem Filter
 auf grüne Flagge, ohne Boxenrunden, ohne Ausreißer über 107 % bleiben in Barcelona
-2024 noch **1113 von 1310 Runden** übrig — 15 % fliegen raus.
+2024 noch **1124 von 1310 Runden** übrig — 14 % fliegen raus.
 
-Erst danach lässt sich rechnen. Norris war der Schnellste, Leclerc lag **0.059 s**
-dahinter, Verstappen **0.177 s**. Die Balken tragen ein Bootstrap-Konfidenzintervall
-über 1000 Resamples: Wo sich Intervalle überlappen, ist der Unterschied nicht
-belegbar — bei den ersten drei ist genau das der Fall.
+Erst danach lässt sich rechnen. Leclerc war der Schnellste, Norris lag **0.007 s**
+dahinter, Pérez **0.013 s**, Verstappen **0.117 s**.
+
+Und genau hier wird es interessant: Die Balken tragen ein
+Bootstrap-Konfidenzintervall über 1000 Resamples, und das der ersten drei ist
+zwischen 0.67 und 1.22 s breit. Der Abstand zwischen ihnen beträgt Hundertstel.
+Die ehrliche Aussage lautet deshalb nicht „Leclerc war schneller als Norris",
+sondern: **die drei sind mit diesen Daten nicht unterscheidbar.** Verstappen hat
+mit 0.27 s das schmalste Intervall — er war am gleichmäßigsten unterwegs, nicht
+zwingend am schnellsten.
+
+`Interval.overlaps()` macht diesen Vergleich explizit, statt ihn dem Auge zu
+überlassen.
 
 *Code: [`02_timing/p04_race_pace_ranking_wer_war_wirklich_am_schnellste.py`](02_timing/p04_race_pace_ranking_wer_war_wirklich_am_schnellste.py)*
 
@@ -88,9 +97,14 @@ wird gleichzeitig leichter. Wer beides nicht trennt, unterschätzt die Degradati
 systematisch. Hier ist der Treibstoffeffekt herausgerechnet (1.8 kg pro Runde,
 0.03 s pro kg), danach wird je Stint eine Regression über das Reifenalter gelegt.
 
-Bahrain 2024, 62 auswertbare Stints: **Soft 0.127 s/Runde**, **Hard 0.092 s/Runde**.
-Der Soft baut also rund 40 % schneller ab — bei einer Streuung, die zeigt, wie stark
-Fahrstil und Auto die Zahl beeinflussen.
+Bahrain 2024, **59 von 62 Stints** bestehen die Plausibilitätsprüfung (mindestens
+6 Runden, R² ≥ 0.3): **Soft 0.133 s/Runde**, **Hard 0.097 s/Runde**. Der Soft baut
+also gut ein Drittel schneller ab.
+
+Die Streuung ist dabei aufschlussreicher als der Mittelwert: beim Hard liegt sie bei
+0.024, beim Soft bei 0.057 s/Runde. Der weiche Reifen reagiert also deutlich
+empfindlicher auf Fahrstil und Fahrzeugbalance — was erklärt, warum manche Fahrer
+mit derselben Mischung ganz andere Stintlängen hinbekommen als andere.
 
 *Code: [`05_reifen_strategie/p13_reifendegradation_modellieren.py`](05_reifen_strategie/p13_reifendegradation_modellieren.py)*
 
@@ -288,6 +302,15 @@ python make_assets.py
 
 Schreibt die PNGs nach `assets/` und die berechneten Kennzahlen nach
 `assets/kennzahlen.json` — die Zahlen im Text oben stammen genau daher.
+
+Wichtiger noch: Das Skript rechnet nichts selbst, sondern ruft `f1lab` auf. Damit
+liefern README, Grafiken und Paket zwangsläufig dieselben Werte.
+
+Das war nicht immer so. Anfangs hatte `make_assets.py` eine eigene Kopie der
+Filterlogik. Nach dem Bugfix an der `Deleted`-Spalte lieferten beide Pfade
+unterschiedliche Ergebnisse für dieselbe Frage — das README behauptete, Norris sei
+in Barcelona am schnellsten gewesen, das Paket sagte Leclerc. Zwei Pipelines sind
+zwei Wahrheiten, und eine davon ist immer falsch.
 
 ---
 

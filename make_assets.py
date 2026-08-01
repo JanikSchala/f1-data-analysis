@@ -4,6 +4,11 @@ Erzeugt die Grafiken und Kennzahlen fuer das README.
 
     python make_assets.py
 
+Alle Auswertungen laufen ueber f1lab - das Modul, das auch getestet wird.
+Frueher hatte dieses Skript eine eigene Kopie der Filterlogik, was nach einem
+Bugfix in f1lab zu zwei unterschiedlichen Ergebnissen fuer dieselbe Frage
+gefuehrt hat. Genau das soll hier nicht mehr passieren.
+
 Schreibt PNGs nach assets/ und die berechneten Werte nach
 assets/kennzahlen.json. Der erste Lauf dauert einige Minuten, weil die
 Sessions heruntergeladen werden - danach kommt alles aus dem Cache.
@@ -15,15 +20,15 @@ import warnings
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")                      # kein Fenster, nur Dateien
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from matplotlib.collections import LineCollection
 
-import fastf1
 import fastf1.plotting as f1plt
+import f1lab
 from fastf1.utils import delta_time
 
 warnings.filterwarnings("ignore")
@@ -32,13 +37,12 @@ ROOT = Path(__file__).parent
 ASSETS = ROOT / "assets"
 ASSETS.mkdir(exist_ok=True)
 
-fastf1.Cache.enable_cache(str(Path.home() / "f1_cache"))
+f1lab.enable_cache()
 f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
 
 DPI = 130
 BG = "#15151e"
 FG = "#f0f0f0"
-ACCENT = "#e10600"
 
 plt.rcParams.update({
     "figure.facecolor": BG, "axes.facecolor": BG,
@@ -58,22 +62,10 @@ def save(fig, name: str) -> None:
     print(f"    -> {path.relative_to(ROOT)}  ({path.stat().st_size // 1024} KB)")
 
 
-def load(year, gp, ident, **kw):
-    ses = fastf1.get_session(year, gp, ident)
-    ses.load(**kw)
-    return ses
-
-
-def clean(session, threshold=1.07):
-    return (session.laps.pick_wo_box().pick_accurate()
-            .pick_track_status("1").pick_not_deleted()
-            .pick_quicklaps(threshold=threshold))
-
-
 # ---------------------------------------------------------------- 1
 def gear_map(year=2024, gp="Belgium"):
     print(f"[1/5] Gangwechsel-Karte  {gp} {year}")
-    ses = load(year, gp, "Q")
+    ses = f1lab.load(year, gp, "Q", telemetry=True)
     lap = ses.laps.pick_fastest()
     tel = lap.get_telemetry()
 
@@ -84,8 +76,8 @@ def gear_map(year=2024, gp="Belgium"):
     pts = np.array([x, y]).T.reshape(-1, 1, 2)
     seg = np.concatenate([pts[:-1], pts[1:]], axis=1)
 
-    cmap = plt.get_cmap("viridis", 8)
-    lc = LineCollection(seg, norm=plt.Normalize(1, 8), cmap=cmap, linewidth=4.5)
+    lc = LineCollection(seg, norm=plt.Normalize(1, 8),
+                        cmap=plt.get_cmap("viridis", 8), linewidth=4.5)
     lc.set_array(gear[:-1])
 
     fig, ax = plt.subplots(figsize=(9, 8))
@@ -115,7 +107,7 @@ def gear_map(year=2024, gp="Belgium"):
 # ---------------------------------------------------------------- 2
 def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
     print(f"[2/5] Telemetrie-Overlay  {gp} {year}  {d1} vs {d2}")
-    ses = load(year, gp, "Q")
+    ses = f1lab.load(year, gp, "Q", telemetry=True)
     lap1 = ses.laps.pick_drivers(d1).pick_fastest()
     lap2 = ses.laps.pick_drivers(d2).pick_fastest()
     t1 = lap1.get_car_data().add_distance()
@@ -134,7 +126,7 @@ def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
     ax[1].plot(ref["Distance"], dlt, color=FG, lw=1.4)
     ax[1].axhline(0, color="#666", lw=0.8)
     ax[1].fill_between(ref["Distance"], dlt, 0, where=(dlt > 0),
-                       color=s1.get("color", ACCENT), alpha=0.25)
+                       color=s1.get("color", "#e10600"), alpha=0.25)
     ax[1].fill_between(ref["Distance"], dlt, 0, where=(dlt < 0),
                        color=s2.get("color", "#00d2be"), alpha=0.25)
     ax[1].set_ylabel(f"Delta {d2}\nzu {d1} [s]")
@@ -170,31 +162,16 @@ def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
 # ---------------------------------------------------------------- 3
 def race_pace(year=2024, gp="Spain"):
     print(f"[3/5] Race-Pace-Ranking  {gp} {year}")
-    ses = load(year, gp, "R", telemetry=False)
-    laps = clean(ses).copy()
-    laps["Sec"] = laps["LapTime"].dt.total_seconds()
+    ses = f1lab.load(year, gp, "R")
 
-    rng = np.random.default_rng(42)
-    rows = []
-    for drv, g in laps.groupby("Driver"):
-        v = g["Sec"].to_numpy()
-        if len(v) < 8:
-            continue
-        boot = [np.median(rng.choice(v, len(v), replace=True)) for _ in range(1000)]
-        rows.append({"Driver": drv, "Team": g["Team"].iloc[0], "Laps": len(v),
-                     "Median": float(np.median(v)),
-                     "Lo": float(np.percentile(boot, 2.5)),
-                     "Hi": float(np.percentile(boot, 97.5))})
-
-    pace = pd.DataFrame(rows).sort_values("Median").reset_index(drop=True)
-    best = pace["Median"].iloc[0]
-    for c in ("Median", "Lo", "Hi"):
-        pace[c + "D"] = pace[c] - best
+    # Genau dieselbe Funktion, die auch in den Tests geprueft wird.
+    pace = f1lab.pace_table(ses)
+    laps_clean = f1lab.clean_laps(ses)
 
     fig, ax = plt.subplots(figsize=(10, 8))
-    colors = [f1plt.get_team_color(t, session=ses) for t in pace["Team"]]
-    err = [pace["MedianD"] - pace["LoD"], pace["HiD"] - pace["MedianD"]]
-    ax.barh(pace["Driver"], pace["MedianD"], xerr=err, color=colors,
+    colors = [f1plt.get_team_color(t, session=ses) for t in pace["team"]]
+    err = [pace["delta_s"] - pace["ci_lo"], pace["ci_hi"] - pace["delta_s"]]
+    ax.barh(pace["driver"], pace["delta_s"], xerr=err, color=colors,
             ecolor="#888", capsize=2.5, height=0.72)
     ax.invert_yaxis()
     ax.set_xlabel("Delta zur besten Race Pace [s pro Runde]")
@@ -205,14 +182,17 @@ def race_pace(year=2024, gp="Spain"):
     plt.tight_layout()
     save(fig, "race_pace.png")
 
+    total = int(len(ses.laps))
+    kept = int(len(laps_clean))
     KPI["racepace"] = {
         "event": str(ses.event["EventName"]), "jahr": year,
-        "runden_gesamt": int(len(ses.laps)),
-        "runden_nach_filter": int(len(laps)),
-        "anteil_verworfen_pct": round(100 * (1 - len(laps) / len(ses.laps)), 1),
-        "schnellster": str(pace["Driver"].iloc[0]),
-        "top5": [{"fahrer": r["Driver"], "team": r["Team"],
-                  "delta_s": round(r["MedianD"], 3), "runden": int(r["Laps"])}
+        "runden_gesamt": total,
+        "runden_nach_filter": kept,
+        "anteil_verworfen_pct": round(100 * (1 - kept / total), 1),
+        "schnellster": str(pace["driver"].iloc[0]),
+        "top5": [{"fahrer": r["driver"], "team": r["team"],
+                  "delta_s": float(r["delta_s"]), "runden": int(r["laps"]),
+                  "ci_breite_s": float(r["ci_width"])}
                  for _, r in pace.head(5).iterrows()],
     }
 
@@ -220,25 +200,23 @@ def race_pace(year=2024, gp="Spain"):
 # ---------------------------------------------------------------- 4
 def strategy(year=2024, gp="Hungary"):
     print(f"[4/5] Strategieuebersicht  {gp} {year}")
-    ses = load(year, gp, "R", telemetry=False)
-    stints = (ses.laps.groupby(["Driver", "Stint", "Compound"])["LapNumber"]
-              .agg(["min", "max", "count"]).reset_index()
-              .rename(columns={"count": "Laenge"}))
+    ses = f1lab.load(year, gp, "R")
+    st = f1lab.stints(ses)
     order = [d for d in ses.results.sort_values("Position")["Abbreviation"]
-             if d in stints["Driver"].values]
+             if d in st["Driver"].values]
 
     fig, ax = plt.subplots(figsize=(11, 8.5))
     for drv in order:
         prev = 0
-        for _, s in stints[stints["Driver"] == drv].sort_values("Stint").iterrows():
+        for _, s in st[st["Driver"] == drv].sort_values("start").iterrows():
             c = f1plt.get_compound_color(s["Compound"], session=ses)
-            ax.barh(drv, s["Laenge"], left=prev, color=c,
+            ax.barh(drv, s["laps"], left=prev, color=c,
                     edgecolor=BG, linewidth=1.2, height=0.72)
-            if s["Laenge"] > 5:
-                ax.text(prev + s["Laenge"] / 2, drv, s["Compound"][0],
+            if s["laps"] > 5:
+                ax.text(prev + s["laps"] / 2, drv, str(s["Compound"])[0],
                         ha="center", va="center", fontsize=8.5,
                         fontweight="bold", color="#111")
-            prev += s["Laenge"]
+            prev += s["laps"]
     ax.invert_yaxis()
     ax.set_xlabel("Runde")
     ax.grid(axis="x", alpha=0.2)
@@ -249,56 +227,48 @@ def strategy(year=2024, gp="Hungary"):
 
     KPI["strategie"] = {
         "event": str(ses.event["EventName"]), "jahr": year,
-        "stints_gesamt": int(len(stints)),
-        "stints_pro_fahrer": round(len(stints) / max(len(order), 1), 2),
+        "stints_gesamt": int(len(st)),
+        "stints_pro_fahrer": round(len(st) / max(len(order), 1), 2),
         "laenge_je_compound": {
-            k: round(float(v), 1) for k, v in
-            stints.groupby("Compound")["Laenge"].mean().items()},
+            str(k): round(float(v), 1) for k, v in
+            st.groupby("Compound")["laps"].mean().items()},
     }
 
 
 # ---------------------------------------------------------------- 5
 def degradation(year=2024, gp="Bahrain"):
     print(f"[5/5] Reifendegradation  {gp} {year}")
-    ses = load(year, gp, "R", telemetry=False)
-    laps = clean(ses, threshold=1.10).copy()
-    laps["Sec"] = laps["LapTime"].dt.total_seconds()
-    total = ses.total_laps
-    laps["Corr"] = laps["Sec"] - (total - laps["LapNumber"]) * 1.8 * 0.03
+    ses = f1lab.load(year, gp, "R")
 
-    rows = []
-    for (drv, st), g in laps.groupby(["Driver", "Stint"]):
-        g = g.sort_values("TyreLife")
-        if len(g) < 6:
-            continue
-        slope, inter = np.polyfit(g["TyreLife"], g["Corr"], 1)
-        rows.append({"Driver": drv, "Team": g["Team"].iloc[0],
-                     "Compound": g["Compound"].iloc[0], "Laps": len(g),
-                     "Deg": float(slope), "Basis": float(inter)})
-    deg = pd.DataFrame(rows)
+    deg = f1lab.degradation(ses)
+    agg = f1lab.degradation_by_compound(ses)
+
+    laps = f1lab.clean_laps(ses, threshold=1.10).copy()
+    laps["sec"] = laps["LapTime"].dt.total_seconds()
+    laps["corrected"] = f1lab.fuel_correct(
+        laps["sec"], laps["LapNumber"], ses.total_laps)
 
     fig, ax = plt.subplots(1, 2, figsize=(13, 5.5),
                            gridspec_kw={"width_ratios": [3, 2]})
 
-    for (drv, st), g in laps.groupby(["Driver", "Stint"]):
+    for (_drv, _st), g in laps.groupby(["Driver", "Stint"]):
         if len(g) < 6:
             continue
         c = f1plt.get_compound_color(g["Compound"].iloc[0], session=ses)
-        ax[0].plot(g["TyreLife"], g["Corr"], marker=".", ms=3.5, lw=0.9,
+        ax[0].plot(g["TyreLife"], g["corrected"], marker=".", ms=3.5, lw=0.9,
                    alpha=0.55, color=c)
     ax[0].set_xlabel("Reifenalter [Runden]")
     ax[0].set_ylabel("Rundenzeit, fuel-korrigiert [s]")
     ax[0].grid(alpha=0.2)
     ax[0].set_title("Jeder Stint einzeln", color=FG, fontsize=11)
 
-    agg = deg.groupby("Compound")["Deg"].agg(["mean", "std", "count"])
-    agg = agg.sort_values("mean")
     cols = [f1plt.get_compound_color(c, session=ses) for c in agg.index]
     ax[1].bar(agg.index, agg["mean"], yerr=agg["std"], color=cols,
               ecolor="#888", capsize=4)
     ax[1].set_ylabel("Degradation [s pro Runde]")
     ax[1].grid(axis="y", alpha=0.2)
-    ax[1].set_title("Mittelwert je Mischung", color=FG, fontsize=11)
+    ax[1].set_title("Mittelwert je Mischung\n(nur belastbare Fits)",
+                    color=FG, fontsize=11)
 
     fig.suptitle(f"{ses.event['EventName']} {year} - Reifendegradation "
                  f"(Fuel-Effekt herausgerechnet)", color=FG, fontsize=13)
@@ -307,11 +277,12 @@ def degradation(year=2024, gp="Bahrain"):
 
     KPI["degradation"] = {
         "event": str(ses.event["EventName"]), "jahr": year,
-        "stints_ausgewertet": int(len(deg)),
+        "stints_gesamt": int(len(deg)),
+        "stints_belastbar": int(deg["reliable"].sum()),
         "je_compound": {
             str(c): {"mittel_s_pro_runde": round(float(r["mean"]), 4),
                      "std": round(float(r["std"]), 4),
-                     "stints": int(r["count"])}
+                     "stints": int(r["stints"])}
             for c, r in agg.iterrows()},
         "annahme_fuel": "1.8 kg pro Runde, 0.03 s pro kg",
     }
@@ -319,15 +290,24 @@ def degradation(year=2024, gp="Bahrain"):
 
 # ----------------------------------------------------------------
 if __name__ == "__main__":
-    print("\nErzeuge README-Grafiken. Der erste Lauf dauert einige Minuten.\n")
+    print(f"\nErzeuge README-Grafiken mit f1lab {f1lab.__version__}.")
+    print("Der erste Lauf dauert einige Minuten.\n")
+
     for fn in (gear_map, telemetry_overlay, race_pace, strategy, degradation):
         try:
             fn()
         except Exception as exc:
-            print(f"    FEHLER in {fn.__name__}: {exc}")
-            KPI[fn.__name__] = {"fehler": str(exc)}
+            print(f"    FEHLER in {fn.__name__}: {type(exc).__name__}: {exc}")
+            KPI[fn.__name__] = {"fehler": f"{type(exc).__name__}: {exc}"}
+
+    KPI["_meta"] = {
+        "erzeugt_mit": f"f1lab {f1lab.__version__}",
+        "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, "
+                   "die von tests/ geprueft werden.",
+    }
 
     out = ASSETS / "kennzahlen.json"
-    out.write_text(json.dumps(KPI, indent=2, ensure_ascii=False), encoding="utf-8")
+    out.write_text(json.dumps(KPI, indent=2, ensure_ascii=False),
+                   encoding="utf-8")
     print(f"\nKennzahlen: {out.relative_to(ROOT)}")
     print(f"Grafiken:   {len(list(ASSETS.glob('*.png')))} PNGs in assets/\n")
