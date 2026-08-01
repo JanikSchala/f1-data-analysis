@@ -96,9 +96,62 @@ Fahrstil und Auto die Zahl beeinflussen.
 
 ---
 
+## `f1lab` — die wiederverwendbaren Teile
+
+Die 34 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+installierbares Paket daneben — mit einer bewussten Trennung:
+
+```
+f1lab/core.py       reine Rechnung auf numpy-Arrays, ohne Netzzugriff testbar
+f1lab/session.py    FastF1-Anbindung: laden, filtern, aggregieren
+```
+
+Diese Trennung ist der Grund, warum sich das Ganze überhaupt testen lässt. Wäre die
+Degradationsschätzung fest mit `session.laps` verdrahtet, bräuchte jeder Test eine
+Internetverbindung und eine geladene Session. So bekommt `fit_degradation()` zwei
+Arrays und liefert eine Steigung — prüfbar gegen synthetische Daten mit bekannter
+Wahrheit.
+
+```python
+import f1lab
+
+ses = f1lab.load(2024, "Spain", "R")
+print(f1lab.pace_table(ses).head())
+print(f1lab.degradation_by_compound(ses))
+print(f"Pitloss: {f1lab.pit_loss(ses):.2f} s")
+```
+
+**43 Tests, alle ohne Netzzugriff:**
+
+```bash
+pip install -e ".[dev]"
+pytest -q
+```
+
+Die Tests prüfen nicht, ob der Code läuft, sondern ob er *richtig rechnet*. Ein paar
+Beispiele für die Art von Aussage, die dahintersteht:
+
+- Bei konstantem Reifen und reinem Spritverbrauch muss `fuel_correct()` die Zeiten
+  vollständig flach ziehen — Standardabweichung null.
+- `bootstrap_median()` muss bei einem einzelnen Extremausreißer stabil bleiben.
+  Genau deswegen steht dort der Median und nicht der Mittelwert.
+- `find_cliff()` darf bei einem linearen Stint *keinen* Knick melden, und einen
+  flacher werdenden Verlauf nicht als Cliff durchgehen lassen.
+- `braking_zones()` muss eine Bremszone erkennen, die direkt am Anfang des Arrays
+  beginnt — die Flankenerkennung über `np.diff` verliert die sonst.
+
+Der letzte Punkt ist kein hypothetisches Beispiel: der Test hat beim ersten Lauf
+einen Off-by-one in der Kantenerkennung gefunden. Die Zone endete eine Probe zu
+spät, wodurch die Ausgangsgeschwindigkeit gleich der Eingangsgeschwindigkeit war.
+
+---
+
 ## Aufbau
 
 ```
+f1lab/                installierbares Paket, core (rein) + session (FastF1)
+tests/                43 Tests, laufen offline
+
 01_grundlagen/        Datenzugriff, Caching, Kalender als Dimensionstabelle
 02_timing/            Rundenzeiten, Pace-Ranking, Sektoren, Positionsverlauf
 03_telemetrie/        Speed, Bremspunkte, Gänge, DRS, Starts, Dirty Air
