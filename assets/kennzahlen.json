@@ -1,0 +1,91 @@
+{
+  "gangkarte": {
+    "event": "Belgian Grand Prix",
+    "jahr": 2024,
+    "fahrer": "VER",
+    "rundenzeit_s": 113.159,
+    "punkte": 844,
+    "streckenlaenge_m": 6963
+  },
+  "overlay": {
+    "event": "Japanese Grand Prix",
+    "jahr": 2024,
+    "VER": 88.197,
+    "NOR": 88.489,
+    "delta_s": 0.292,
+    "max_delta_s": 0.302,
+    "vmax_kmh": {
+      "VER": 324.0,
+      "NOR": 319.0
+    }
+  },
+  "racepace": {
+    "event": "Spanish Grand Prix",
+    "jahr": 2024,
+    "runden_gesamt": 1310,
+    "runden_nach_filter": 1113,
+    "anteil_verworfen_pct": 15.0,
+    "schnellster": "NOR",
+    "top5": [
+      {
+        "fahrer": "NOR",
+        "team": "McLaren",
+        "delta_s": 0.0,
+        "runden": 60
+      },
+      {
+        "fahrer": "LEC",
+        "team": "Ferrari",
+        "delta_s": 0.059,
+        "runden": 61
+      },
+      {
+        "fahrer": "PER",
+        "team": "Red Bull Racing",
+        "delta_s": 0.073,
+        "runden": 59
+      },
+      {
+        "fahrer": "VER",
+        "team": "Red Bull Racing",
+        "delta_s": 0.177,
+        "runden": 61
+      },
+      {
+        "fahrer": "PIA",
+        "team": "McLaren",
+        "delta_s": 0.237,
+        "runden": 61
+      }
+    ]
+  },
+  "strategie": {
+    "event": "Hungarian Grand Prix",
+    "jahr": 2024,
+    "stints_gesamt": 60,
+    "stints_pro_fahrer": 3.0,
+    "laenge_je_compound": {
+      "HARD": 29.0,
+      "MEDIUM": 18.4,
+      "SOFT": 7.3
+    }
+  },
+  "degradation": {
+    "event": "Bahrain Grand Prix",
+    "jahr": 2024,
+    "stints_ausgewertet": 62,
+    "je_compound": {
+      "HARD": {
+        "mittel_s_pro_runde": 0.0918,
+        "std": 0.0374,
+        "stints": 37
+      },
+      "SOFT": {
+        "mittel_s_pro_runde": 0.127,
+        "std": 0.0567,
+        "stints": 25
+      }
+    },
+    "annahme_fuel": "1.8 kg pro Runde, 0.03 s pro kg"
+  }
+}
