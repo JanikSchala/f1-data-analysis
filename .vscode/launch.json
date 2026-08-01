@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Aktuelles Skript starten",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Setup pruefen",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/check_setup.py",
+      "console": "integratedTerminal"
+    }
+  ]
+}
