@@ -10,7 +10,8 @@ Dieses Repository ist meine Antwort darauf: **34 eigenständige Analysen über z
 Themenfelder**, jede mit lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
-git clone https://github.com/JanikSchala/F1.git && cd F1
+git clone https://github.com/JanikSchala/f1-data-analysis.git
+cd f1-data-analysis
 ./setup.sh
 source .venv/bin/activate
 python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
