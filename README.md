@@ -1,185 +1,236 @@
-# F1 Data Portfolio
+# F1 Data Analysis
 
-34 eigenstaendige Analyseprojekte auf Basis von
-[FastF1](https://github.com/theOehrly/Fast-F1) - von Timing und Telemetrie
-ueber Reifenstrategie bis zu Machine Learning, Data Engineering und Live Timing.
+Analyse von Formel-1-Renndaten mit [FastF1](https://github.com/theOehrly/Fast-F1) —
+Timing, Telemetrie, Reifenstrategie, Machine Learning und Data Engineering.
 
-Jedes Skript laeuft fuer sich allein. Kopf-Docstring erklaert Ziel, Vorgehen,
-genutzte FastF1-Bausteine und eine Ausbaustufe.
+Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
+Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
+Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
+Dieses Repository ist meine Antwort darauf: **34 eigenständige Analysen über zwölf
+Themenfelder**, jede mit lauffähigem Code und dokumentiertem Vorgehen.
+
+```bash
+git clone https://github.com/JanikSchala/F1.git && cd F1
+./setup.sh
+source .venv/bin/activate
+python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
+```
 
 ---
 
-## Schnellstart
+## Was drinsteckt
 
-```bash
-# 1) Einrichtung (einmalig)
-./setup.sh                # oder: Doppelklick auf "1_Setup_starten.command"
+### Telemetrie auf Streckenebene
 
-# 2) Umgebung aktivieren
-source .venv/bin/activate
+![Gangwechsel-Karte Spa 2024](assets/gangwechsel.png)
 
-# 3) Pruefen, ob alles passt
-python check_setup.py
+Positionsdaten (X/Y) und Telemetrie werden über den Zeitstempel zusammengeführt und
+als `LineCollection` eingefärbt. Verstappens schnellste Runde in Spa 2024:
+**1:53.159** über **6963 m**, aufgelöst in 844 Messpunkte. Man sieht die
+Kemmel-Gerade im achten Gang ebenso wie die Bus-Stop-Schikane im zweiten.
 
-# 4) Erstes Projekt
-python 01_grundlagen/p01_session_explorer.py
-```
+*Code: [`03_telemetrie/p09_gangwechsel_karte_der_strecke.py`](03_telemetrie/p09_gangwechsel_karte_der_strecke.py)*
 
-In VS Code: Ordner oeffnen, unten rechts den Interpreter `.venv` waehlen,
-Datei oeffnen, `F5` druecken.
+---
+
+### Fahrervergleich mit Zeitdelta
+
+![Telemetrie-Overlay Suzuka 2024](assets/telemetrie_overlay.png)
+
+Verstappen gegen Norris im Qualifying von Suzuka 2024, **0.292 s** Unterschied auf
+der Runde. Das kumulierte Delta zeigt, *wo* die Zeit entsteht: Norris liegt zwischen
+Meter 800 und 1600 leicht vorn, verliert dann ab Meter 1700 kontinuierlich. Bei
+Höchstgeschwindigkeit trennen die beiden 5 km/h (324 zu 319).
+
+Berechnet mit `fastf1.utils.delta_time()`, das beide Runden über die zurückgelegte
+Distanz interpoliert — nötig, weil die Telemetrie nicht synchron abgetastet wird.
+
+*Code: [`03_telemetrie/p07_telemetrie_overlay_zwei_schnellste_runden_uebere.py`](03_telemetrie/p07_telemetrie_overlay_zwei_schnellste_runden_uebere.py)*
+
+---
+
+### Race Pace, sauber gerechnet
+
+![Race Pace Barcelona 2024](assets/race_pace.png)
+
+Die naive Auswertung aller Rundenzeiten ist wertlos: Out-Laps, In-Laps,
+Safety-Car-Phasen und gestrichene Runden verzerren jede Verteilung. Nach dem Filter
+auf grüne Flagge, ohne Boxenrunden, ohne Ausreißer über 107 % bleiben in Barcelona
+2024 noch **1113 von 1310 Runden** übrig — 15 % fliegen raus.
+
+Erst danach lässt sich rechnen. Norris war der Schnellste, Leclerc lag **0.059 s**
+dahinter, Verstappen **0.177 s**. Die Balken tragen ein Bootstrap-Konfidenzintervall
+über 1000 Resamples: Wo sich Intervalle überlappen, ist der Unterschied nicht
+belegbar — bei den ersten drei ist genau das der Fall.
+
+*Code: [`02_timing/p04_race_pace_ranking_wer_war_wirklich_am_schnellste.py`](02_timing/p04_race_pace_ranking_wer_war_wirklich_am_schnellste.py)*
+
+---
+
+### Reifenstrategie
+
+![Strategieübersicht Ungarn 2024](assets/strategie.png)
+
+Ungarn 2024, sortiert nach Endposition. Das Spitzenfeld fuhr überwiegend
+Medium–Hard–Medium, das Mittelfeld setzte auf Hard–Hard. Im Schnitt 3 Stints pro
+Fahrer, mittlere Stintlänge 29 Runden auf Hard gegenüber 7 Runden auf Soft.
+
+*Code: [`05_reifen_strategie/p14_stint_und_strategie_uebersicht_als_gantt_chart.py`](05_reifen_strategie/p14_stint_und_strategie_uebersicht_als_gantt_chart.py)*
+
+---
+
+### Degradation quantifiziert
+
+![Reifendegradation Bahrain 2024](assets/degradation.png)
+
+Rundenzeiten steigen im Stint aus zwei Gründen: der Reifen baut ab, aber das Auto
+wird gleichzeitig leichter. Wer beides nicht trennt, unterschätzt die Degradation
+systematisch. Hier ist der Treibstoffeffekt herausgerechnet (1.8 kg pro Runde,
+0.03 s pro kg), danach wird je Stint eine Regression über das Reifenalter gelegt.
+
+Bahrain 2024, 62 auswertbare Stints: **Soft 0.127 s/Runde**, **Hard 0.092 s/Runde**.
+Der Soft baut also rund 40 % schneller ab — bei einer Streuung, die zeigt, wie stark
+Fahrstil und Auto die Zahl beeinflussen.
+
+*Code: [`05_reifen_strategie/p13_reifendegradation_modellieren.py`](05_reifen_strategie/p13_reifendegradation_modellieren.py)*
 
 ---
 
 ## Aufbau
 
 ```
-f1-portfolio/
-  common/            gemeinsame Helfer (Cache, Rundenfilter, Fuel-Korrektur)
-  01_grundlagen/     Datenzugriff, Caching, Kalender
-  02_timing/         Rundenzeiten, Pace, Sektoren, Positionen
-  03_telemetrie/     Speed, Bremspunkte, Gaenge, DRS, Starts, Dirty Air
-  04_strecke/        Streckenkarten, Kurvenprofile, Layout-Vergleich
-  05_reifen_strategie/  Degradation, Stints, Undercut, Boxenstopps
-  06_wetter/         Temperatur- und Regeneffekte
-  07_race_control/   Safety Car, Strafen, Track Limits
-  08_historie/       Ergast/jolpica, WM-Simulation, 75 Jahre F1
-  09_machine_learning/  Vorhersage, Clustering, Anomalien
-  10_data_engineering/  Warehouse, REST-API, CLI-Paket
-  11_visualisierung/    Streamlit-Dashboard, PDF-Report
-  12_live_timing/       Echtzeit-Aufzeichnung
-  check_setup.py     prueft Python, Pakete, Cache und API-Zugriff
-  requirements.txt
+01_grundlagen/        Datenzugriff, Caching, Kalender als Dimensionstabelle
+02_timing/            Rundenzeiten, Pace-Ranking, Sektoren, Positionsverlauf
+03_telemetrie/        Speed, Bremspunkte, Gänge, DRS, Starts, Dirty Air
+04_strecke/           Streckenkarten, Kurvenprofile, Layout-Vergleich über Jahre
+05_reifen_strategie/  Degradation, Stints, Undercut-Simulation, Boxenstopps
+06_wetter/            Temperatur- und Regeneffekte auf die Pace
+07_race_control/      Safety Car, Strafen, Track Limits
+08_historie/          Ergast-API, WM-Simulation, 75 Jahre Trendanalyse
+09_machine_learning/  Qualifying-Vorhersage, Fahrstil-Clustering, Anomalien
+10_data_engineering/  DuckDB-Warehouse, REST-API, CLI-Paket
+11_visualisierung/    Streamlit-Dashboard, automatischer PDF-Rennbericht
+12_live_timing/       Echtzeit-Aufzeichnung des Timing-Streams
+
+common/               geteilte Helfer: Cache, Rundenfilter, Fuel-Korrektur
+make_assets.py        erzeugt die Grafiken oben
+check_setup.py        prüft Umgebung, Pakete, Cache und API-Zugriff
 ```
 
----
-
-## Wichtig zu wissen
-
-- **Telemetrie gibt es erst ab Saison 2018.** Ergebnisse und Rundenzeiten
-  reichen zurueck bis 1950.
-- **Der erste Ladevorgang** einer Session dauert 30-120 Sekunden. Danach kommt
-  alles aus `~/f1_cache` und laeuft in Sekunden.
-- **Session-Kuerzel:** `FP1` `FP2` `FP3` `Q` (Qualifying) `S` (Sprint)
-  `SQ` (Sprint-Quali) `R` (Rennen).
-- **Events** ansprechen per Name (`"Monza"`), Land (`"Italy"`) oder
-  Rundennummer (`14`).
-- `session.load(telemetry=False, weather=False, messages=False)` ist deutlich
-  schneller, wenn nur Rundenzeiten gebraucht werden.
+Jedes Skript läuft eigenständig. Der Kopf-Docstring nennt Ziel, Vorgehen, die
+genutzten FastF1-Bausteine und eine Ausbaustufe.
 
 ---
 
-## Roadmap
+## Methodische Entscheidungen
 
-### Woche 1 - Fundament legen
+Ein paar Dinge, die den Unterschied zwischen einer hübschen Grafik und einer
+belastbaren Aussage ausmachen:
 
-_Umgebung aufsetzen, Datenmodell verstehen, erste saubere Analyse._
+**Rundenfilterung.** `pick_track_status("1")` behält nur Runden unter grüner Flagge.
+Ohne das mischen sich Safety-Car-Runden in die Verteilung und verschieben den Median
+um mehrere Zehntel. Dazu `pick_wo_box()`, `pick_accurate()` und `pick_not_deleted()`,
+zusammengefasst in `common.clean_laps()`.
 
-- `P01` Session-Explorer: Jede Session der F1-Historie laden
-- `P02` Saison-Kalender & Event-Metadaten als Datenbank
-- `P03` Rundenzeit-Qualitaetsfilter: Was ist eine 'saubere' Runde?
-- `P14` Stint- und Strategie-Uebersicht als Gantt-Chart
+**Treibstoffkorrektur.** Über eine Renndistanz summiert sich der Effekt auf mehrere
+Sekunden pro Runde. Die verwendeten 0.03 s/kg sind ein Literaturwert, kein gemessener
+— die Größenordnung stimmt, die dritte Nachkommastelle sollte man nicht
+überinterpretieren.
 
-### Woche 2 - Analytische Tiefe
+**Unsicherheit ausweisen.** Ein Median ohne Streuungsmaß suggeriert Präzision, die
+nicht da ist. Deswegen Bootstrap-Intervalle statt nackter Zahlen.
 
-_Von der Beschreibung zur Aussage: Pace, Sektoren, Positionen._
+**Zeitliche Validierung beim ML.** Rennen kommen chronologisch. Ein zufälliger
+Train-Test-Split würde mit Zukunftswissen trainieren, deshalb `TimeSeriesSplit`.
 
-- `P06` Sektor-Analyse: Wo genau geht die Zeit verloren?
-- `P04` Race Pace Ranking: Wer war wirklich am schnellsten?
-- `P20` Positionsverlauf und Ueberholmatrix
-- `P05` Teamkollegen-Duell ueber eine ganze Saison
+---
 
-### Woche 3 - Telemetrie beherrschen
+## Grenzen
 
-_Das Herzstueck. Ab hier klingst du wie jemand aus dem Fach._
+Die Analysen kontrollieren nicht für Verkehr, Motormodus oder Tankstrategie. Ein
+Fahrer, der 20 Runden im Windschatten festhing, sieht langsamer aus, als er war —
+Projekt 32 nähert sich dem über `DistanceToDriverAhead`, löst es aber nicht.
+Setup-Unterschiede sind aus der öffentlichen Telemetrie ohnehin nicht rekonstruierbar.
 
-- `P07` Telemetrie-Overlay: Zwei schnellste Runden uebereinanderlegen
-- `P09` Gangwechsel-Karte der Strecke
-- `P10` DRS-Nutzung und Topspeed-Analyse
-- `P08` Bremspunkt-Detektor und Bremsphasen-Report
-- `P31` Startphasen-Analyse: Wer gewinnt die ersten 500 Meter?
+Telemetriedaten existieren erst ab Saison **2018**. Ergebnisse und Rundenzeiten
+reichen über die Ergast-kompatible API zurück bis 1950.
 
-### Woche 4 - Strategie & Domaenenmodelle
+---
 
-_Reifen, Wetter, Safety Cars - die Sprache der Boxenmauer._
+## Setup
 
-- `P13` Reifendegradation modellieren
-- `P15` Undercut-Simulator: Wann lohnt sich der frueher Stopp?
-- `P17` Wetter-Impact: Wie Regen und Streckentemperatur die Pace veraendern
-- `P18` Safety-Car- und Track-Status-Chronik
-- `P19` Race Control Messages: Strafen und Untersuchungen automatisch auswerten
-- `P16` Boxenstopp-Performance-Ranking der Teams
+```bash
+./setup.sh                    # venv anlegen, Pakete installieren
+source .venv/bin/activate
+python check_setup.py         # prüft Python, Pakete, Cache, API-Zugriff
+```
 
-### Woche 5 - Spezialisierung
+Der erste Ladevorgang einer Session dauert 30–120 Sekunden, danach kommt alles aus
+`~/f1_cache`. Für reine Rundenzeitanalysen ist
+`session.load(telemetry=False, weather=False, messages=False)` deutlich schneller.
 
-_Waehle nach Zielrolle: ML, Engineering oder Strategie._
-
-- `P11` Streckenkarte mit nummerierten Kurven
-- `P12` Kurvengeschwindigkeits-Profil je Fahrer
-- `P23` Qualifying-Ergebnis vorhersagen (Machine Learning)
-- `P24` Fahrstil-Clustering: Wer faehrt wie?
-- `P25` Anomalie-Erkennung: Technische Probleme aus Telemetrie erkennen
-- `P26` F1-Data-Warehouse: Sternschema in DuckDB
-- `P27` Telemetrie-API mit FastAPI
-- `P32` Verfolgungsjagd: Abstand zum Vordermann und Dirty Air
-
-### Woche 6 - Vorzeigbar machen
-
-_Alles buendeln in Artefakte, die man in 5 Minuten vorfuehren kann._
-
-- `P21` WM-Stand-Simulator: Wer kann noch Weltmeister werden?
-- `P22` 75 Jahre F1: Historische Trendanalyse
-- `P33` Streckenvergleich ueber Jahre: Hat sich das Layout geaendert?
-- `P28` Interaktives Streamlit-Dashboard
-- `P29` Automatischer Rennbericht als PDF
-- `P30` Live-Timing aufzeichnen und in Echtzeit auswerten
-- `P34` Der komplette Wochenend-Analyzer als CLI-Tool
+Session-Kürzel: `FP1` `FP2` `FP3` `Q` `S` (Sprint) `SQ` `R`.
+Events per Name (`"Monza"`), Land (`"Italy"`) oder Rundennummer (`14`).
 
 ---
 
 ## Projektindex
 
-| ID | Projekt | Kategorie | Niveau | Aufwand |
-|----|---------|-----------|--------|---------|
-| `P01` | [Session-Explorer: Jede Session der F1-Historie laden](01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py) | Grundlagen & Datenzugriff | Einsteiger | 1-2 h |
-| `P02` | [Saison-Kalender & Event-Metadaten als Datenbank](01_grundlagen/p02_saison_kalender_event_metadaten_als_datenbank.py) | Grundlagen & Datenzugriff | Einsteiger | 2 h |
-| `P03` | [Rundenzeit-Qualitaetsfilter: Was ist eine 'saubere' Runde?](02_timing/p03_rundenzeit_qualitaetsfilter_was_ist_eine_saubere.py) | Timing & Rundenanalyse | Einsteiger | 2-3 h |
-| `P04` | [Race Pace Ranking: Wer war wirklich am schnellsten?](02_timing/p04_race_pace_ranking_wer_war_wirklich_am_schnellste.py) | Timing & Rundenanalyse | Fortgeschritten | 3-4 h |
-| `P05` | [Teamkollegen-Duell ueber eine ganze Saison](02_timing/p05_teamkollegen_duell_ueber_eine_ganze_saison.py) | Timing & Rundenanalyse | Fortgeschritten | 4-5 h |
-| `P06` | [Sektor-Analyse: Wo genau geht die Zeit verloren?](02_timing/p06_sektor_analyse_wo_genau_geht_die_zeit_verloren.py) | Timing & Rundenanalyse | Einsteiger | 2 h |
-| `P07` | [Telemetrie-Overlay: Zwei schnellste Runden uebereinanderlegen](03_telemetrie/p07_telemetrie_overlay_zwei_schnellste_runden_uebere.py) | Telemetrie | Fortgeschritten | 3 h |
-| `P08` | [Bremspunkt-Detektor und Bremsphasen-Report](03_telemetrie/p08_bremspunkt_detektor_und_bremsphasen_report.py) | Telemetrie | Profi | 4-5 h |
-| `P09` | [Gangwechsel-Karte der Strecke](03_telemetrie/p09_gangwechsel_karte_der_strecke.py) | Telemetrie | Fortgeschritten | 2-3 h |
-| `P10` | [DRS-Nutzung und Topspeed-Analyse](03_telemetrie/p10_drs_nutzung_und_topspeed_analyse.py) | Telemetrie | Fortgeschritten | 3 h |
-| `P11` | [Streckenkarte mit nummerierten Kurven](04_strecke/p11_streckenkarte_mit_nummerierten_kurven.py) | Strecke & Position | Einsteiger | 2 h |
-| `P12` | [Kurvengeschwindigkeits-Profil je Fahrer](04_strecke/p12_kurvengeschwindigkeits_profil_je_fahrer.py) | Strecke & Position | Profi | 4 h |
-| `P13` | [Reifendegradation modellieren](05_reifen_strategie/p13_reifendegradation_modellieren.py) | Reifen & Strategie | Fortgeschritten | 4-5 h |
-| `P14` | [Stint- und Strategie-Uebersicht als Gantt-Chart](05_reifen_strategie/p14_stint_und_strategie_uebersicht_als_gantt_chart.py) | Reifen & Strategie | Einsteiger | 2-3 h |
-| `P15` | [Undercut-Simulator: Wann lohnt sich der frueher Stopp?](05_reifen_strategie/p15_undercut_simulator_wann_lohnt_sich_der_frueher_s.py) | Reifen & Strategie | Profi | 5-6 h |
-| `P16` | [Boxenstopp-Performance-Ranking der Teams](05_reifen_strategie/p16_boxenstopp_performance_ranking_der_teams.py) | Reifen & Strategie | Fortgeschritten | 3 h |
-| `P17` | [Wetter-Impact: Wie Regen und Streckentemperatur die Pace veraendern](06_wetter/p17_wetter_impact_wie_regen_und_streckentemperatur_d.py) | Wetter & Bedingungen | Fortgeschritten | 3-4 h |
-| `P18` | [Safety-Car- und Track-Status-Chronik](07_race_control/p18_safety_car_und_track_status_chronik.py) | Race Control & Regeln | Fortgeschritten | 3 h |
-| `P19` | [Race Control Messages: Strafen und Untersuchungen automatisch auswerten](07_race_control/p19_race_control_messages_strafen_und_untersuchungen.py) | Race Control & Regeln | Fortgeschritten | 3-4 h |
-| `P20` | [Positionsverlauf und Ueberholmatrix](02_timing/p20_positionsverlauf_und_ueberholmatrix.py) | Timing & Rundenanalyse | Fortgeschritten | 3 h |
-| `P21` | [WM-Stand-Simulator: Wer kann noch Weltmeister werden?](08_historie/p21_wm_stand_simulator_wer_kann_noch_weltmeister_wer.py) | Historie & Ergast-API | Fortgeschritten | 3-4 h |
-| `P22` | [75 Jahre F1: Historische Trendanalyse](08_historie/p22_75_jahre_f1_historische_trendanalyse.py) | Historie & Ergast-API | Fortgeschritten | 4-5 h |
-| `P23` | [Qualifying-Ergebnis vorhersagen (Machine Learning)](09_machine_learning/p23_qualifying_ergebnis_vorhersagen_machine_learning.py) | Machine Learning | Profi | 6-8 h |
-| `P24` | [Fahrstil-Clustering: Wer faehrt wie?](09_machine_learning/p24_fahrstil_clustering_wer_faehrt_wie.py) | Machine Learning | Profi | 5-6 h |
-| `P25` | [Anomalie-Erkennung: Technische Probleme aus Telemetrie erkennen](09_machine_learning/p25_anomalie_erkennung_technische_probleme_aus_telem.py) | Machine Learning | Profi | 5 h |
-| `P26` | [F1-Data-Warehouse: Sternschema in DuckDB](10_data_engineering/p26_f1_data_warehouse_sternschema_in_duckdb.py) | Data Engineering | Profi | 8-10 h |
-| `P27` | [Telemetrie-API mit FastAPI](10_data_engineering/p27_telemetrie_api_mit_fastapi.py) | Data Engineering | Profi | 6-8 h |
-| `P28` | [Interaktives Streamlit-Dashboard](11_visualisierung/p28_interaktives_streamlit_dashboard.py) | Visualisierung & Apps | Fortgeschritten | 5-6 h |
-| `P29` | [Automatischer Rennbericht als PDF](11_visualisierung/p29_automatischer_rennbericht_als_pdf.py) | Visualisierung & Apps | Fortgeschritten | 4-5 h |
-| `P30` | [Live-Timing aufzeichnen und in Echtzeit auswerten](12_live_timing/p30_live_timing_aufzeichnen_und_in_echtzeit_auswerte.py) | Live Timing | Profi | 6-8 h |
-| `P31` | [Startphasen-Analyse: Wer gewinnt die ersten 500 Meter?](03_telemetrie/p31_startphasen_analyse_wer_gewinnt_die_ersten_500_m.py) | Telemetrie | Fortgeschritten | 3-4 h |
-| `P32` | [Verfolgungsjagd: Abstand zum Vordermann und Dirty Air](03_telemetrie/p32_verfolgungsjagd_abstand_zum_vordermann_und_dirty.py) | Telemetrie | Profi | 4-5 h |
-| `P33` | [Streckenvergleich ueber Jahre: Hat sich das Layout geaendert?](04_strecke/p33_streckenvergleich_ueber_jahre_hat_sich_das_layou.py) | Strecke & Position | Fortgeschritten | 3-4 h |
-| `P34` | [Der komplette Wochenend-Analyzer als CLI-Tool](10_data_engineering/p34_der_komplette_wochenend_analyzer_als_cli_tool.py) | Data Engineering | Profi | 8-10 h |
+| ID | Projekt | Kategorie | Niveau |
+|----|---------|-----------|--------|
+| `P01` | [Session-Explorer: Jede Session der F1-Historie laden](01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py) | Grundlagen | Einsteiger |
+| `P02` | [Saison-Kalender und Event-Metadaten als Datenbank](01_grundlagen/p02_saison_kalender_event_metadaten_als_datenbank.py) | Grundlagen | Einsteiger |
+| `P03` | [Rundenzeit-Qualitätsfilter: Was ist eine saubere Runde?](02_timing/p03_rundenzeit_qualitaetsfilter_was_ist_eine_saubere.py) | Timing | Einsteiger |
+| `P04` | [Race Pace Ranking: Wer war wirklich am schnellsten?](02_timing/p04_race_pace_ranking_wer_war_wirklich_am_schnellste.py) | Timing | Fortgeschritten |
+| `P05` | [Teamkollegen-Duell über eine ganze Saison](02_timing/p05_teamkollegen_duell_ueber_eine_ganze_saison.py) | Timing | Fortgeschritten |
+| `P06` | [Sektor-Analyse: Wo genau geht die Zeit verloren?](02_timing/p06_sektor_analyse_wo_genau_geht_die_zeit_verloren.py) | Timing | Einsteiger |
+| `P07` | [Telemetrie-Overlay: Zwei schnellste Runden übereinanderlegen](03_telemetrie/p07_telemetrie_overlay_zwei_schnellste_runden_uebere.py) | Telemetrie | Fortgeschritten |
+| `P08` | [Bremspunkt-Detektor und Bremsphasen-Report](03_telemetrie/p08_bremspunkt_detektor_und_bremsphasen_report.py) | Telemetrie | Profi |
+| `P09` | [Gangwechsel-Karte der Strecke](03_telemetrie/p09_gangwechsel_karte_der_strecke.py) | Telemetrie | Fortgeschritten |
+| `P10` | [DRS-Nutzung und Topspeed-Analyse](03_telemetrie/p10_drs_nutzung_und_topspeed_analyse.py) | Telemetrie | Fortgeschritten |
+| `P11` | [Streckenkarte mit nummerierten Kurven](04_strecke/p11_streckenkarte_mit_nummerierten_kurven.py) | Strecke | Einsteiger |
+| `P12` | [Kurvengeschwindigkeits-Profil je Fahrer](04_strecke/p12_kurvengeschwindigkeits_profil_je_fahrer.py) | Strecke | Profi |
+| `P13` | [Reifendegradation modellieren](05_reifen_strategie/p13_reifendegradation_modellieren.py) | Reifen | Fortgeschritten |
+| `P14` | [Stint- und Strategie-Übersicht als Gantt-Chart](05_reifen_strategie/p14_stint_und_strategie_uebersicht_als_gantt_chart.py) | Reifen | Einsteiger |
+| `P15` | [Undercut-Simulator: Wann lohnt sich der frühere Stopp?](05_reifen_strategie/p15_undercut_simulator_wann_lohnt_sich_der_frueher_s.py) | Reifen | Profi |
+| `P16` | [Boxenstopp-Performance-Ranking der Teams](05_reifen_strategie/p16_boxenstopp_performance_ranking_der_teams.py) | Reifen | Fortgeschritten |
+| `P17` | [Wetter-Impact: Regen und Streckentemperatur](06_wetter/p17_wetter_impact_wie_regen_und_streckentemperatur_d.py) | Wetter | Fortgeschritten |
+| `P18` | [Safety-Car- und Track-Status-Chronik](07_race_control/p18_safety_car_und_track_status_chronik.py) | Race Control | Fortgeschritten |
+| `P19` | [Race Control Messages: Strafen automatisch auswerten](07_race_control/p19_race_control_messages_strafen_und_untersuchungen.py) | Race Control | Fortgeschritten |
+| `P20` | [Positionsverlauf und Überholmatrix](02_timing/p20_positionsverlauf_und_ueberholmatrix.py) | Timing | Fortgeschritten |
+| `P21` | [WM-Stand-Simulator: Wer kann noch Weltmeister werden?](08_historie/p21_wm_stand_simulator_wer_kann_noch_weltmeister_wer.py) | Historie | Fortgeschritten |
+| `P22` | [75 Jahre F1: Historische Trendanalyse](08_historie/p22_75_jahre_f1_historische_trendanalyse.py) | Historie | Fortgeschritten |
+| `P23` | [Qualifying-Ergebnis vorhersagen (Machine Learning)](09_machine_learning/p23_qualifying_ergebnis_vorhersagen_machine_learning.py) | ML | Profi |
+| `P24` | [Fahrstil-Clustering: Wer fährt wie?](09_machine_learning/p24_fahrstil_clustering_wer_faehrt_wie.py) | ML | Profi |
+| `P25` | [Anomalie-Erkennung: Technische Probleme aus Telemetrie](09_machine_learning/p25_anomalie_erkennung_technische_probleme_aus_telem.py) | ML | Profi |
+| `P26` | [F1-Data-Warehouse: Sternschema in DuckDB](10_data_engineering/p26_f1_data_warehouse_sternschema_in_duckdb.py) | Engineering | Profi |
+| `P27` | [Telemetrie-API mit FastAPI](10_data_engineering/p27_telemetrie_api_mit_fastapi.py) | Engineering | Profi |
+| `P28` | [Interaktives Streamlit-Dashboard](11_visualisierung/p28_interaktives_streamlit_dashboard.py) | Visualisierung | Fortgeschritten |
+| `P29` | [Automatischer Rennbericht als PDF](11_visualisierung/p29_automatischer_rennbericht_als_pdf.py) | Visualisierung | Fortgeschritten |
+| `P30` | [Live-Timing aufzeichnen und auswerten](12_live_timing/p30_live_timing_aufzeichnen_und_in_echtzeit_auswerte.py) | Live Timing | Profi |
+| `P31` | [Startphasen-Analyse: Wer gewinnt die ersten 500 Meter?](03_telemetrie/p31_startphasen_analyse_wer_gewinnt_die_ersten_500_m.py) | Telemetrie | Fortgeschritten |
+| `P32` | [Verfolgungsjagd: Abstand zum Vordermann und Dirty Air](03_telemetrie/p32_verfolgungsjagd_abstand_zum_vordermann_und_dirty.py) | Telemetrie | Profi |
+| `P33` | [Streckenvergleich über Jahre: Hat sich das Layout geändert?](04_strecke/p33_streckenvergleich_ueber_jahre_hat_sich_das_layou.py) | Strecke | Fortgeschritten |
+| `P34` | [Der komplette Wochenend-Analyzer als CLI-Tool](10_data_engineering/p34_der_komplette_wochenend_analyzer_als_cli_tool.py) | Engineering | Profi |
+
+---
+
+## Reproduzieren
+
+Alle Grafiken in diesem README entstehen aus echten Daten:
+
+```bash
+python make_assets.py
+```
+
+Schreibt die PNGs nach `assets/` und die berechneten Kennzahlen nach
+`assets/kennzahlen.json` — die Zahlen im Text oben stammen genau daher.
 
 ---
 
 ## Hinweis
 
-FastF1 ist ein inoffizielles Open-Source-Projekt und steht in keiner Verbindung
-zu den Formel-1-Gesellschaften. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE
-WORLD CHAMPIONSHIP, GRAND PRIX und verwandte Marken sind Marken der
-Formula One Licensing B.V.
+FastF1 ist ein inoffizielles Open-Source-Projekt und steht in keiner Verbindung zu
+den Formel-1-Gesellschaften. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD
+CHAMPIONSHIP, GRAND PRIX und verwandte Marken sind Marken der Formula One
+Licensing B.V.
