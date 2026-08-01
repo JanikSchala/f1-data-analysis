@@ -26,7 +26,7 @@ class Interval:
     def width(self) -> float:
         return self.hi - self.lo
 
-    def overlaps(self, other: "Interval") -> bool:
+    def overlaps(self, other: Interval) -> bool:
         """True, wenn sich die Intervalle ueberschneiden.
 
         Ueberlappende Intervalle heissen: der Unterschied ist mit diesen
