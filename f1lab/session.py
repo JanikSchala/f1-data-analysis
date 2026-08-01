@@ -9,13 +9,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-import numpy as np
+import fastf1
 import pandas as pd
 
-import fastf1
-
 from .core import (
-    DegradationFit,
     Interval,
     bootstrap_median,
     estimate_pit_loss,
@@ -59,6 +56,27 @@ def load(year: int, gp, identifier: str = "R",
     return ses
 
 
+def not_deleted_mask(deleted) -> pd.Series:
+    """True fuer Runden, die NICHT von der Rennleitung gestrichen wurden.
+
+    Die Spalte ``Deleted`` ist ein nullable Boolean. Neben True und False
+    steht dort None, wenn zu einer Runde nichts gemeldet wurde - was der
+    Normalfall ist. FastF1s ``pick_not_deleted()`` invertiert die Spalte
+    direkt mit ``~``, und genau daran scheitert pandas bei object-dtype:
+
+        TypeError: bad operand type for unary ~
+
+    Deswegen hier explizit: fehlende Angabe heisst "nicht gestrichen".
+    """
+    s = pd.Series(deleted)
+    if s.empty:
+        return s.astype(bool)
+    # .where statt .fillna: fillna auf object-dtype loest in pandas 2.2
+    # eine Downcasting-Warnung aus, die in pandas 3 zum Verhaltenswechsel
+    # wird. .where ist in beiden Versionen eindeutig.
+    return ~s.where(s.notna(), False).astype(bool)
+
+
 def clean_laps(session, threshold: float = 1.07) -> pd.DataFrame:
     """Runden, auf denen sich Pace-Aussagen aufbauen lassen.
 
@@ -70,12 +88,13 @@ def clean_laps(session, threshold: float = 1.07) -> pd.DataFrame:
       - von der Rennleitung gestrichene Runden
       - Ausreisser ueber threshold mal Bestzeit
     """
-    return (session.laps
+    laps = (session.laps
             .pick_wo_box()
             .pick_accurate()
-            .pick_track_status("1")
-            .pick_not_deleted()
-            .pick_quicklaps(threshold=threshold))
+            .pick_track_status("1"))
+    if "Deleted" in laps.columns:
+        laps = laps[not_deleted_mask(laps["Deleted"]).to_numpy()]
+    return laps.pick_quicklaps(threshold=threshold)
 
 
 # --------------------------------------------------------------- Pace

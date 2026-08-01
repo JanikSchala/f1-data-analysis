@@ -121,10 +121,10 @@ print(f1lab.degradation_by_compound(ses))
 print(f"Pitloss: {f1lab.pit_loss(ses):.2f} s")
 ```
 
-**43 Tests, alle ohne Netzzugriff:**
+**58 Tests, alle ohne Netzzugriff:**
 
 ```bash
-pip install -e ".[dev]"
+pip install pytest
 pytest -q
 ```
 
@@ -143,6 +143,16 @@ Beispiele für die Art von Aussage, die dahintersteht:
 Der letzte Punkt ist kein hypothetisches Beispiel: der Test hat beim ersten Lauf
 einen Off-by-one in der Kantenerkennung gefunden. Die Zone endete eine Probe zu
 spät, wodurch die Ausgangsgeschwindigkeit gleich der Eingangsgeschwindigkeit war.
+
+Ein zweiter Fund kam aus dem Rauchtest gegen echte Daten: FastF1s
+`pick_not_deleted()` invertiert die Spalte `Deleted` direkt mit `~`. Sobald darin
+`None` steht — der Normalfall, wenn die Rennleitung zu einer Runde nichts gemeldet
+hat — ist die Spalte object-dtype und pandas wirft einen `TypeError`. In Barcelona
+2024 stürzt damit jede Pace-Auswertung ab. `f1lab.session.not_deleted_mask()`
+behandelt den Fall explizit und ist gegen beide dtype-Varianten getestet.
+
+Die Tests laufen ohne Installation: eine `conftest.py` im Wurzelverzeichnis legt
+das Repo auf den Importpfad.
 
 ---
 
