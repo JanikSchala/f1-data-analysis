@@ -7,9 +7,9 @@ Sektorzeiten und Speed-Traps zerlegen die Rundenzeit in Aussagen ueber Abtrieb, 
 Kategorie:   Timing & Rundenanalyse
 Niveau:      Einsteiger
 Aufwand:     2 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Sektor-Deltas sind die schnellste Diagnose fuer Auto-Charakteristik. Perfekt, um analytisches Denken zu demonstrieren, ohne dass es kompliziert wird.
 
 VORGEHEN

@@ -7,10 +7,10 @@ Die klassische Strategiegrafik: jeder Fahrer eine Zeile, jeder Stint ein Balken 
 Kategorie:   Reifen & Strategie
 Niveau:      Einsteiger
 Aufwand:     2-3 h
-Rollen:      STRAT, DS
+Schwerpunkt: Strategie, Datenanalyse
 
-WARUM DAS ZAEHLT
-Diese Grafik hat jedes Team an der Boxenmauer. Schnell gebaut, sofort verstaendlich, ideal als Einstiegsbild fuer dein Portfolio.
+WARUM DAS LOHNT
+Diese Grafik hat jedes Team an der Boxenmauer. Schnell gebaut, sofort verstaendlich - und danach schaust du jedes Rennen anders.
 
 VORGEHEN
   1. Stints je Fahrer aggregieren: Start-Runde, Laenge, Compound

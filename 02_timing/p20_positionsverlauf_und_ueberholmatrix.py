@@ -7,9 +7,9 @@ Position ueber Runden fuer alle Fahrer, plus eine Matrix wer wen wie oft ueberho
 Kategorie:   Timing & Rundenanalyse
 Niveau:      Fortgeschritten
 Aufwand:     3 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Der Positionsgraph ist das meistgenutzte Rennbild ueberhaupt. Die Ueberholmatrix zeigt, dass du ueber die Standardgrafik hinausdenkst.
 
 VORGEHEN

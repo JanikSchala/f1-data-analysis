@@ -7,9 +7,9 @@ Alle gelben Phasen, VSC- und SC-Perioden exakt als Rundenintervalle - inklusive 
 Kategorie:   Race Control & Regeln
 Niveau:      Fortgeschritten
 Aufwand:     3 h
-Rollen:      STRAT, DS
+Schwerpunkt: Strategie, Datenanalyse
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Safety Cars entscheiden Rennen. Wer sie automatisch aus track_status extrahiert und deren Effekt beziffert, liefert Strategie-Input statt nur Deskription.
 
 VORGEHEN

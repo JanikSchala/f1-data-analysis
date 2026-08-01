@@ -7,10 +7,10 @@ Klickbares Analyse-Tool: Session waehlen, Fahrer vergleichen, Telemetrie und Str
 Kategorie:   Visualisierung & Apps
 Niveau:      Fortgeschritten
 Aufwand:     5-6 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 Zusaetzliche Pakete: streamlit, plotly
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Ein Dashboard, das man live vorfuehren kann, wirkt im Gespraech staerker als jedes Notebook. Streamlit macht das in wenigen Stunden moeglich.
 
 VORGEHEN

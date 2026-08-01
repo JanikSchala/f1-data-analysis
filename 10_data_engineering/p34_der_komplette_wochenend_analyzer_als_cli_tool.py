@@ -7,10 +7,10 @@ Ein installierbares Python-Paket, das alle vorherigen Analysen buendelt: f1analy
 Kategorie:   Data Engineering
 Niveau:      Profi
 Aufwand:     8-10 h
-Rollen:      ENG, DS, STRAT
+Schwerpunkt: Engineering, Datenanalyse, Strategie
 Zusaetzliche Pakete: typer
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Das Abschlussprojekt. Zeigt Software-Engineering statt Skript-Sammlung: Paketstruktur, CLI, Tests, Typannotationen, README. Genau so arbeiten Teams.
 
 VORGEHEN

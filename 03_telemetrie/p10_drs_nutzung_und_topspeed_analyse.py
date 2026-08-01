@@ -7,9 +7,9 @@ Wie lange ist DRS offen, wie viel bringt es, und wer nutzt es am effizientesten?
 Kategorie:   Telemetrie
 Niveau:      Fortgeschritten
 Aufwand:     3 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 DRS-Effektivitaet ist direkt ueberholrelevant. Der DRS-Kanal ist codiert (nicht 0/1) - dass du das weisst, zeigt Detailtiefe.
 
 VORGEHEN

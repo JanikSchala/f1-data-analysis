@@ -7,9 +7,9 @@ Wetterdaten im Minutentakt auf jede Runde joinen und den Effekt von TrackTemp au
 Kategorie:   Wetter & Bedingungen
 Niveau:      Fortgeschritten
 Aufwand:     3-4 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Streckentemperatur steuert das Reifenfenster. Ein sauberer Zeit-Join zwischen zwei unterschiedlich getakteten Streams ist eine klassische Data-Engineering-Uebung.
 
 VORGEHEN

@@ -7,10 +7,10 @@ Ein Skript, das nach jedem Rennen einen mehrseitigen Report mit Grafiken und Ken
 Kategorie:   Visualisierung & Apps
 Niveau:      Fortgeschritten
 Aufwand:     4-5 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 
-WARUM DAS ZAEHLT
-Reproduzierbares Reporting ist echte Teamarbeit statt Einzelanalyse. Ein PDF mit deinem Namen drauf kannst du der Bewerbung direkt beilegen.
+WARUM DAS LOHNT
+Ein Skript, das nach jedem Rennen von selbst durchlaeuft, ist mehr wert als zehn Notebooks, die man erst wieder verstehen muss. Der Unterschied zwischen Bastelei und Werkzeug.
 
 VORGEHEN
   1. Report-Funktion pro Seite kapseln (Ergebnis, Pace, Strategie, Positionen)

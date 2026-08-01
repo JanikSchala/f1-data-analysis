@@ -7,9 +7,9 @@ Aus dem Brake-Kanal automatisch alle Bremszonen extrahieren: Einsatzpunkt, Dauer
 Kategorie:   Telemetrie
 Niveau:      Profi
 Aufwand:     4-5 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Bremspunkte sind die wertvollste Einzelinformation im Fahrervergleich. Signal-Segmentierung ist echte Engineering-Arbeit, nicht nur Plotting.
 
 VORGEHEN

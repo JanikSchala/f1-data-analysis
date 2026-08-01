@@ -7,10 +7,10 @@ Gradient Boosting auf Features aus Freiem Training, Vorjahresform und Streckench
 Kategorie:   Machine Learning
 Niveau:      Profi
 Aufwand:     6-8 h
-Rollen:      DS
+Schwerpunkt: Datenanalyse
 Zusaetzliche Pakete: scikit-learn
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Ein ML-Projekt mit sauberer zeitlicher Validierung (kein Data Leakage!) ist das, was Data-Science-Rollen sehen wollen. Der Domaenenkontext macht es einpraegsam.
 
 VORGEHEN

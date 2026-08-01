@@ -7,10 +7,10 @@ Alle Saisons seit 1950 aus der Ergast-kompatiblen API: Dominanzphasen, Zuverlaes
 Kategorie:   Historie & Ergast-API
 Niveau:      Fortgeschritten
 Aufwand:     4-5 h
-Rollen:      DS
+Schwerpunkt: Datenanalyse
 
-WARUM DAS ZAEHLT
-Grosse Datenmengen, viele API-Calls, saubere Aggregation - und ein Ergebnis, das jeder F1-Fan sofort versteht. Guter Storytelling-Case im Bewerbungsgespraech.
+WARUM DAS LOHNT
+Grosse Datenmengen, viele API-Calls, saubere Aggregation - und am Ende Zusammenhaenge, die man vorher nicht kannte. Wann war die F1 am ausgeglichensten, wann am langweiligsten?
 
 VORGEHEN
   1. Alle Saisons iterieren und Constructor-Standings sammeln

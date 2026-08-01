@@ -7,10 +7,10 @@ Ein REST-Service, der aufbereitete F1-Daten ausliefert: Endpunkte fuer Sessions,
 Kategorie:   Data Engineering
 Niveau:      Profi
 Aufwand:     6-8 h
-Rollen:      ENG
+Schwerpunkt: Engineering
 Zusaetzliche Pakete: fastapi, uvicorn, pydantic
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Zeigt, dass du nicht nur Notebooks schreibst, sondern Datenprodukte baust. Mit Pydantic-Modellen, Caching und OpenAPI-Doku ist es sofort vorzeigbar.
 
 VORGEHEN

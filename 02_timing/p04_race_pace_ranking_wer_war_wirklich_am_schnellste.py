@@ -7,10 +7,10 @@ Endergebnis != Pace. Rangliste nach bereinigter Median-Pace pro Fahrer und Team,
 Kategorie:   Timing & Rundenanalyse
 Niveau:      Fortgeschritten
 Aufwand:     3-4 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
-Genau diese Frage stellt sich ein Race-Engineer nach jedem Rennen. Ein sauberes Ranking mit Unsicherheitsangabe ist ein starkes Portfolio-Stueck.
+WARUM DAS LOHNT
+Genau diese Frage stellt sich an der Boxenmauer nach jedem Rennen. Ein Ranking ohne Unsicherheitsangabe ist nur eine Meinung mit Nachkommastellen.
 
 VORGEHEN
   1. Saubere Runden filtern

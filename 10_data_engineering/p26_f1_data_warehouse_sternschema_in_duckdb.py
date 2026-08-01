@@ -7,10 +7,10 @@ Eine echte ETL-Pipeline: FastF1 -> Parquet -> DuckDB mit Fakten- und Dimensionst
 Kategorie:   Data Engineering
 Niveau:      Profi
 Aufwand:     8-10 h
-Rollen:      ENG
+Schwerpunkt: Engineering
 Zusaetzliche Pakete: duckdb, pyarrow
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Das staerkste Projekt fuer eine Data-Engineering-Rolle. Zeigt Schema-Design, Idempotenz, inkrementelle Loads und analytisches SQL - alles, was in Produktion zaehlt.
 
 VORGEHEN
