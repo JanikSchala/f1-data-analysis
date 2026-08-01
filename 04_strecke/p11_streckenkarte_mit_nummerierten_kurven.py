@@ -7,9 +7,9 @@ get_circuit_info() liefert offizielle Kurvenpositionen und Marshal-Sektoren - da
 Kategorie:   Strecke & Position
 Niveau:      Einsteiger
 Aufwand:     2 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Kurvennummern sind die Sprache im Team ('T7 Untersteuern'). Wer Telemetrie auf Kurven mappen kann, macht Analysen fuer Ingenieure lesbar.
 
 VORGEHEN

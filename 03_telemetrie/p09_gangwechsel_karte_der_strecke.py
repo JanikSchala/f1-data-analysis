@@ -7,10 +7,10 @@ Die Ideallinie in XY-Koordinaten, eingefaerbt nach eingelegtem Gang - das ikonis
 Kategorie:   Telemetrie
 Niveau:      Fortgeschritten
 Aufwand:     2-3 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 
-WARUM DAS ZAEHLT
-Optisch stark und technisch lehrreich: LineCollection, Positionsdaten und diskrete Farbskalen. Ideal als Blickfang im Portfolio.
+WARUM DAS LOHNT
+Optisch stark und technisch lehrreich zugleich: LineCollection, Positionsdaten und diskrete Farbskalen. Das Bild, das man sich an die Wand haengt.
 
 VORGEHEN
   1. Telemetrie der schnellsten Runde holen (get_telemetry mergt Car+Pos)

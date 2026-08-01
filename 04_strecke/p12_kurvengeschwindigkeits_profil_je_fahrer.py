@@ -7,9 +7,9 @@ Apex-Speed in jeder einzelnen Kurve, fuer alle Fahrer, als Heatmap. Zeigt Abtrie
 Kategorie:   Strecke & Position
 Niveau:      Profi
 Aufwand:     4 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Aus Kurvenspeeds liest ein Aerodynamiker das Setup ab. Die Verbindung Circuit-Info x Telemetrie ist genau die Art Feature-Engineering, die F1-Teams suchen.
 
 VORGEHEN

@@ -7,11 +7,11 @@ Unsupervised Learning auf Telemetrie-Features: Bremsverhalten, Gaspedal-Modulati
 Kategorie:   Machine Learning
 Niveau:      Profi
 Aufwand:     5-6 h
-Rollen:      DS
+Schwerpunkt: Datenanalyse
 Zusaetzliche Pakete: scikit-learn
 
-WARUM DAS ZAEHLT
-Unsupervised auf Zeitreihen ist anspruchsvoll und selten im Portfolio. Das Ergebnis - Fahrertypen - ist inhaltlich sofort diskutierbar.
+WARUM DAS LOHNT
+Unsupervised auf Zeitreihen ist anspruchsvoll und die Ergebnisse sind nie eindeutig. Aber Fahrertypen allein aus Telemetrie abzuleiten, ohne dem Modell zu sagen wonach es suchen soll, hat etwas.
 
 VORGEHEN
   1. Fuer viele Runden vieler Fahrer Telemetrie-Features aggregieren

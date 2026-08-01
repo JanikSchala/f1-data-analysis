@@ -7,9 +7,9 @@ Die Textmeldungen der Rennleitung parsen: Strafen, Verwarnungen, Track-Limits, g
 Kategorie:   Race Control & Regeln
 Niveau:      Fortgeschritten
 Aufwand:     3-4 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Textparsing plus Regex auf einem echten, unsauberen Feed. Zeigt, dass du auch mit unstrukturierten Daten arbeitest, nicht nur mit fertigen DataFrames.
 
 VORGEHEN

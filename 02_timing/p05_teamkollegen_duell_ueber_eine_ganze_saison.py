@@ -7,9 +7,9 @@ Der fairste Leistungsvergleich in der F1: gleiches Auto, gleiche Strecke. Quali-
 Kategorie:   Timing & Rundenanalyse
 Niveau:      Fortgeschritten
 Aufwand:     4-5 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Teamintern ist genau das die Kernfrage bei Fahrerbewertung. Zeigt, dass du ueber Einzelrennen hinaus denkst und mit Batch-Verarbeitung umgehen kannst.
 
 VORGEHEN

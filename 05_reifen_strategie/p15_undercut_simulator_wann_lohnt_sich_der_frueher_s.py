@@ -7,9 +7,9 @@ Ein Modell aus Degradation, Pitloss und Out-Lap-Performance, das den Undercut-Ge
 Kategorie:   Reifen & Strategie
 Niveau:      Profi
 Aufwand:     5-6 h
-Rollen:      STRAT
+Schwerpunkt: Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Das ist Race Strategy in Reinform. Ein funktionierender Simulator mit aus Daten geschaetzten Parametern ist das staerkste Einzelprojekt fuer eine Strategie-Rolle.
 
 VORGEHEN

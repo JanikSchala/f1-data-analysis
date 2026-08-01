@@ -7,9 +7,9 @@ Rohdaten luegen. Out-Laps, In-Laps, Safety Car und geloeschte Runden verzerren j
 Kategorie:   Timing & Rundenanalyse
 Niveau:      Einsteiger
 Aufwand:     2-3 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Das ist der haeufigste Anfaengerfehler in F1-Analysen. Wenn du im Gespraech erklaeren kannst, warum du track_status '1' filterst, klingst du wie jemand aus dem Fach.
 
 VORGEHEN

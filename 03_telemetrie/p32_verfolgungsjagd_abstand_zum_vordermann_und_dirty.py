@@ -7,9 +7,9 @@ DistanceToDriverAhead auswerten: Wie viel Pace kostet es, im Windschatten zu hae
 Kategorie:   Telemetrie
 Niveau:      Profi
 Aufwand:     4-5 h
-Rollen:      STRAT, DS
+Schwerpunkt: Strategie, Datenanalyse
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Dirty Air ist DAS Thema seit der Regelaenderung 2022. Der add_driver_ahead()-Kanal ist rechenintensiv - dass du ihn nutzt, zeigt Tiefe.
 
 VORGEHEN

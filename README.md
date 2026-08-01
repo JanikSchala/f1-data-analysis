@@ -3,11 +3,14 @@
 Analyse von Formel-1-Renndaten mit [FastF1](https://github.com/theOehrly/Fast-F1) —
 Timing, Telemetrie, Reifenstrategie, Machine Learning und Data Engineering.
 
+Ein Nebenprojekt neben dem Studium, aus Interesse an dem, was hinter den
+Rundenzeiten steckt.
+
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Dieses Repository ist meine Antwort darauf: **34 eigenständige Analysen über zwölf
-Themenfelder**, jede mit lauffähigem Code und dokumentiertem Vorgehen.
+Hier stehen **34 eigenständige Analysen über zwölf Themenfelder**, jede mit
+lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
 git clone https://github.com/JanikSchala/f1-data-analysis.git

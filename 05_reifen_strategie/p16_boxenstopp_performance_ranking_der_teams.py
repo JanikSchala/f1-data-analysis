@@ -7,9 +7,9 @@ Standzeiten ueber eine ganze Saison aus der Ergast/jolpica-API - Median, Streuun
 Kategorie:   Reifen & Strategie
 Niveau:      Fortgeschritten
 Aufwand:     3 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Boxenstopps sind messbare Teamleistung. Der Wechsel zwischen zwei Datenquellen (Timing-API und Ergast) zeigt, dass du mit heterogenen Quellen umgehen kannst.
 
 VORGEHEN

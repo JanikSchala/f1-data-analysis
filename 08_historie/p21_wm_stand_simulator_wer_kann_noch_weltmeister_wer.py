@@ -7,9 +7,9 @@ Aktuelle Standings holen, alle verbleibenden Punkte-Szenarien durchrechnen und T
 Kategorie:   Historie & Ergast-API
 Niveau:      Fortgeschritten
 Aufwand:     3-4 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Kombinatorik plus Monte-Carlo auf echten Daten. Die Frage 'wann ist der Titel entschieden' beantwortet jeder F1-Sender - du machst es reproduzierbar.
 
 VORGEHEN

@@ -7,10 +7,10 @@ Waehrend einer laufenden Session den Live-Timing-Stream mitschneiden und anschli
 Kategorie:   Live Timing
 Niveau:      Profi
 Aufwand:     6-8 h
-Rollen:      ENG, STRAT
+Schwerpunkt: Engineering, Strategie
 
-WARUM DAS ZAEHLT
-Echtzeitdatenverarbeitung ist selten im Portfolio und technisch anspruchsvoll. Wer das gemacht hat, hat den F1-Datenstack wirklich verstanden.
+WARUM DAS LOHNT
+Echtzeitdatenverarbeitung ist technisch anspruchsvoll und macht Spass: waehrend das Rennen laeuft, entsteht dein eigenes Timing-Board. Wer das gebaut hat, hat den F1-Datenstack wirklich verstanden.
 
 VORGEHEN
   1. Recorder per CLI starten: python -m fastf1.livetiming save output.txt

@@ -7,10 +7,10 @@ Isolation Forest auf Rundenprofilen, um Runden zu markieren, in denen etwas nich
 Kategorie:   Machine Learning
 Niveau:      Profi
 Aufwand:     5 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 Zusaetzliche Pakete: scikit-learn
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Predictive Maintenance in F1-Kontext. Anomalieerkennung ohne Labels ist genau das Problem, das Teams bei Zuverlaessigkeit tatsaechlich haben.
 
 VORGEHEN

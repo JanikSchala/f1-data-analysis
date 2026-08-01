@@ -7,10 +7,10 @@ Das Fundament. Cache aufsetzen, beliebige Session laden, verstehen was load() ei
 Kategorie:   Grundlagen & Datenzugriff
 Niveau:      Einsteiger
 Aufwand:     1-2 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 
-WARUM DAS ZAEHLT
-Ohne sauberes Caching wartest du bei jeder Analyse Minuten. Wer im Interview zeigt, dass er den Datenfluss (F1 Live-Timing API -> Parser -> DataFrame) erklaeren kann, hebt sich sofort ab.
+WARUM DAS LOHNT
+Ohne sauberes Caching wartest du bei jeder Analyse Minuten. Und wer den Datenfluss einmal durchschaut hat - Live-Timing-API, Parser, DataFrame - weiss bei jedem spaeteren Problem, wo er suchen muss.
 
 VORGEHEN
   1. Cache-Ordner anlegen und global aktivieren

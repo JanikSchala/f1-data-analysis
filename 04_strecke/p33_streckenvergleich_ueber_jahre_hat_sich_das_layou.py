@@ -7,9 +7,9 @@ Dieselbe Strecke in verschiedenen Saisons: Streckenlaenge aus Telemetrie, Speed-
 Kategorie:   Strecke & Position
 Niveau:      Fortgeschritten
 Aufwand:     3-4 h
-Rollen:      DS, ENG
+Schwerpunkt: Datenanalyse, Engineering
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Zeigt, dass du Daten ueber Zeit hinweg vergleichbar machen kannst - Normalisierung ist eine der schwersten Aufgaben in echten Datenprojekten.
 
 VORGEHEN

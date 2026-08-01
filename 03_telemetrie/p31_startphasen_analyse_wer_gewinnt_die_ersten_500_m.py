@@ -7,9 +7,9 @@ Beschleunigung von der Startaufstellung bis Kurve 1 - Reaktion, Traktion und Pos
 Kategorie:   Telemetrie
 Niveau:      Fortgeschritten
 Aufwand:     3-4 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Der Start ist die groesste Einzelchance im Rennen. Positionsdaten der ersten Runde sauber zu isolieren ist knifflig und zeigt Datensinn.
 
 VORGEHEN

@@ -7,9 +7,9 @@ Speed, Throttle, Brake, Gang und DRS zweier Fahrer ueber die Distanz - plus kumu
 Kategorie:   Telemetrie
 Niveau:      Fortgeschritten
 Aufwand:     3 h
-Rollen:      DS, STRAT
+Schwerpunkt: Datenanalyse, Strategie
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Das ist die Standard-Grafik jedes Performance-Engineers. Wer sie sauber inkl. delta_time() bauen kann, hat den Kern der Telemetrie-Arbeit verstanden.
 
 VORGEHEN

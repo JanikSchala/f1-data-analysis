@@ -7,9 +7,9 @@ Alle Rennwochenenden seit 1950 in eine saubere Tabelle - inkl. Sprint-Formaten u
 Kategorie:   Grundlagen & Datenzugriff
 Niveau:      Einsteiger
 Aufwand:     2 h
-Rollen:      ENG, DS
+Schwerpunkt: Engineering, DS
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Jedes groessere F1-Datenprodukt braucht eine Dimensionstabelle fuer Events. Zeigt Verstaendnis fuer Datenmodellierung statt nur Ad-hoc-Skripten.
 
 VORGEHEN

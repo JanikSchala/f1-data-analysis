@@ -7,9 +7,9 @@ Pro Stint eine Regression Rundenzeit ~ TyreLife. Die Steigung ist die Degradatio
 Kategorie:   Reifen & Strategie
 Niveau:      Fortgeschritten
 Aufwand:     4-5 h
-Rollen:      STRAT, DS
+Schwerpunkt: Strategie, Datenanalyse
 
-WARUM DAS ZAEHLT
+WARUM DAS LOHNT
 Degradation ist die zentrale Groesse jeder Strategieentscheidung. Wenn du sie sauber schaetzt und Fuel-Effekt trennst, denkst du wie ein Strategie-Ingenieur.
 
 VORGEHEN
