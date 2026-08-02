@@ -193,7 +193,6 @@ tests/                43 Tests, laufen offline
 11_visualisierung/    Streamlit-Dashboard, automatischer PDF-Rennbericht
 12_live_timing/       Echtzeit-Aufzeichnung des Timing-Streams
 
-common/               geteilte Helfer: Cache, Rundenfilter, Fuel-Korrektur
 make_assets.py        erzeugt die Grafiken oben
 check_setup.py        prüft Umgebung, Pakete, Cache und API-Zugriff
 ```
@@ -210,8 +209,8 @@ belastbaren Aussage ausmachen:
 
 **Rundenfilterung.** `pick_track_status("1")` behält nur Runden unter grüner Flagge.
 Ohne das mischen sich Safety-Car-Runden in die Verteilung und verschieben den Median
-um mehrere Zehntel. Dazu `pick_wo_box()`, `pick_accurate()` und `pick_not_deleted()`,
-zusammengefasst in `common.clean_laps()`.
+um mehrere Zehntel. Dazu `pick_wo_box()`, `pick_accurate()` und die Behandlung
+gestrichener Runden, zusammengefasst in `f1lab.clean_laps()`.
 
 **Treibstoffkorrektur.** Über eine Renndistanz summiert sich der Effekt auf mehrere
 Sekunden pro Runde. Die verwendeten 0.03 s/kg sind ein Literaturwert, kein gemessener
