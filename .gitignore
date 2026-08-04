@@ -11,6 +11,7 @@ f1_warehouse/
 *.pdf
 saved_data.txt
 cache_warmup_log.csv
+out/
 
 # Paketierung und Tests
 *.egg-info/
