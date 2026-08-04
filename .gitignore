@@ -10,6 +10,7 @@ f1_warehouse/
 *.duckdb
 *.pdf
 saved_data.txt
+cache_warmup_log.csv
 
 # Paketierung und Tests
 *.egg-info/
@@ -23,3 +24,6 @@ htmlcov/
 # System
 .DS_Store
 .ipynb_checkpoints/
+
+# Lokaler Projektkontext, nicht oeffentlich
+CLAUDE.md
