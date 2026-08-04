@@ -319,3 +319,105 @@ def braking_zones(brake, distance, speed, time, min_length_m: float = 20.0
             "decel_g": round(float(dv_ms / dt / 9.81), 2),
         })
     return zones
+
+
+# --------------------------------------------------------------- Streckengeometrie
+def path_length(x, y, closed: bool = True) -> float:
+    """Laenge eines Streckenzugs als Summe der Segmentlaengen.
+
+    Args:
+        x, y: Koordinaten in derselben Einheit; das Ergebnis traegt sie ebenfalls.
+        closed: Schliesst den Weg vom letzten zurueck zum ersten Punkt. Eine
+            Rennrunde endet dort, wo sie beginnt - ohne das Schlusssegment
+            fehlt genau die Luecke zwischen letzter Probe und Start-Ziel.
+
+    Returns:
+        Gesamtlaenge. Ein Weg aus weniger als zwei Punkten hat Laenge 0.
+    """
+    px = np.asarray(x, dtype=float)
+    py = np.asarray(y, dtype=float)
+    if px.size != py.size:
+        raise ValueError("x und y muessen gleich lang sein")
+
+    ok = np.isfinite(px) & np.isfinite(py)
+    px, py = px[ok], py[ok]
+    if px.size < 2:
+        return 0.0
+
+    if closed:
+        px = np.r_[px, px[0]]
+        py = np.r_[py, py[0]]
+    return float(np.hypot(np.diff(px), np.diff(py)).sum())
+
+
+@dataclass(frozen=True)
+class Elevation:
+    """Hoehenprofil einer Runde, alle Werte in Metern."""
+    gain: float                 # summierter Anstieg
+    drop: float                 # summierter Abstieg
+    span: float                 # hoechster minus tiefster Punkt
+
+    @property
+    def is_flat(self) -> bool:
+        """Unter 10 m Spannweite ist eine Strecke praktisch eben."""
+        return self.span < 10.0
+
+
+def elevation_profile(z, min_step: float = 1.0) -> Elevation:
+    """Hoehenmeter aus dem Z-Kanal der Positionsdaten.
+
+    Die Rohwerte rauschen um mehrere Dezimeter. Wer einfach alle Betraege der
+    Differenzen aufsummiert, zaehlt dieses Rauschen tausendfach mit und landet
+    bei Hoehenmetern, die um eine Groessenordnung zu hoch sind. Deshalb hier
+    dieselbe Hysterese, die auch GPS-Tracker verwenden: ein Anstieg zaehlt
+    erst, wenn er seit der letzten Richtungsumkehr min_step ueberschreitet.
+
+    Die Daempfung wirkt gegen *korreliertes* Rauschen, wie Positionsdaten es
+    zeigen - dort faellt sie auf null. Gegen unabhaengiges weisses Rauschen
+    hilft sie nur teilweise: dessen Einzelsprunge ueberschreiten die Schwelle
+    weiterhin gelegentlich. Auf ungeglaetteten Daten also min_step anheben.
+
+    Args:
+        z: Hoehenwerte in Metern.
+        min_step: Schwelle in Metern, unterhalb derer eine Aenderung als
+            Rauschen gilt.
+
+    Returns:
+        Elevation mit Anstieg, Abstieg und Spannweite.
+    """
+    v = np.asarray(z, dtype=float)
+    v = v[np.isfinite(v)]
+    if v.size < 2:
+        return Elevation(0.0, 0.0, 0.0)
+
+    gain = drop = 0.0
+    direction = 0          # +1 steigend, -1 fallend, 0 noch unentschieden
+    pivot = v[0]           # letzter bestaetigter Wendepunkt
+    peak = v[0]            # laufendes Extremum seit dem Wendepunkt
+
+    for cur in v[1:]:
+        if direction > 0:
+            if cur > peak:
+                peak = cur                      # Anstieg laeuft weiter
+            elif cur <= peak - min_step:        # Umkehr bestaetigt
+                gain += peak - pivot            # -> Anstieg verbuchen
+                pivot, peak, direction = peak, cur, -1
+        elif direction < 0:
+            if cur < peak:
+                peak = cur
+            elif cur >= peak + min_step:
+                drop += pivot - peak
+                pivot, peak, direction = peak, cur, 1
+        elif cur >= pivot + min_step:
+            direction, peak = 1, cur
+        elif cur <= pivot - min_step:
+            direction, peak = -1, cur
+
+    # Letzter Abschnitt endet ohne Umkehr und muss noch verbucht werden.
+    if direction > 0:
+        gain += peak - pivot
+    elif direction < 0:
+        drop += pivot - peak
+
+    return Elevation(round(float(gain), 1), round(float(drop), 1),
+                     round(float(v.max() - v.min()), 1))

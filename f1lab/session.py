@@ -5,6 +5,7 @@ braucht Netzzugriff beim ersten Aufruf, danach den Cache.
 """
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -15,9 +16,11 @@ import pandas as pd
 from .core import (
     Interval,
     bootstrap_median,
+    elevation_profile,
     estimate_pit_loss,
     fit_degradation,
     fuel_correct,
+    path_length,
 )
 
 CACHE_DIR = Path.home() / "f1_cache"
@@ -253,3 +256,122 @@ def track_status_phases(session) -> pd.DataFrame:
     phases["lap_start"] = phases["start"].apply(lap_at)
     phases["lap_end"] = phases["end"].apply(lap_at)
     return phases
+
+
+# --------------------------------------------------------------- Dimensionen
+# FastF1 liefert Positionen in Zehntelmetern (siehe core.py-Doku zu X/Y/Z).
+POS_UNITS_PER_M = 10.0
+
+EVENT_DIM_COLS = ["season", "round", "event_name", "official_name", "country",
+                  "location", "event_date", "event_format", "is_sprint",
+                  "n_sessions"]
+
+
+def event_dimension(years) -> pd.DataFrame:
+    """Rennkalender mehrerer Saisons als Dimensionstabelle.
+
+    Eine Zeile je Rennwochenende, Jahre untereinander. Saisons, die die API
+    nicht kennt, werden uebersprungen statt den Aufbau abzubrechen - bei der
+    laufenden Saison steht der Kalender teils erst spaet.
+
+    Das Sprint-Format heisst je nach Jahr anders ("sprint",
+    "sprint_shootout", "sprint_qualifying"), deshalb wird auf das Teilwort
+    geprueft und nicht auf Gleichheit.
+    """
+    frames = []
+    for year in years:
+        try:
+            sched = fastf1.get_event_schedule(int(year), include_testing=False)
+        except Exception:
+            continue
+        if sched is None or not len(sched):
+            continue
+        sched = sched.copy()
+        sched["Season"] = int(year)
+        frames.append(sched)
+
+    if not frames:
+        return pd.DataFrame(columns=EVENT_DIM_COLS)
+
+    cal = pd.concat(frames, ignore_index=True)
+    fmt = cal["EventFormat"].astype("string").fillna("")
+
+    session_cols = [c for c in cal.columns
+                    if c.startswith("Session") and c[7:].isdigit()]
+    n_sessions = (cal[session_cols].notna()
+                  & (cal[session_cols].astype("string") != "")).sum(axis=1)
+
+    out = pd.DataFrame({
+        "season": cal["Season"].astype(int),
+        "round": cal["RoundNumber"].astype(int),
+        "event_name": cal["EventName"].astype("string"),
+        "official_name": cal.get("OfficialEventName", pd.Series(dtype="string")),
+        "country": cal["Country"].astype("string"),
+        "location": cal["Location"].astype("string"),
+        "event_date": pd.to_datetime(cal["EventDate"]),
+        "event_format": fmt,
+        "is_sprint": fmt.str.contains("sprint", case=False, na=False),
+        "n_sessions": n_sessions.astype(int),
+    })
+    return out.sort_values(["season", "round"], ignore_index=True)
+
+
+def circuit_geometry(session) -> dict:
+    """Kurvenzahl, Streckenlaenge und Hoehenprofil einer geladenen Session.
+
+    Braucht Telemetrie: die Kurvenliste kommt zwar aus der MultiViewer-API,
+    Laenge und Hoehe aber aus dem Positionskanal der schnellsten Runde.
+    Deshalb ist das hier bewusst getrennt von :func:`event_dimension`, die
+    ohne jeden Session-Download auskommt.
+
+    Gemessen wird die *gefahrene Linie*, nicht die offizielle Streckenlaenge -
+    die Ideallinie schneidet Kurven und faellt dadurch typisch ein bis zwei
+    Prozent kuerzer aus als die Angabe im Reglement.
+    """
+    out = {"corners": pd.NA, "length_m": pd.NA,
+           "elev_gain_m": pd.NA, "elev_span_m": pd.NA}
+
+    # Kurvenliste und Positionsdaten kommen aus verschiedenen Quellen und
+    # fallen unabhaengig voneinander aus - deshalb einzeln abgesichert.
+    with contextlib.suppress(Exception):
+        out["corners"] = int(len(session.get_circuit_info().corners))
+
+    try:
+        pos = session.laps.pick_fastest().get_pos_data()
+    except Exception:
+        return out
+    if pos is None or pos.empty:
+        return out
+
+    out["length_m"] = round(
+        path_length(pos["X"], pos["Y"]) / POS_UNITS_PER_M, 1)
+    elev = elevation_profile(pos["Z"].to_numpy() / POS_UNITS_PER_M)
+    out["elev_gain_m"] = elev.gain
+    out["elev_span_m"] = elev.span
+    return out
+
+
+def circuit_dimension(events, identifier: str = "Q") -> pd.DataFrame:
+    """Circuit-Dimension aus einer Liste von (Jahr, GP)-Paaren.
+
+    Streckengeometrie ist pro Layout konstant, es genuegt also *eine* Session
+    je Strecke - nicht das ganze Archiv. Sessions, deren Telemetrie nicht im
+    Cache liegt, werden mit leeren Kennzahlen zurueckgegeben statt den Aufbau
+    abzubrechen; die Zeile bleibt erhalten, damit sichtbar ist, was fehlt.
+    """
+    rows = []
+    for year, gp in events:
+        row = {"season": int(year), "gp": str(gp)}
+        try:
+            ses = load(int(year), gp, identifier, telemetry=True)
+            row["circuit"] = str(ses.event["Location"])
+            row.update(circuit_geometry(ses))
+        except Exception as exc:
+            row["circuit"] = str(gp)
+            row["error"] = f"{type(exc).__name__}"
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    if "length_m" in df.columns:
+        df = df.sort_values("length_m", ascending=False, ignore_index=True)
+    return df

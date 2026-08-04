@@ -15,12 +15,14 @@ from f1lab.core import (
     Interval,
     bootstrap_median,
     braking_zones,
+    elevation_profile,
     estimate_pit_loss,
     find_cliff,
     fit_degradation,
     fuel_correct,
     mad_outlier_mask,
     optimal_undercut_window,
+    path_length,
     undercut_gain,
 )
 
@@ -287,3 +289,137 @@ class TestBrakingZones:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError, match="gleich lang"):
             braking_zones([True, False], [0, 1, 2], [200, 190, 180], [0, 1, 2])
+
+
+# --------------------------------------------------------------- path_length
+class TestPathLength:
+    """Streckenlaenge aus Positionsdaten."""
+
+    def test_unit_square_closed(self):
+        """Vier Seiten a 1 -> Umfang 4. Das Schlusssegment zaehlt mit."""
+        x, y = [0, 1, 1, 0], [0, 0, 1, 1]
+        assert path_length(x, y) == pytest.approx(4.0)
+
+    def test_unit_square_open_drops_last_side(self):
+        x, y = [0, 1, 1, 0], [0, 0, 1, 1]
+        assert path_length(x, y, closed=False) == pytest.approx(3.0)
+
+    def test_straight_line(self):
+        assert path_length([0, 3], [0, 4], closed=False) == pytest.approx(5.0)
+
+    def test_closed_line_counts_the_way_back(self):
+        assert path_length([0, 3], [0, 4], closed=True) == pytest.approx(10.0)
+
+    def test_circle_approximates_two_pi_r(self):
+        """Ein feines Polygon naehert den Kreisumfang von unten an."""
+        t = np.linspace(0, 2 * np.pi, 2000, endpoint=False)
+        got = path_length(np.cos(t) * 100, np.sin(t) * 100)
+        assert got == pytest.approx(2 * np.pi * 100, rel=1e-5)
+
+    def test_resolution_does_not_change_result(self):
+        """Doppelt so viele Stuetzpunkte auf derselben Geraden -> gleiche Laenge."""
+        coarse = path_length([0, 10], [0, 0], closed=False)
+        fine = path_length(np.linspace(0, 10, 50), np.zeros(50), closed=False)
+        assert coarse == pytest.approx(fine)
+
+    def test_nan_points_are_dropped(self):
+        x = [0, np.nan, 1, 1, 0]
+        y = [0, 0.5, 0, 1, 1]
+        assert path_length(x, y) == pytest.approx(4.0)
+
+    def test_too_few_points_is_zero(self):
+        assert path_length([1], [1]) == 0.0
+        assert path_length([], []) == 0.0
+
+    def test_mismatched_lengths_raise(self):
+        with pytest.raises(ValueError, match="gleich lang"):
+            path_length([0, 1, 2], [0, 1])
+
+
+# --------------------------------------------------------------- elevation
+class TestElevationProfile:
+    """Hoehenmeter mit Hysterese gegen Messrauschen."""
+
+    def test_monotonic_climb(self):
+        got = elevation_profile(np.arange(0, 51, 1.0))
+        assert got.gain == pytest.approx(50.0)
+        assert got.drop == pytest.approx(0.0)
+        assert got.span == pytest.approx(50.0)
+
+    def test_climb_then_descent_is_balanced(self):
+        """Runde endet, wo sie beginnt -> Anstieg gleich Abstieg."""
+        z = np.r_[np.arange(0, 31, 1.0), np.arange(29, -1, -1.0)]
+        got = elevation_profile(z)
+        assert got.gain == pytest.approx(30.0)
+        assert got.drop == pytest.approx(30.0)
+        assert got.span == pytest.approx(30.0)
+
+    @staticmethod
+    def _messrauschen(rng, n, sigma=0.3, window=25):
+        """Korreliertes Rauschen, wie Positionsdaten es tatsaechlich zeigen.
+
+        Weisses Rauschen waere das falsche Modell: aufeinanderfolgende Proben
+        eines Positionskanals haengen zusammen, sie springen nicht unabhaengig.
+        """
+        glatt = np.ones(window) / window
+        return np.convolve(rng.normal(0, sigma, n + window), glatt,
+                           mode="valid")[:n]
+
+    def test_noise_below_threshold_is_ignored(self):
+        """Der eigentliche Zweck: Rauschen darf keine Hoehenmeter erzeugen."""
+        z = self._messrauschen(np.random.default_rng(3), 5000)
+        got = elevation_profile(z, min_step=1.0)
+        assert got.gain == 0.0
+        assert got.drop == 0.0
+
+    def test_naive_sum_would_massively_overcount(self):
+        """Belegt, warum die Hysterese noetig ist."""
+        z = self._messrauschen(np.random.default_rng(3), 5000)
+        naiv = float(np.abs(np.diff(z)).sum())
+        assert naiv > 50                         # ohne Schwelle: frei erfunden
+        assert elevation_profile(z, min_step=1.0).gain == 0.0
+
+    def test_white_noise_still_leaks_above_threshold(self):
+        """Grenze des Verfahrens, bewusst festgehalten.
+
+        Weisses Rauschen mit sigma=0.3 ueberschreitet die 1-m-Schwelle ueber
+        5000 Proben hunderte Male. Die Hysterese daempft das deutlich, setzt
+        es aber nicht auf null - wer die Funktion auf ungeglaettete Daten
+        loslaesst, muss min_step anheben.
+        """
+        rng = np.random.default_rng(0)
+        z = rng.normal(0, 0.3, 5000)
+        naiv = float(np.abs(np.diff(z)).sum())
+        gedaempft = elevation_profile(z, min_step=1.0).gain
+        assert gedaempft < naiv / 5              # klar besser als naiv
+        assert gedaempft > 0                     # aber eben nicht null
+        assert elevation_profile(z, min_step=2.0).gain == 0.0
+
+    def test_real_climb_survives_noise(self):
+        """Ein echter Anstieg darf durch ueberlagertes Rauschen nicht verschwinden."""
+        rng = np.random.default_rng(4)
+        z = np.linspace(0, 40, 2000) + self._messrauschen(rng, 2000, sigma=0.5)
+        got = elevation_profile(z, min_step=1.0)
+        assert got.gain == pytest.approx(40.0, abs=2.0)
+        assert got.drop < 2.0
+
+    def test_span_uses_raw_extremes(self):
+        assert elevation_profile([0.0, 5.0, -3.0, 2.0]).span == pytest.approx(8.0)
+
+    def test_is_flat_flag(self):
+        assert elevation_profile([0.0, 1.0, 0.0]).is_flat
+        assert not elevation_profile([0.0, 40.0, 0.0]).is_flat
+
+    def test_larger_threshold_counts_less(self):
+        z = np.r_[np.arange(0, 11, 1.0), np.arange(9, -1, -1.0)]
+        fein = elevation_profile(z, min_step=0.5).gain
+        grob = elevation_profile(z, min_step=5.0).gain
+        assert grob <= fein
+
+    def test_too_few_points_is_zero(self):
+        got = elevation_profile([42.0])
+        assert (got.gain, got.drop, got.span) == (0.0, 0.0, 0.0)
+
+    def test_nan_is_dropped(self):
+        got = elevation_profile([0.0, np.nan, 10.0])
+        assert got.gain == pytest.approx(10.0)

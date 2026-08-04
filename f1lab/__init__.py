@@ -17,23 +17,29 @@ Beispiel::
 """
 from .core import (
     DegradationFit,
+    Elevation,
     Interval,
     bootstrap_median,
     braking_zones,
+    elevation_profile,
     estimate_pit_loss,
     find_cliff,
     fit_degradation,
     fuel_correct,
     mad_outlier_mask,
     optimal_undercut_window,
+    path_length,
     undercut_gain,
 )
 from .session import (
     PaceEntry,
+    circuit_dimension,
+    circuit_geometry,
     clean_laps,
     degradation,
     degradation_by_compound,
     enable_cache,
+    event_dimension,
     load,
     pace_table,
     pit_loss,
@@ -46,11 +52,13 @@ __version__ = "0.1.0"
 
 __all__ = [
     # core
-    "Interval", "DegradationFit", "bootstrap_median", "mad_outlier_mask",
-    "fuel_correct", "fit_degradation", "find_cliff", "estimate_pit_loss",
-    "undercut_gain", "optimal_undercut_window", "braking_zones",
+    "Interval", "DegradationFit", "Elevation", "bootstrap_median",
+    "mad_outlier_mask", "fuel_correct", "fit_degradation", "find_cliff",
+    "estimate_pit_loss", "undercut_gain", "optimal_undercut_window",
+    "braking_zones", "path_length", "elevation_profile",
     # session
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",
-    "pit_loss", "track_status_phases",
+    "pit_loss", "track_status_phases", "event_dimension", "circuit_geometry",
+    "circuit_dimension",
 ]
