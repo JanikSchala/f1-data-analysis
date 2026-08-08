@@ -85,6 +85,35 @@ def mad_outlier_mask(values, threshold: float = 3.5) -> np.ndarray:
     return np.abs(modified_z) > threshold
 
 
+# --------------------------------------------------------------- Rating
+def elo_expected(rating_a: float, rating_b: float) -> float:
+    """Erwartete Punktzahl von A gegen B nach dem Elo-Modell, zwischen 0 und 1.
+
+    Gleiche Ratings ergeben 0.5. 400 Punkte Vorsprung bedeuten eine erwartete
+    Siegquote von rund 91 Prozent.
+    """
+    return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / 400.0))
+
+
+def elo_update(rating_a: float, rating_b: float, score_a: float,
+               k: float = 24.0) -> tuple[float, float]:
+    """Neue Ratings nach einem einzelnen Duell.
+
+    Args:
+        score_a: Ergebnis aus Sicht von A - 1 fuer einen Sieg, 0 fuer eine
+            Niederlage, 0.5 fuer ein Unentschieden.
+        k: Wie stark ein einzelnes Duell das Rating bewegt. Klein haelt das
+            Rating traege (viele Duelle noetig, um es zu verschieben), gross
+            macht es sprunghaft.
+
+    Returns:
+        (neues Rating A, neues Rating B). Elo ist ein Nullsummenspiel - was A
+        gewinnt, verliert B exakt.
+    """
+    delta = k * (score_a - elo_expected(rating_a, rating_b))
+    return rating_a + delta, rating_b - delta
+
+
 # --------------------------------------------------------------- Treibstoff
 def fuel_correct(lap_times, lap_numbers, total_laps: int,
                  kg_per_lap: float = FUEL_KG_PER_LAP,
