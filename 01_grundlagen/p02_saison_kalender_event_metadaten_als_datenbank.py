@@ -60,6 +60,15 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import FancyBboxPatch
 
 import f1lab
+from f1lab.design import (
+    BG,
+    FG,
+    KONVENTIONELL,
+    MUTED,
+    RAMPE,
+    SPRINT,
+    matplotlib_stil,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -69,21 +78,12 @@ OUT.mkdir(exist_ok=True)
 SEASONS = range(2018, 2027)
 GEOMETRIE_SAISON = 2024            # Saison mit Telemetrie im Cache
 
-# --- Design ---------------------------------------------------------------
-# Kategoriefarben gegen die Flaeche #15151e validiert: CVD-Abstand dE 26.8,
-# Normalsicht 31.8, Kontrast beide > 3:1.
-BG, FG = "#15151e", "#f0f0f0"
-KONVENTIONELL, SPRINT = "#3987e5", "#d95926"
-MUTED, GRID = "#8a8a99", "#2a2a38"
-# Sequenzielle Rampe fuer Hoehenmeter: ein Farbton, dunkel -> hell.
-HOEHE = LinearSegmentedColormap.from_list("hoehe", ["#14413a", "#199e70", "#6fe3bb"])
+# Sequenzielle Rampe fuer Hoehenmeter: ein Farbton, dunkel -> hell. Dieselbe
+# Rampe wie in f1lab.design (dort als Liste, hier als Colormap-Objekt fuer
+# scatter/colorbar - matplotlib braucht die Interpolation, Plotly nicht).
+HOEHE = LinearSegmentedColormap.from_list("hoehe", RAMPE)
 
-plt.rcParams.update({
-    "figure.facecolor": BG, "axes.facecolor": BG, "savefig.facecolor": BG,
-    "text.color": FG, "axes.labelcolor": FG,
-    "xtick.color": MUTED, "ytick.color": MUTED,
-    "axes.edgecolor": GRID, "grid.color": GRID, "font.size": 11,
-})
+plt.rcParams.update(matplotlib_stil())
 
 
 def kalender_grid(ax, dim):

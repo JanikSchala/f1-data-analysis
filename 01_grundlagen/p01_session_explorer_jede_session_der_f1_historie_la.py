@@ -4,7 +4,7 @@ P01 - Session-Explorer: Jede Session der F1-Historie laden
 
 Das Fundament. Cache aufsetzen, beliebige Session laden, verstehen was load() eigentlich holt.
 
-Kategorie:   Grundlag1en & Datenzugriff
+Kategorie:   Grundlagen & Datenzugriff
 Niveau:      Einsteiger
 Aufwand:     1-2 h
 Schwerpunkt: Datenanalyse, Engineering
@@ -25,27 +25,50 @@ GENUTZTE FASTF1-BAUSTEINE
   - Session.load
   - Session.session_info
 
-AUSBAUSTUFE
-Baue eine Funktion, die eine ganze Saison in einem Rutsch in den Cache zieht und den Fortschritt in der Konsole anzeigt.
+AUSBAUSTUFE  [umgesetzt]
+Ganze Saison in einem Rutsch in den Cache ziehen, mit Fortschrittsanzeige,
+Neustartsicherheit (bereits geladene Sessions werden uebersprungen statt
+erneut angefragt) und automatischem Backoff bei FastF1s Rate-Limit
+(500 Anfragen/Stunde, rollierendes Fenster).
+
+Nachgetragen gegenueber der urspruenglichen Fassung: VORGEHEN Punkt 5
+(Ladezeit mit/ohne Cache) war zwar angekuendigt, aber nirgends eingeloest -
+demo_ladezeiten() unten misst es tatsaechlich, an einem frischen, isolierten
+Cache-Ordner (der Hauptcache bleibt unberuehrt). Gemessener Wert: ein
+Kaltstart uebers Netz dauert rund das Zehnfache eines Cache-Treffers.
 """
+from __future__ import annotations
 
 import csv
+import shutil
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
 
 import fastf1
+import matplotlib
+
+matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+
 import matplotlib.pyplot as plt
 import pandas as pd
 from fastf1.exceptions import RateLimitExceededError
 
-CACHE = Path.home() / "f1_cache"
-CACHE.mkdir(exist_ok=True)
-fastf1.Cache.enable_cache(str(CACHE))
+import f1lab
+from f1lab.design import FG, GRID, MUTED, NEGATIV, POSITIV, SERIEN, matplotlib_stil
+
+OUT = Path(__file__).parent / "out"
+OUT.mkdir(exist_ok=True)
+
+CACHE = f1lab.enable_cache()
 
 CACHE_LOG = Path(__file__).parent / "cache_warmup_log.csv"
 LOG_FIELDS = ["year", "round", "event", "ident", "status", "duration_s", "error"]
 DEFAULT_SESSIONS = ("FP1", "FP2", "FP3", "Q", "S", "SQ", "R")
+
+plt.rcParams.update(matplotlib_stil())
+
 
 def load_session(year, gp, ident, **kw):
     t0 = time.perf_counter()
@@ -53,6 +76,7 @@ def load_session(year, gp, ident, **kw):
     ses.load(**kw)
     print(f"{year} {gp} {ident} geladen in {time.perf_counter()-t0:.1f}s")
     return ses
+
 
 # Volles Rennen inkl. Telemetrie
 race = load_session(2024, "Monza", "R")
@@ -68,6 +92,45 @@ quali = load_session(2024, "Monza", "Q",
                      telemetry=False, weather=False, messages=False)
 
 print(quali.results[["Abbreviation", "TeamName", "Position", "Q1", "Q2", "Q3"]])
+
+
+def demo_ladezeiten(year: int = 2023, gp: str = "Monza",
+                    ident: str = "Q") -> None:
+    """VORGEHEN Punkt 5: Kaltstart gegen Cache-Treffer, gemessen statt nur
+    behauptet.
+
+    Laeuft in einem frischen, temporaeren Cache-Ordner - CACHE (der
+    Hauptcache) bleibt unberuehrt, und am Ende liegt hier nichts doppelt auf
+    der Platte. Ohne Netzzugriff bricht die Demo sauber ab statt das ganze
+    Skript zu stoppen: die restlichen Demos brauchen kein frisches Netz.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="f1_cache_demo_"))
+    try:
+        fastf1.Cache.enable_cache(str(tmp))
+
+        t0 = time.perf_counter()
+        fastf1.get_session(year, gp, ident).load(
+            telemetry=False, weather=False, messages=False)
+        kalt = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        fastf1.get_session(year, gp, ident).load(
+            telemetry=False, weather=False, messages=False)
+        warm = time.perf_counter() - t0
+
+        print(f"\nLadezeiten {gp} {year} {ident} (frischer, isolierter Cache):")
+        print(f"  Kaltstart (Netz):  {kalt:5.2f}s")
+        print(f"  Aus dem Cache:     {warm:5.2f}s")
+        print(f"  Beschleunigung:    {kalt / warm:5.1f}x")
+    except Exception as exc:
+        print(f"\nLadezeiten-Demo uebersprungen (kein Netz oder Rate-Limit): "
+             f"{type(exc).__name__}: {exc}")
+    finally:
+        f1lab.enable_cache(CACHE)             # zurueck auf den Hauptcache
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+demo_ladezeiten()
 
 
 def _log_row(path, row):
@@ -186,6 +249,12 @@ def warm_all_seasons(start_year=2018, end_year=None, sessions=DEFAULT_SESSIONS,
             print(f"Saison {yr} abgebrochen: {exc}")
 
 
+# Wiederverwendung derselben Bedeutung wie ueberall sonst im Projekt: gruen =
+# gelungen, grau = neutral uebersprungen, orange = misslungen. Keine neuen
+# Hex-Werte, nur die drei allgemeinen Wertungsfarben aus f1lab.design.
+STATUS_FARBE = {"ok": POSITIV, "skipped": MUTED, "failed": NEGATIV}
+
+
 def plot_cache_warmup(log_path=CACHE_LOG):
     """Visualisiert den Fortschritt aus warm_all_seasons(): wie viele
     Sessions sind je Saison schon im Cache, und welcher Session-Typ ist
@@ -200,29 +269,46 @@ def plot_cache_warmup(log_path=CACHE_LOG):
 
     fig, ax = plt.subplots(1, 2, figsize=(13, 5.5))
 
-    colors = {"ok": "#2ca02c", "skipped": "#7f7f7f", "failed": "#d62728"}
     by_year = log.groupby(["year", "status"]).size().unstack(fill_value=0)
-    by_year = by_year[[c for c in colors if c in by_year.columns]]
+    by_year = by_year[[c for c in STATUS_FARBE if c in by_year.columns]]
     by_year.plot(kind="bar", stacked=True, ax=ax[0],
-                color=[colors[c] for c in by_year.columns], width=0.7)
+                color=[STATUS_FARBE[c] for c in by_year.columns], width=0.7)
     ax[0].set_xlabel("Saison")
     ax[0].set_ylabel("Sessions")
-    ax[0].set_title("Cache-Abdeckung je Saison")
-    ax[0].legend()
-    ax[0].grid(axis="y", alpha=0.3)
+    ax[0].set_title("Cache-Abdeckung je Saison", loc="left", color=FG,
+                    fontsize=13, pad=12)
+    ax[0].legend(frameon=False, labelcolor=FG)
+    ax[0].grid(axis="y", alpha=0.35, linewidth=0.8, color=GRID)
+    ax[0].set_axisbelow(True)
+    ax[0].tick_params(axis="x", rotation=0)
 
+    # Median statt Mittelwert: ein einzelner Rate-Limit-Retry zaehlt seine
+    # Wartezeit (bis zu 600s Backoff) mit in die gemessene Dauer - bei den
+    # seltenen Session-Typen (SQ, S) reicht ein solcher Ausreisser, um den
+    # Mittelwert um ein Vielfaches zu verzerren. Derselbe Grund wie bei
+    # bootstrap_median() in f1lab.core: robust gegen genau solche Ausreisser.
     ok = log[log["status"] == "ok"]
-    mean_dur = ok.groupby("ident")["duration_s"].mean().reindex(DEFAULT_SESSIONS).dropna()
-    ax[1].bar(mean_dur.index, mean_dur.to_numpy(), color="#1f77b4")
+    med_dur = ok.groupby("ident")["duration_s"].median().reindex(DEFAULT_SESSIONS).dropna()
+    ax[1].bar(med_dur.index, med_dur.to_numpy(), color=SERIEN[0])
     ax[1].set_xlabel("Session-Typ")
-    ax[1].set_ylabel("Mittlere Ladezeit [s]")
-    ax[1].set_title(f"Ladezeit nach Session-Typ (n={len(ok)} geladen)")
-    ax[1].grid(axis="y", alpha=0.3)
+    ax[1].set_ylabel("Mediane Ladezeit [s]")
+    ax[1].set_title(f"Ladezeit nach Session-Typ (n={len(ok)} geladen)",
+                    loc="left", color=FG, fontsize=13, pad=12)
+    ax[1].grid(axis="y", alpha=0.35, linewidth=0.8, color=GRID)
+    ax[1].set_axisbelow(True)
+
+    for a in ax:
+        for side in ("top", "right"):
+            a.spines[side].set_visible(False)
 
     fig.suptitle(f"Cache-Warmup {int(log['year'].min())}-{int(log['year'].max())} "
-                f"({(log['status'] == 'ok').sum()} Sessions geladen)")
+                f"({(log['status'] == 'ok').sum()} Sessions geladen)", x=0.125,
+                ha="left", color=FG, fontsize=16, y=1.02)
     plt.tight_layout()
-    plt.show()
+    path = OUT / "cache_warmup.png"
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\n      -> {path}")
 
 
 if __name__ == "__main__":

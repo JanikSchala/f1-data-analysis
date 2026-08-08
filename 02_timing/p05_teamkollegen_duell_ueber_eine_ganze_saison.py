@@ -20,9 +20,9 @@ VORGEHEN
   5. Heatmap Team x Rennen
 
 GENUTZTE FASTF1-BAUSTEINE
-  - Session.results
+  - fastf1.get_event_schedule
   - Laps.pick_accurate / pick_wo_box
-  - get_event_schedule
+  - Laps.groupby
 
 AUSBAUSTUFE  [umgesetzt]
 Elo-artiges Rating, das nach jedem Rennwochenende aktualisiert wird - ein
