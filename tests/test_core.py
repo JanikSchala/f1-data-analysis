@@ -16,6 +16,8 @@ from f1lab.core import (
     bootstrap_median,
     braking_zones,
     elevation_profile,
+    elo_expected,
+    elo_update,
     estimate_pit_loss,
     find_cliff,
     fit_degradation,
@@ -92,6 +94,56 @@ class TestMadOutlier:
 
     def test_zero_mad_returns_all_false(self):
         assert not mad_outlier_mask([90.0] * 6).any()
+
+
+# --------------------------------------------------------------- Elo
+class TestEloExpected:
+    def test_equal_ratings_is_a_coinflip(self):
+        assert elo_expected(1500, 1500) == pytest.approx(0.5)
+
+    def test_higher_rating_expects_to_win(self):
+        assert elo_expected(1600, 1500) > 0.5
+
+    def test_symmetric(self):
+        a = elo_expected(1600, 1400)
+        b = elo_expected(1400, 1600)
+        assert a + b == pytest.approx(1.0)
+
+    def test_400_point_gap_is_about_91_percent(self):
+        """Definierender Referenzwert des Elo-Systems."""
+        assert elo_expected(1900, 1500) == pytest.approx(0.909, abs=1e-3)
+
+
+class TestEloUpdate:
+    def test_win_raises_rating(self):
+        new_a, _ = elo_update(1500, 1500, score_a=1, k=24)
+        assert new_a > 1500
+
+    def test_loss_lowers_rating(self):
+        new_a, _ = elo_update(1500, 1500, score_a=0, k=24)
+        assert new_a < 1500
+
+    def test_zero_sum(self):
+        """Elo verschiebt Punkte nur - der Pool bleibt konstant."""
+        new_a, new_b = elo_update(1520, 1480, score_a=1, k=24)
+        assert (new_a - 1520) == pytest.approx(-(new_b - 1480))
+
+    def test_upset_moves_more_than_expected_win(self):
+        """Ein ueberraschender Sieg bewegt das Rating staerker als ein
+        erwarteter - die Ueberraschung steckt in der Differenz zur
+        erwarteten Punktzahl, nicht im Sieg selbst."""
+        underdog_wins, _ = elo_update(1300, 1700, score_a=1, k=24)
+        favorite_wins, _ = elo_update(1700, 1300, score_a=1, k=24)
+        assert abs(underdog_wins - 1300) > abs(favorite_wins - 1700)
+
+    def test_draw_of_equals_is_unchanged(self):
+        new_a, new_b = elo_update(1500, 1500, score_a=0.5, k=24)
+        assert new_a == pytest.approx(1500)
+        assert new_b == pytest.approx(1500)
+
+    def test_k_zero_never_moves_rating(self):
+        new_a, new_b = elo_update(1500, 1200, score_a=1, k=0)
+        assert (new_a, new_b) == (1500, 1200)
 
 
 # --------------------------------------------------------------- Fuel

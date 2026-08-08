@@ -22,6 +22,8 @@ from .core import (
     bootstrap_median,
     braking_zones,
     elevation_profile,
+    elo_expected,
+    elo_update,
     estimate_pit_loss,
     find_cliff,
     fit_degradation,
@@ -58,6 +60,7 @@ __all__ = [
     "mad_outlier_mask", "fuel_correct", "fit_degradation", "find_cliff",
     "estimate_pit_loss", "undercut_gain", "optimal_undercut_window",
     "braking_zones", "path_length", "elevation_profile",
+    "elo_expected", "elo_update",
     # session
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",
