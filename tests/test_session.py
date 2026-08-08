@@ -10,7 +10,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from f1lab.session import TRACK_STATUS, not_deleted_mask
+import f1lab.session as session_mod
+from f1lab.session import (
+    TELEMETRY_MARKER,
+    TIMING_MARKER,
+    TRACK_STATUS,
+    cached_sessions,
+    find_cache,
+    not_deleted_mask,
+)
 
 
 class TestNotDeletedMask:
@@ -115,3 +123,121 @@ class TestSessionApiSurface:
         b = PaceEntry("NOR", "McLaren", 30, Interval(89.5, 89.3, 89.7))
         assert sorted([a, b], key=lambda e: e.median_s)[0].driver == "NOR"
         assert np.isclose(a.median_s, 90.0)
+
+
+class TestCacheInventory:
+    """Bestandsaufnahme des FastF1-Caches allein aus der Ordnerstruktur.
+
+    Die Oberflaeche soll nur Sessions zur Auswahl stellen, die auch
+    auswertbar sind. Ob eine Session im Cache liegt, steht nirgends
+    geschrieben - es ergibt sich aus den abgelegten Dateien, und genau
+    daran haengen hier die Erwartungen.
+    """
+
+    @staticmethod
+    def _session(root, jahr, event_datum, event, ses_datum, ses,
+                 timing=True, telemetry=False):
+        d = root / str(jahr) / f"{event_datum}_{event}" / f"{ses_datum}_{ses}"
+        d.mkdir(parents=True)
+        if timing:
+            (d / TIMING_MARKER).touch()
+        if telemetry:
+            (d / TELEMETRY_MARKER).touch()
+        return d
+
+    def test_leerer_pfad_gibt_leeren_rahmen(self, tmp_path):
+        out = cached_sessions(tmp_path)
+        assert out.empty
+        assert list(out.columns) == ["season", "event", "event_date",
+                                     "ident", "timing", "telemetry"]
+
+    def test_ordnernamen_werden_zu_kennungen(self, tmp_path):
+        self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
+                      "2024-09-01", "Race")
+        self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
+                      "2024-08-31", "Qualifying")
+        out = cached_sessions(tmp_path)
+        assert set(out["ident"]) == {"R", "Q"}
+        assert set(out["event"]) == {"Italian Grand Prix"}
+        assert out["season"].tolist() == [2024, 2024]
+
+    def test_sprint_quali_heisst_je_nach_jahr_anders(self, tmp_path):
+        """2023 'Sprint_Shootout', ab 2024 'Sprint_Qualifying' - beides ist
+        dieselbe Session und muss auf dieselbe Kennung fallen."""
+        self._session(tmp_path, 2023, "2023-04-30", "Azerbaijan_Grand_Prix",
+                      "2023-04-29", "Sprint_Shootout")
+        self._session(tmp_path, 2024, "2024-04-21", "Chinese_Grand_Prix",
+                      "2024-04-20", "Sprint_Qualifying")
+        assert cached_sessions(tmp_path)["ident"].tolist() == ["SQ", "SQ"]
+
+    def test_leerer_ordner_zaehlt_nicht_als_geladen(self, tmp_path):
+        """FastF1 legt den Ordner schon beim Anfassen an. Ohne Timing-Datei
+        ist die Session nicht auswertbar und darf nicht als geladen gelten."""
+        self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
+                      "2024-08-30", "Practice_1", timing=False)
+        out = cached_sessions(tmp_path)
+        assert len(out) == 1
+        assert not out["timing"].iloc[0]
+
+    def test_telemetrie_wird_getrennt_ausgewiesen(self, tmp_path):
+        """Telemetrie ist ein eigener, viel groesserer Download - eine
+        Session kann Timing haben und trotzdem keine Telemetrie."""
+        self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
+                      "2024-09-01", "Race", telemetry=True)
+        self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
+                      "2024-08-31", "Qualifying", telemetry=False)
+        out = cached_sessions(tmp_path).set_index("ident")
+        assert bool(out.loc["R", "telemetry"])
+        assert not bool(out.loc["Q", "telemetry"])
+        assert out["timing"].all()
+
+    def test_fremde_ordner_stoeren_nicht(self, tmp_path):
+        """Neben den Jahresordnern liegen im Cache auch die HTTP-Datenbank
+        und Systemdateien - die duerfen den Scan nicht aus dem Tritt bringen."""
+        (tmp_path / "fastf1_http_cache.sqlite").touch()
+        (tmp_path / ".DS_Store").touch()
+        (tmp_path / "notizen").mkdir()
+        self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
+                      "2024-09-01", "Race")
+        assert len(cached_sessions(tmp_path)) == 1
+
+    def test_sortiert_nach_saison_und_datum(self, tmp_path):
+        self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
+                      "2024-09-01", "Race")
+        self._session(tmp_path, 2018, "2018-05-13", "Spanish_Grand_Prix",
+                      "2018-05-13", "Race")
+        self._session(tmp_path, 2024, "2024-03-02", "Bahrain_Grand_Prix",
+                      "2024-03-02", "Race")
+        out = cached_sessions(tmp_path)
+        assert out["season"].tolist() == [2018, 2024, 2024]
+        assert out["event"].tolist() == ["Spanish Grand Prix",
+                                         "Bahrain Grand Prix",
+                                         "Italian Grand Prix"]
+
+
+class TestFindCache:
+    """Der Cache liegt je nach Rechner woanders - gesucht wird in fester
+    Reihenfolge, und ein fehlender Cache ist kein Fehler."""
+
+    def test_explizites_argument_gewinnt(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("F1_CACHE", str(tmp_path / "aus_env"))
+        (tmp_path / "aus_env").mkdir()
+        explizit = tmp_path / "explizit"
+        explizit.mkdir()
+        assert find_cache(explizit) == explizit
+
+    def test_umgebungsvariable_vor_standardpfad(self, tmp_path, monkeypatch):
+        aus_env = tmp_path / "aus_env"
+        aus_env.mkdir()
+        monkeypatch.setenv("F1_CACHE", str(aus_env))
+        assert find_cache() == aus_env
+
+    def test_ohne_treffer_none(self, tmp_path, monkeypatch):
+        """Kein Cache heisst: noch kein Warmup gelaufen. Die Oberflaeche
+        soll das erklaeren koennen, statt an einem Fehler zu scheitern."""
+        monkeypatch.setenv("F1_CACHE", str(tmp_path / "gibt_es_nicht"))
+        monkeypatch.setattr(session_mod, "CACHE_DIR", tmp_path / "auch_nicht")
+        monkeypatch.setattr(
+            session_mod, "__file__",
+            str(tmp_path / "tief" / "f1lab" / "session.py"))
+        assert find_cache() is None

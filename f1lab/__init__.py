@@ -33,6 +33,7 @@ from .core import (
 )
 from .session import (
     PaceEntry,
+    cached_sessions,
     circuit_dimension,
     circuit_geometry,
     clean_laps,
@@ -40,6 +41,7 @@ from .session import (
     degradation_by_compound,
     enable_cache,
     event_dimension,
+    find_cache,
     load,
     pace_table,
     pit_loss,
@@ -60,5 +62,5 @@ __all__ = [
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",
     "pit_loss", "track_status_phases", "event_dimension", "circuit_geometry",
-    "circuit_dimension",
+    "circuit_dimension", "find_cache", "cached_sessions",
 ]
