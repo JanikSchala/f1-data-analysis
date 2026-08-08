@@ -350,6 +350,39 @@ def braking_zones(brake, distance, speed, time, min_length_m: float = 20.0
     return zones
 
 
+def match_by_distance(a, b, tolerance: float) -> list[tuple[int, int]]:
+    """Paart Indizes zweier Positionslisten ueber die naechstgelegene Distanz.
+
+    Fuer Ereignisse, die beide Seiten auf derselben Strecke haben - Brems-
+    oder Mini-Sektor-Grenzen zweier Fahrer zum Beispiel -, aber nicht exakt
+    an derselben Stelle. Je Wert aus ``a`` wird der naechste, noch nicht
+    vergebene Wert aus ``b`` gesucht; bleibt keiner innerhalb ``tolerance``,
+    bleibt der Wert unverpaart. Das ist kein Fehlerfall - ungleich viele
+    Ereignisse (z.B. eine zusaetzliche Bremsung) sind der Normalfall.
+
+    Args:
+        a, b: Positionen (z.B. Meter), beliebige Reihenfolge.
+        tolerance: Maximaler Abstand fuer eine gueltige Paarung.
+
+    Returns:
+        Liste von (Index in a, Index in b), sortiert wie a.
+    """
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    belegt: set[int] = set()
+    paare = []
+    for i in range(a.size):
+        if b.size == 0:
+            break
+        diffs = np.abs(b - a[i])
+        j = int(np.argmin(diffs))
+        if j in belegt or diffs[j] > tolerance:
+            continue
+        belegt.add(j)
+        paare.append((i, j))
+    return paare
+
+
 # --------------------------------------------------------------- Streckengeometrie
 def path_length(x, y, closed: bool = True) -> float:
     """Laenge eines Streckenzugs als Summe der Segmentlaengen.

@@ -29,6 +29,7 @@ from .core import (
     fit_degradation,
     fuel_correct,
     mad_outlier_mask,
+    match_by_distance,
     optimal_undercut_window,
     path_length,
     undercut_gain,
@@ -60,7 +61,7 @@ __all__ = [
     "mad_outlier_mask", "fuel_correct", "fit_degradation", "find_cliff",
     "estimate_pit_loss", "undercut_gain", "optimal_undercut_window",
     "braking_zones", "path_length", "elevation_profile",
-    "elo_expected", "elo_update",
+    "elo_expected", "elo_update", "match_by_distance",
     # session
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",

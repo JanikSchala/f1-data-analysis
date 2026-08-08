@@ -92,19 +92,15 @@ def passe_zonen_zu(z1: pd.DataFrame, z2: pd.DataFrame,
 
     Beide Runden umrunden dieselbe Strecke - der Bremspunkt fuer dieselbe
     Kurve liegt also nah beieinander, auch wenn die Zonenanzahl abweicht.
+    Die eigentliche Paarung steckt in f1lab.match_by_distance (auch von P08
+    genutzt) - hier wird nur noch die Tabelle drumherum gebaut.
     """
-    paare = []
-    belegt: set[int] = set()
-    for _, a in z1.iterrows():
-        j = (z2["start_m"] - a["start_m"]).abs().idxmin()
-        if j in belegt or abs(z2.loc[j, "start_m"] - a["start_m"]) > toleranz_m:
-            continue
-        belegt.add(j)
-        paare.append({
-            "start_m_1": a["start_m"], "start_m_2": z2.loc[j, "start_m"],
-            "delta_m": z2.loc[j, "start_m"] - a["start_m"],
-        })
-    return pd.DataFrame(paare).sort_values("start_m_1", ignore_index=True)
+    paare = f1lab.match_by_distance(z1["start_m"], z2["start_m"], toleranz_m)
+    zeilen = [{"start_m_1": z1["start_m"].iloc[i],
+              "start_m_2": z2["start_m"].iloc[j],
+              "delta_m": z2["start_m"].iloc[j] - z1["start_m"].iloc[i]}
+             for i, j in paare]
+    return pd.DataFrame(zeilen).sort_values("start_m_1", ignore_index=True)
 
 
 def sektor_check(lap1, lap2, ref: pd.DataFrame, delta: np.ndarray) -> pd.DataFrame:
