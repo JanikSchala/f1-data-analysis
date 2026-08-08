@@ -23,57 +23,203 @@ GENUTZTE FASTF1-BAUSTEINE
   - Telemetry.add_distance
   - fastf1.utils.delta_time
   - fastf1.plotting.get_driver_style
+  - f1lab.braking_zones (Bremspunkte, siehe AUSBAUSTUFE)
 
-AUSBAUSTUFE
-Markiere automatisch die Bremspunkte (Brake-Flanken) und annotiere, wer wo spaeter bremst.
+AUSBAUSTUFE  [umgesetzt]
+Bremspunkte automatisch markieren (ueber f1lab.braking_zones, dieselbe
+Funktion wie in P08/Dashboard) und je Zonenpaar annotieren, wer wo spaeter
+bremst. Zonen werden ueber die naechstgelegene Distanz gepaart (Toleranz
+150 m) - beide Fahrer umrunden dieselbe Strecke, ihre Bremspunkte fuer
+dieselbe Kurve liegen also nah beieinander, auch wenn die genaue Anzahl
+erkannter Zonen leicht abweicht (VER 7, NOR 6 in Japan 2024 Q - eine
+Bremsung war zu kurz fuer die Mindestlaenge).
+
+Zusaetzlich, ueber die AUSBAUSTUFE hinaus: delta_time() traegt seit FastF1
+3.0 eine Deprecation-Warnung mit dem Hinweis, das Ergebnis gegen
+Sektorzeiten zu verifizieren - "a nice gimmick but not actually very
+accurate". Genau das passiert hier: die kontinuierliche delta_time()-Kurve
+wird an beiden Sektorgrenzen gegen die tatsaechliche, aus den Sektorzeiten
+berechnete Differenz geprueft. Japan 2024 Q, VER gegen NOR: an Sektorgrenze 2
+schaetzt delta_time() +0.262 s, die Sektorzeiten sagen +0.212 s - eine
+Abweichung von 50 ms, die man ohne diese Gegenprobe nicht sehen wuerde. Die
+Kurve bleibt trotzdem die richtige Wahl fuer den Streckenverlauf (Sektorzeiten
+allein zeigen nur drei Punkte, keinen Verlauf) - nur eben mit der
+Unsicherheitsangabe, die FastF1 selbst empfiehlt.
 """
+from __future__ import annotations
 
-import fastf1
+import sys
+import warnings
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import matplotlib
+
+matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+
 import fastf1.plotting as f1plt
-from fastf1.utils import delta_time
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from fastf1.utils import delta_time
 
-fastf1.Cache.enable_cache("~/f1_cache")
+import f1lab
+from f1lab.design import FG, GRID, MUTED, matplotlib_stil
+
+warnings.filterwarnings("ignore")
+
+OUT = Path(__file__).parent / "out"
+OUT.mkdir(exist_ok=True)
+
+SEASON, EVENT, IDENT = 2024, "Japan", "Q"
+D1, D2 = "VER", "NOR"
+ZONEN_TOLERANZ_M = 150.0
+
+plt.rcParams.update(matplotlib_stil())
 f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
 
-ses = fastf1.get_session(2024, "Japan", "Q")
-ses.load()
 
-D1, D2 = "VER", "NOR"
-lap1 = ses.laps.pick_drivers(D1).pick_fastest()
-lap2 = ses.laps.pick_drivers(D2).pick_fastest()
+def bremszonen(car: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame(f1lab.braking_zones(
+        car["Brake"], car["Distance"], car["Speed"],
+        car["Time"].dt.total_seconds()))
 
-t1 = lap1.get_car_data().add_distance()
-t2 = lap2.get_car_data().add_distance()
 
-delta, ref, cmp_ = delta_time(lap1, lap2)
+def passe_zonen_zu(z1: pd.DataFrame, z2: pd.DataFrame,
+                   toleranz_m: float = ZONEN_TOLERANZ_M) -> pd.DataFrame:
+    """Paart Bremszonen zweier Fahrer ueber die naechstgelegene Distanz.
 
-s1 = f1plt.get_driver_style(D1, ["color", "linestyle"], session=ses)
-s2 = f1plt.get_driver_style(D2, ["color", "linestyle"], session=ses)
+    Beide Runden umrunden dieselbe Strecke - der Bremspunkt fuer dieselbe
+    Kurve liegt also nah beieinander, auch wenn die Zonenanzahl abweicht.
+    """
+    paare = []
+    belegt: set[int] = set()
+    for _, a in z1.iterrows():
+        j = (z2["start_m"] - a["start_m"]).abs().idxmin()
+        if j in belegt or abs(z2.loc[j, "start_m"] - a["start_m"]) > toleranz_m:
+            continue
+        belegt.add(j)
+        paare.append({
+            "start_m_1": a["start_m"], "start_m_2": z2.loc[j, "start_m"],
+            "delta_m": z2.loc[j, "start_m"] - a["start_m"],
+        })
+    return pd.DataFrame(paare).sort_values("start_m_1", ignore_index=True)
 
-fig, ax = plt.subplots(5, 1, figsize=(13, 11), sharex=True,
-                       gridspec_kw={"height_ratios": [3, 2, 2, 2, 2]})
 
-ax[0].plot(t1["Distance"], t1["Speed"], label=D1, **s1)
-ax[0].plot(t2["Distance"], t2["Speed"], label=D2, **s2)
-ax[0].set_ylabel("Speed [km/h]"); ax[0].legend()
+def sektor_check(lap1, lap2, ref: pd.DataFrame, delta: np.ndarray) -> pd.DataFrame:
+    """Verifiziert delta_time() an den Sektorgrenzen gegen die tatsaechlichen
+    Sektorzeiten - genau die Gegenprobe, die FastF1s eigene Doku empfiehlt."""
+    s1 = [lap1[c].total_seconds() for c in
+         ("Sector1Time", "Sector2Time", "Sector3Time")]
+    s2 = [lap2[c].total_seconds() for c in
+         ("Sector1Time", "Sector2Time", "Sector3Time")]
+    ref_sorted = ref.sort_values("SessionTime")
 
-ax[1].plot(ref["Distance"], delta, color="white")
-ax[1].axhline(0, color="grey", lw=0.8)
-ax[1].set_ylabel(f"Delta {D2} zu {D1} [s]")
+    zeilen = []
+    kumuliert = 0.0
+    for i, (a, b) in enumerate(zip(s1[:2], s2[:2], strict=True), start=1):
+        kumuliert += b - a
+        grenze_zeit = lap1["LapStartTime"] + sum(
+            (lap1[c] for c in ("Sector1Time", "Sector2Time")[:i]), pd.Timedelta(0))
+        idx = (ref_sorted["SessionTime"] - grenze_zeit).abs().idxmin()
+        distanz = ref_sorted.loc[idx, "Distance"]
+        geschaetzt = float(np.interp(distanz, ref["Distance"], delta))
+        zeilen.append({"sektorgrenze": i, "distanz_m": round(float(distanz), 1),
+                       "delta_sektorzeit_s": round(kumuliert, 3),
+                       "delta_time_s": round(geschaetzt, 3),
+                       "abweichung_s": round(geschaetzt - kumuliert, 3)})
+    return pd.DataFrame(zeilen)
 
-ax[2].plot(t1["Distance"], t1["Throttle"], **s1)
-ax[2].plot(t2["Distance"], t2["Throttle"], **s2)
-ax[2].set_ylabel("Throttle [%]")
 
-ax[3].plot(t1["Distance"], t1["Brake"].astype(int), **s1)
-ax[3].plot(t2["Distance"], t2["Brake"].astype(int), **s2)
-ax[3].set_ylabel("Brake")
+def main():
+    f1lab.enable_cache()
 
-ax[4].plot(t1["Distance"], t1["nGear"], **s1)
-ax[4].plot(t2["Distance"], t2["nGear"], **s2)
-ax[4].set_ylabel("Gang"); ax[4].set_xlabel("Distanz [m]")
+    print(f"[1/3] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
+    ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
+    lap1 = ses.laps.pick_drivers(D1).pick_fastest()
+    lap2 = ses.laps.pick_drivers(D2).pick_fastest()
+    print(f"      {D1} {lap1['LapTime']}  |  {D2} {lap2['LapTime']}")
 
-fig.suptitle(f"{ses.event['EventName']} Quali - {D1} vs {D2}")
-plt.tight_layout()
-plt.show()
+    t1 = lap1.get_car_data().add_distance()
+    t2 = lap2.get_car_data().add_distance()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        delta, ref, _cmp = delta_time(lap1, lap2)
+
+    print("[2/3] Bremszonen und Sektor-Gegenprobe ...")
+    z1, z2 = bremszonen(t1), bremszonen(t2)
+    zonen = passe_zonen_zu(z1, z2)
+    zonen["spaeter"] = np.where(zonen["delta_m"] > 0, D2, D1)
+    print(f"      {D1}: {len(z1)} Zonen, {D2}: {len(z2)} Zonen, "
+         f"{len(zonen)} gepaart")
+    print(zonen.round(1).to_string(index=False))
+
+    check = sektor_check(lap1, lap2, ref, delta.to_numpy())
+    print("\nGegenprobe delta_time() vs. Sektorzeiten:")
+    print(check.to_string(index=False))
+
+    print("\n[3/3] Grafik ...")
+    s1 = f1plt.get_driver_style(D1, ["color", "linestyle"], session=ses)
+    s2 = f1plt.get_driver_style(D2, ["color", "linestyle"], session=ses)
+
+    fig, ax = plt.subplots(5, 1, figsize=(13, 13), sharex=True,
+                           gridspec_kw={"height_ratios": [3, 1.6, 1.6, 1, 1.2],
+                                       "hspace": 0.12})
+
+    ax[0].plot(t1["Distance"], t1["Speed"], label=D1, lw=1.8, **s1)
+    ax[0].plot(t2["Distance"], t2["Speed"], label=D2, lw=1.8, **s2)
+    for _, z in z1.iterrows():
+        ax[0].axvline(z["start_m"], color=s1["color"], lw=1, ls=":", alpha=0.6)
+    for _, z in z2.iterrows():
+        ax[0].axvline(z["start_m"], color=s2["color"], lw=1, ls=":", alpha=0.6)
+    for _, z in zonen.iterrows():
+        if abs(z["delta_m"]) < 3:
+            continue
+        x = max(z["start_m_1"], z["start_m_2"])
+        ax[0].annotate(f"{z['spaeter']} +{abs(z['delta_m']):.0f} m",
+                       xy=(x, 0.03), xycoords=("data", "axes fraction"),
+                       rotation=90, va="bottom", ha="right", color=MUTED,
+                       fontsize=7.5)
+    ax[0].set_ylabel("Speed [km/h]")
+    ax[0].legend(loc="lower center", ncol=2, frameon=False, labelcolor=FG)
+    ax[0].set_title(f"{ses.event['EventName']} {SEASON} {IDENT} - {D1} vs "
+                    f"{D2}  (gepunktet: Bremspunkte)", loc="left", color=FG,
+                    fontsize=13, pad=10)
+
+    ax[1].plot(ref["Distance"], delta, color=FG, lw=1.4)
+    ax[1].axhline(0, color=MUTED, lw=0.8)
+    ax[1].scatter(check["distanz_m"], check["delta_sektorzeit_s"], marker="D",
+                  s=36, color="none", edgecolor=FG, linewidth=1.3, zorder=3,
+                  label="Sektorzeit (Gegenprobe)")
+    ax[1].set_ylabel(f"Delta {D2}-{D1} [s]")
+    ax[1].legend(loc="upper left", frameon=False, labelcolor=FG, fontsize=8.5)
+
+    ax[2].plot(t1["Distance"], t1["Throttle"], lw=1.4, **s1)
+    ax[2].plot(t2["Distance"], t2["Throttle"], lw=1.4, **s2)
+    ax[2].set_ylabel("Throttle [%]")
+
+    ax[3].plot(t1["Distance"], t1["Brake"].astype(int), lw=1.4, **s1)
+    ax[3].plot(t2["Distance"], t2["Brake"].astype(int), lw=1.4, **s2)
+    ax[3].set_ylabel("Brake")
+    ax[3].set_yticks([0, 1])
+
+    ax[4].plot(t1["Distance"], t1["nGear"], lw=1.4, **s1)
+    ax[4].plot(t2["Distance"], t2["nGear"], lw=1.4, **s2)
+    ax[4].set_ylabel("Gang")
+    ax[4].set_xlabel("Distanz [m]")
+
+    for a in ax:
+        a.grid(alpha=0.3, linewidth=0.8, color=GRID)
+        a.set_axisbelow(True)
+        for side in ("top", "right"):
+            a.spines[side].set_visible(False)
+
+    path = OUT / "telemetrie_overlay.png"
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\n      -> {path}")
+
+
+if __name__ == "__main__":
+    main()
