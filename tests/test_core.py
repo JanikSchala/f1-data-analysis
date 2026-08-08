@@ -23,6 +23,7 @@ from f1lab.core import (
     fit_degradation,
     fuel_correct,
     mad_outlier_mask,
+    match_by_distance,
     optimal_undercut_window,
     path_length,
     undercut_gain,
@@ -341,6 +342,36 @@ class TestBrakingZones:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError, match="gleich lang"):
             braking_zones([True, False], [0, 1, 2], [200, 190, 180], [0, 1, 2])
+
+
+class TestMatchByDistance:
+    def test_exact_match(self):
+        assert match_by_distance([100, 500], [100, 500], tolerance=1) == \
+            [(0, 0), (1, 1)]
+
+    def test_within_tolerance(self):
+        assert match_by_distance([100], [107], tolerance=10) == [(0, 0)]
+
+    def test_outside_tolerance_stays_unmatched(self):
+        assert match_by_distance([100], [200], tolerance=10) == []
+
+    def test_extra_value_in_b_is_ignored(self):
+        """Eine zusaetzliche Bremsung eines Fahrers ist kein Fehlerfall."""
+        paare = match_by_distance([100, 500], [100, 300, 500], tolerance=5)
+        assert paare == [(0, 0), (1, 2)]
+
+    def test_no_double_booking(self):
+        """Zwei nahe a-Werte duerfen sich nicht denselben b-Wert teilen."""
+        paare = match_by_distance([100, 102], [101], tolerance=5)
+        assert len(paare) == 1
+
+    def test_empty_inputs(self):
+        assert match_by_distance([], [1, 2, 3], tolerance=5) == []
+        assert match_by_distance([1, 2, 3], [], tolerance=5) == []
+
+    def test_order_follows_a(self):
+        paare = match_by_distance([500, 100], [500, 100], tolerance=1)
+        assert paare == [(0, 0), (1, 1)]
 
 
 # --------------------------------------------------------------- path_length
