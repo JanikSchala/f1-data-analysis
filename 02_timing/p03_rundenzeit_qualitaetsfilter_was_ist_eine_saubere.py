@@ -156,7 +156,7 @@ FARBE = {
 }
 
 
-def zeichne(ax_funnel, stufen, ax_vergleich, vergleich, titel: str) -> None:
+def zeichne_funnel(ax_funnel, stufen) -> None:
     namen = [n for n, _ in stufen]
     werte = [v for _, v in stufen]
     balken = ax_funnel.barh(namen, werte, color=SERIEN[0], height=0.6)
@@ -172,6 +172,36 @@ def zeichne(ax_funnel, stufen, ax_vergleich, vergleich, titel: str) -> None:
     ax_funnel.grid(axis="x", alpha=0.35, linewidth=0.8)
     ax_funnel.set_axisbelow(True)
 
+
+def zeichne_boxplot(ax, roh, sauber) -> None:
+    """VORGEHEN Punkt 3: Verteilung vorher/nachher, nicht nur die Anzahl.
+
+    Der Funnel daneben zeigt, wie viele Runden wegfallen - das hier zeigt,
+    was das mit der Verteilung macht: die Box wird schmaler (weniger
+    Streuung) und rutscht nach unten (der Median sinkt), weil Box-, VSC- und
+    Safety-Car-Runden ueberwiegend langsame Ausreisser waren.
+    """
+    bp = ax.boxplot([roh, sauber], tick_labels=["roh", "sauber"],
+                    patch_artist=True, widths=0.55,
+                    medianprops={"color": FG, "linewidth": 1.6},
+                    whiskerprops={"color": MUTED}, capprops={"color": MUTED},
+                    flierprops={"markeredgecolor": MUTED, "markersize": 3,
+                               "alpha": 0.5})
+    for patch, farbe in zip(bp["boxes"], (MUTED, SERIEN[0]), strict=True):
+        patch.set_facecolor(farbe)
+        patch.set_edgecolor(farbe)
+        patch.set_alpha(0.85)
+
+    ax.set_ylabel("Rundenzeit [s]")
+    ax.set_title("Verteilung vorher/nachher", loc="left", color=FG,
+                fontsize=13, pad=12)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(axis="y", alpha=0.35, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def zeichne_vergleich(ax_vergleich, vergleich) -> None:
     for kat, farbe in FARBE.items():
         teil = vergleich[vergleich["kategorie"] == kat]
         ax_vergleich.scatter(teil["LapNumber"], teil["sekunden"], s=16,
@@ -208,11 +238,18 @@ def main():
     for kat in FARBE:
         print(f"      {kat:<26} {zusammenfassung.get(kat, 0)}")
 
-    fig, ax = plt.subplots(1, 2, figsize=(13, 5.5),
-                           gridspec_kw={"width_ratios": [1, 1.3]})
-    zeichne(ax[0], stufen, ax[1], vergleich,
-           f"{EVENT} {SEASON} - Datenqualitaet")
-    fig.suptitle(f"{EVENT} {SEASON} - Rundenzeit-Qualitaetsfilter", x=0.125,
+    roh_sekunden = ses.laps["LapTime"].dt.total_seconds().dropna()
+    sauber_sekunden = f1lab.clean_laps(ses)["LapTime"].dt.total_seconds()
+    print(f"\nVerteilung: Median roh {roh_sekunden.median():.3f}s (Streuung "
+         f"{roh_sekunden.std():.3f}s) -> sauber {sauber_sekunden.median():.3f}s "
+         f"(Streuung {sauber_sekunden.std():.3f}s)")
+
+    fig, ax = plt.subplots(1, 3, figsize=(17, 5.5),
+                           gridspec_kw={"width_ratios": [1, 0.6, 1.3]})
+    zeichne_funnel(ax[0], stufen)
+    zeichne_boxplot(ax[1], roh_sekunden, sauber_sekunden)
+    zeichne_vergleich(ax[2], vergleich)
+    fig.suptitle(f"{EVENT} {SEASON} - Rundenzeit-Qualitaetsfilter", x=0.09,
                 ha="left", fontsize=16, color=FG, y=1.01)
     plt.tight_layout()
     path = OUT / "qualitaetsfilter.png"

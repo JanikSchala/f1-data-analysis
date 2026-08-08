@@ -41,6 +41,17 @@ Rennens, das Ranking dreht sich an der Spitze allein durch die Korrektur.
 Der Grund liegt nicht in unterschiedlichem Tempo, sondern darin, wann die
 jeweils sauberen (nicht durch Verkehr, Undercut oder Ausreisser verzerrten)
 Runden im Rennen liegen - bei vollerem oder leererem Tank.
+
+Eine zweite, bewusste Abweichung von VORGEHEN Punkt 4: der Barplot faerbt
+nicht nach Team, sondern danach, ob sich ein Fahrer vom Schnellsten
+statistisch absetzt (Intervall ueberlappt nicht). 20 Fahrer brauchen 10
+Teamfarben - das sprengt die CVD-geprueften drei Kategoriefarben aus
+f1lab.design (MAX_SERIEN, siehe dortige Dokumentation) und waere an dieser
+Stelle auch die schwaechere Information: die Farbe der Pace-Seite im
+Dashboard beantwortet dieselbe Frage genauso, und genau die - nicht die
+Teamzugehoerigkeit - ist die eigentliche Aussage dieses Diagramms. Team-
+Farben zeigt stattdessen assets/race_pace.png (make_assets.py), wo die
+Zuordnung selbst die Aussage ist.
 """
 from __future__ import annotations
 
