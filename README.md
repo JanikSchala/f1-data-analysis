@@ -62,16 +62,18 @@ Safety-Car-Phasen und gestrichene Runden verzerren jede Verteilung. Nach dem Fil
 auf grüne Flagge, ohne Boxenrunden, ohne Ausreißer über 107 % bleiben in Barcelona
 2024 noch **1124 von 1310 Runden** übrig — 14 % fliegen raus.
 
-Erst danach lässt sich rechnen. Leclerc war der Schnellste, Norris lag **0.007 s**
-dahinter, Pérez **0.013 s**, Verstappen **0.117 s**.
+Auch danach fehlt noch die Treibstoffkorrektur (0.03 s/Runde/kg, ca. 100 kg über die
+Renndistanz) — ohne sie hängt der Median zusätzlich davon ab, *wann* im Rennen die
+sauberen Runden eines Fahrers liegen. Erst korrigiert lässt sich fair rechnen: Norris
+war der Schnellste, Verstappen lag **0.002 s** dahinter, Russell **0.239 s**,
+Leclerc **0.273 s**, Hamilton **0.282 s**.
 
-Und genau hier wird es interessant: Die Balken tragen ein
-Bootstrap-Konfidenzintervall über 1000 Resamples, und das der ersten drei ist
-zwischen 0.67 und 1.22 s breit. Der Abstand zwischen ihnen beträgt Hundertstel.
-Die ehrliche Aussage lautet deshalb nicht „Leclerc war schneller als Norris",
-sondern: **die drei sind mit diesen Daten nicht unterscheidbar.** Verstappen hat
-mit 0.27 s das schmalste Intervall — er war am gleichmäßigsten unterwegs, nicht
-zwingend am schnellsten.
+Und genau hier wird es interessant: Die Balken tragen ein Bootstrap-Konfidenzintervall
+über 1000 Resamples, und das von Norris reicht bis 0.252 s. Sieben Fahrer — bis
+Sainz auf Platz 7 — liegen mit ihrem unteren Intervallrand innerhalb davon. Die
+ehrliche Aussage lautet deshalb nicht „Norris war schneller als die anderen sechs",
+sondern: **diese sieben sind mit diesen Daten nicht unterscheidbar.** Erst Pérez auf
+Platz 8 (0.524 s) ist mit seinem Intervall eindeutig abgesetzt.
 
 `Interval.overlaps()` macht diesen Vergleich explizit, statt ihn dem Auge zu
 überlassen.

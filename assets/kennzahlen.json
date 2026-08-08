@@ -25,42 +25,42 @@
     "runden_gesamt": 1310,
     "runden_nach_filter": 1124,
     "anteil_verworfen_pct": 14.2,
-    "schnellster": "LEC",
+    "schnellster": "NOR",
     "top5": [
-      {
-        "fahrer": "LEC",
-        "team": "Ferrari",
-        "delta_s": 0.0,
-        "runden": 61,
-        "ci_breite_s": 0.668
-      },
       {
         "fahrer": "NOR",
         "team": "McLaren",
-        "delta_s": 0.007,
+        "delta_s": 0.0,
         "runden": 61,
-        "ci_breite_s": 0.828
-      },
-      {
-        "fahrer": "PER",
-        "team": "Red Bull Racing",
-        "delta_s": 0.013,
-        "runden": 59,
-        "ci_breite_s": 1.216
+        "ci_breite_s": 0.336
       },
       {
         "fahrer": "VER",
         "team": "Red Bull Racing",
-        "delta_s": 0.117,
+        "delta_s": 0.002,
         "runden": 61,
-        "ci_breite_s": 0.272
+        "ci_breite_s": 0.408
       },
       {
-        "fahrer": "PIA",
-        "team": "McLaren",
-        "delta_s": 0.178,
+        "fahrer": "RUS",
+        "team": "Mercedes",
+        "delta_s": 0.239,
         "runden": 61,
-        "ci_breite_s": 0.51
+        "ci_breite_s": 0.303
+      },
+      {
+        "fahrer": "LEC",
+        "team": "Ferrari",
+        "delta_s": 0.273,
+        "runden": 61,
+        "ci_breite_s": 0.416
+      },
+      {
+        "fahrer": "HAM",
+        "team": "Mercedes",
+        "delta_s": 0.282,
+        "runden": 61,
+        "ci_breite_s": 0.373
       }
     ]
   },
