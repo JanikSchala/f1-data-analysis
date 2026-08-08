@@ -16,6 +16,7 @@ import fastf1
 import pandas as pd
 
 from .core import (
+    FUEL_KG_PER_LAP,
     Interval,
     bootstrap_median,
     elevation_profile,
@@ -228,15 +229,26 @@ class PaceEntry:
 
 
 def race_pace(session, threshold: float = 1.07, min_laps: int = 8,
-              n_resamples: int = 1000) -> list[PaceEntry]:
-    """Bereinigte Race Pace je Fahrer, sortiert vom Schnellsten.
+              n_resamples: int = 1000,
+              kg_per_lap: float = FUEL_KG_PER_LAP) -> list[PaceEntry]:
+    """Bereinigte, treibstoffkorrigierte Race Pace je Fahrer, sortiert vom
+    Schnellsten.
 
     Jeder Eintrag traegt ein Bootstrap-Intervall. Ueberlappen sich zwei
     Intervalle, ist der Unterschied mit diesen Daten nicht belegbar - das
     ist bei benachbarten Fahrern regelmaessig der Fall.
+
+    Ohne :func:`fuel_correct` haengt der Median zusaetzlich davon ab, *wann*
+    im Rennen die sauberen Runden eines Fahrers liegen - zwei Fahrer mit
+    identischem Tempo koennten sonst unterschiedlich abschneiden, nur weil
+    eine Safety-Car-Phase dem einen mehr fruehe (schwere), dem anderen mehr
+    spaete (leichte) Runden uebrig laesst. ``kg_per_lap=0`` schaltet die
+    Korrektur ab (fuer den Vergleich in P04).
     """
     laps = clean_laps(session, threshold).copy()
-    laps["sec"] = laps["LapTime"].dt.total_seconds()
+    laps["sec"] = fuel_correct(
+        laps["LapTime"].dt.total_seconds(), laps["LapNumber"],
+        session.total_laps, kg_per_lap=kg_per_lap)
 
     entries = []
     for drv, g in laps.groupby("Driver"):
