@@ -1,0 +1,14 @@
+# Farben aus f1lab/design.py - dort steht auch, wogegen sie geprueft wurden.
+[theme]
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#15151e"
+secondaryBackgroundColor = "#1e1e2a"
+textColor = "#f0f0f0"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+# Kein Datei-Upload noetig; haelt die Oberflaeche schlank.
+maxUploadSize = 1

@@ -6,6 +6,8 @@ braucht Netzzugriff beim ersten Aufruf, danach den Cache.
 from __future__ import annotations
 
 import contextlib
+import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -31,13 +33,120 @@ TRACK_STATUS = {
     "5": "rot", "6": "vsc", "7": "vsc endet",
 }
 
+# FastF1 legt je Session einen Ordner mit ausgeschriebenem Namen an. Fuer die
+# Bestandsaufnahme muss der Weg zurueck zur Kennung gehen, die get_session()
+# erwartet. Sprint-Quali heisst je nach Jahr anders, landet aber auf "SQ".
+SESSION_DIR_IDENT = {
+    "Practice_1": "FP1", "Practice_2": "FP2", "Practice_3": "FP3",
+    "Qualifying": "Q", "Sprint": "S", "Sprint_Qualifying": "SQ",
+    "Sprint_Shootout": "SQ", "Race": "R",
+}
 
-def enable_cache(path: Path | str | None = None) -> Path:
-    """Cache aktivieren. Ohne Cache dauert jede Session-Ladung Minuten."""
+# Ein Session-Ordner existiert schon, sobald FastF1 ihn einmal angefasst hat.
+# Erst diese Datei belegt, dass Timing-Daten wirklich drin liegen; Telemetrie
+# ist ein eigener, viel groesserer Download und fehlt oft.
+TIMING_MARKER = "_extended_timing_data.ff1pkl"
+TELEMETRY_MARKER = "car_data.ff1pkl"
+
+# "2024-09-01_Italian_Grand_Prix" -> Datum + Name
+_EVENT_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})_(.+)$")
+
+_active_cache: Path | None = None
+
+
+def find_cache(path: Path | str | None = None) -> Path | None:
+    """Ersten vorhandenen Cache-Ordner suchen, ohne einen anzulegen.
+
+    Reihenfolge: explizites Argument, Umgebungsvariable ``F1_CACHE``, der
+    Standardpfad ``~/f1_cache``, und zuletzt ein ``f1_cache`` neben dem
+    Repository. Der letzte Fall deckt die Ablage ab, in der Repo und Cache
+    Geschwister in einem Projektordner sind.
+
+    Returns:
+        Pfad oder None, wenn nirgends ein Cache liegt. Ein fehlender Cache
+        ist kein Fehler - er ist der Zustand vor dem ersten Warmup.
+    """
+    env = os.environ.get("F1_CACHE")
+    kandidaten = [
+        Path(path) if path else None,
+        Path(env).expanduser() if env else None,
+        CACHE_DIR,
+        Path(__file__).resolve().parents[1].parent / "f1_cache",
+    ]
+    for p in kandidaten:
+        if p is not None and p.is_dir():
+            return p
+    return None
+
+
+def enable_cache(path: Path | str | None = None,
+                 offline: bool = False) -> Path:
+    """Cache aktivieren. Ohne Cache dauert jede Session-Ladung Minuten.
+
+    Args:
+        path: Zielordner. Ohne Angabe der Standardpfad ``~/f1_cache``.
+        offline: Schaltet jeden Netzzugriff ab. Sessions, die nicht im Cache
+            liegen, scheitern dann sofort, statt minutenlang zu laden und ins
+            Rate-Limit zu laufen - das ist fuer eine Oberflaeche das
+            gewuenschte Verhalten.
+    """
+    global _active_cache
     p = Path(path) if path else CACHE_DIR
     p.mkdir(parents=True, exist_ok=True)
     fastf1.Cache.enable_cache(str(p))
+    fastf1.Cache.offline_mode(offline)
+    _active_cache = p
     return p
+
+
+def cached_sessions(cache_dir: Path | str | None = None) -> pd.DataFrame:
+    """Bestandsaufnahme des Caches, allein aus der Ordnerstruktur.
+
+    Liest den Cache so, wie FastF1 ihn anlegt
+    (``<cache>/<Jahr>/<Datum>_<Event>/<Datum>_<Session>/``), und braucht dafuer
+    weder Netz noch einen Session-Download. Damit laesst sich eine Auswahl
+    anbieten, die nur zeigt, was auch wirklich auswertbar ist.
+
+    Returns:
+        Ein Datensatz je Session mit Saison, Event, Datum, Kennung und zwei
+        Flags: ``timing`` fuer Rundendaten, ``telemetry`` fuer den
+        Positions- und Fahrzeugkanal. Leerer Rahmen, wenn kein Cache da ist.
+    """
+    cols = ["season", "event", "event_date", "ident", "timing", "telemetry"]
+    root = find_cache(cache_dir)
+    if root is None:
+        return pd.DataFrame(columns=cols)
+
+    rows = []
+    for year_dir in sorted(root.iterdir()):
+        if not (year_dir.is_dir() and year_dir.name.isdigit()):
+            continue
+        for event_dir in sorted(year_dir.iterdir()):
+            m = _EVENT_DIR.match(event_dir.name) if event_dir.is_dir() else None
+            if not m:
+                continue
+            datum, event = m.group(1), m.group(2).replace("_", " ")
+            for ses_dir in sorted(event_dir.iterdir()):
+                sm = _EVENT_DIR.match(ses_dir.name) if ses_dir.is_dir() else None
+                if not sm:
+                    continue
+                ident = SESSION_DIR_IDENT.get(sm.group(2))
+                if ident is None:
+                    continue
+                rows.append({
+                    "season": int(year_dir.name),
+                    "event": event,
+                    "event_date": datum,
+                    "ident": ident,
+                    "timing": (ses_dir / TIMING_MARKER).exists(),
+                    "telemetry": (ses_dir / TELEMETRY_MARKER).exists(),
+                })
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    df = pd.DataFrame(rows, columns=cols)
+    df["event_date"] = pd.to_datetime(df["event_date"])
+    return df.sort_values(["season", "event_date", "ident"], ignore_index=True)
 
 
 @lru_cache(maxsize=32)
@@ -52,8 +161,13 @@ def load(year: int, gp, identifier: str = "R",
         identifier: FP1 FP2 FP3 Q S SQ R.
         telemetry: Nur einschalten, wenn wirklich gebraucht - der Download
             ist um ein Vielfaches groesser.
+
+    Ein zuvor gesetzter Cache bleibt erhalten: wer :func:`enable_cache` mit
+    eigenem Pfad oder ``offline=True`` aufgerufen hat, soll das hier nicht
+    stillschweigend zurueckgesetzt bekommen.
     """
-    enable_cache()
+    if _active_cache is None:
+        enable_cache()
     ses = fastf1.get_session(year, gp, identifier)
     ses.load(telemetry=telemetry, weather=weather, messages=messages)
     return ses

@@ -4,7 +4,7 @@ P01 - Session-Explorer: Jede Session der F1-Historie laden
 
 Das Fundament. Cache aufsetzen, beliebige Session laden, verstehen was load() eigentlich holt.
 
-Kategorie:   Grundlagen & Datenzugriff
+Kategorie:   Grundlag1en & Datenzugriff
 Niveau:      Einsteiger
 Aufwand:     1-2 h
 Schwerpunkt: Datenanalyse, Engineering
