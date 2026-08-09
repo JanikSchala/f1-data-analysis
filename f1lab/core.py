@@ -544,3 +544,42 @@ def elevation_profile(z, min_step: float = 1.0) -> Elevation:
 
     return Elevation(round(float(gain), 1), round(float(drop), 1),
                      round(float(v.max() - v.min()), 1))
+
+
+# --------------------------------------------------------------- Race Control
+def status_intervals(status, time_s
+                     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Sparses Status-Log (nur Aenderungen, wie FastF1s ``track_status``) in
+    Intervalle umwandeln.
+
+    ``track_status`` traegt eine Zeile pro Zustandswechsel, nicht eine pro
+    Zeitschritt - "SCDeployed" erscheint typischerweise genau einmal, auch
+    wenn das Safety Car neun Runden lang draussen bleibt. Ein Intervall endet
+    deshalb dort, wo das naechste beginnt, nicht am letzten Auftreten
+    desselben Werts (das waere derselbe Zeitpunkt wie der Start - ein
+    Gruppieren nach gleichem Status ergibt hier fast ausschliesslich
+    Intervalle der Laenge 0).
+
+    Args:
+        status: Zustandswerte, ein Eintrag pro Aenderung.
+        time_s: zugehoerige Zeitpunkte in Sekunden, aufsteigend sortiert.
+
+    Returns:
+        (status, start, ende) als drei gleich lange Arrays. ``ende`` des
+        letzten Intervalls ist NaN - offen, weil das Log dort endet.
+        Unmittelbar wiederholte Werte (zwei Zeilen mit demselben Status ohne
+        Wechsel dazwischen) werden zu einem Intervall zusammengefasst.
+    """
+    s = np.asarray(status)
+    t = np.asarray(time_s, dtype=float)
+    if s.size == 0:
+        return s, t, t.copy()
+
+    behalten = np.empty(s.shape, dtype=bool)
+    behalten[0] = True
+    behalten[1:] = s[1:] != s[:-1]
+
+    s_out = s[behalten]
+    t_out = t[behalten]
+    ende = np.append(t_out[1:], np.nan)
+    return s_out, t_out, ende

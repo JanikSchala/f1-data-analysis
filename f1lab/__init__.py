@@ -34,6 +34,7 @@ from .core import (
     match_by_distance,
     optimal_undercut_window,
     path_length,
+    status_intervals,
     undercut_gain,
 )
 from .session import (
@@ -77,7 +78,7 @@ __all__ = [
     "estimate_pit_loss", "undercut_gain", "optimal_undercut_window",
     "braking_zones", "path_length", "elevation_profile",
     "elo_expected", "elo_update", "match_by_distance",
-    "active_distance_zones", "drs_state",
+    "active_distance_zones", "drs_state", "status_intervals",
     # session
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",

@@ -29,6 +29,7 @@ from .core import (
     fuel_correct,
     match_by_distance,
     path_length,
+    status_intervals,
 )
 
 CACHE_DIR = Path.home() / "f1_cache"
@@ -367,14 +368,32 @@ def pit_loss(session) -> float:
 
 # --------------------------------------------------------------- Track Status
 def track_status_phases(session) -> pd.DataFrame:
-    """Safety-Car-, VSC- und Gelbphasen als Intervalle mit Rundennummern."""
+    """Safety-Car-, VSC- und Gelbphasen als Intervalle mit Rundennummern.
+
+    ``session.track_status`` ist ein Log von Zustandswechseln, keine
+    Zeitreihe: "SCDeployed" steht dort typischerweise genau einmal, auch wenn
+    das Safety Car neun Runden lang draussen bleibt. Ein Intervall muss
+    deshalb bis zum naechsten Wechsel reichen, nicht nur bis zum letzten
+    Auftreten desselben Codes (siehe :func:`f1lab.core.status_intervals` -
+    die urspruengliche Fassung gruppierte nach gleichem Code und ergab so
+    fast durchweg Intervalle der Laenge 0, siehe P18).
+    """
     ts = session.track_status.copy()
     ts["label"] = ts["Status"].map(TRACK_STATUS).fillna(ts["Status"])
-    ts["group"] = (ts["Status"] != ts["Status"].shift()).cumsum()
+    ts["Sekunden"] = ts["Time"].dt.total_seconds()
 
-    phases = (ts.groupby(["group", "label"])
-              .agg(start=("Time", "min"), end=("Time", "max"))
-              .reset_index().drop(columns="group"))
+    labels, start_s, end_s = status_intervals(
+        ts["label"].to_numpy(), ts["Sekunden"].to_numpy())
+    session_ende = session.laps["Time"].max()
+    session_ende_s = (session_ende.total_seconds()
+                      if pd.notna(session_ende) else np.nan)
+    end_s = np.where(np.isnan(end_s), session_ende_s, end_s)
+
+    phases = pd.DataFrame({
+        "label": labels,
+        "start": pd.to_timedelta(start_s, unit="s"),
+        "end": pd.to_timedelta(end_s, unit="s"),
+    })
     phases["duration_s"] = (phases["end"] - phases["start"]).dt.total_seconds()
 
     leader = (session.laps[session.laps["Position"] == 1]
