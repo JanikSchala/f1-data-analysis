@@ -13,16 +13,21 @@ from functools import lru_cache
 from pathlib import Path
 
 import fastf1
+import numpy as np
 import pandas as pd
 
 from .core import (
     FUEL_KG_PER_LAP,
     Interval,
+    active_distance_zones,
     bootstrap_median,
+    braking_zones,
+    drs_state,
     elevation_profile,
     estimate_pit_loss,
     fit_degradation,
     fuel_correct,
+    match_by_distance,
     path_length,
 )
 
@@ -501,3 +506,343 @@ def circuit_dimension(events, identifier: str = "Q") -> pd.DataFrame:
     if "length_m" in df.columns:
         df = df.sort_values("length_m", ascending=False, ignore_index=True)
     return df
+
+
+# --------------------------------------------------------------- Bremszonen
+def driver_braking_zones(session, driver: str, min_length_m: float = 20.0
+                         ) -> pd.DataFrame:
+    """Bremszonen der schnellsten Runde eines Fahrers (siehe P08).
+
+    Braucht Telemetrie. Leerer Rahmen, wenn der Fahrer keine gewertete
+    schnellste Runde hat (z.B. nach einem Ausfall vor der ersten Runde).
+    """
+    lap = session.laps.pick_drivers(driver).pick_fastest()
+    if lap is None or pd.isna(lap["LapTime"]):
+        return pd.DataFrame()
+    car = lap.get_car_data().add_distance()
+    return pd.DataFrame(braking_zones(
+        car["Brake"], car["Distance"], car["Speed"],
+        car["Time"].dt.total_seconds(), min_length_m=min_length_m))
+
+
+def compare_braking_zones(zones_a: pd.DataFrame, zones_b: pd.DataFrame,
+                          tolerance_m: float = 150.0) -> pd.DataFrame:
+    """Bremszonen zweier Fahrer paaren und den Abstand ihrer Bremspunkte
+    zeigen (siehe P07/P08). Nutzt :func:`f1lab.core.match_by_distance`.
+    """
+    if zones_a.empty or zones_b.empty:
+        return pd.DataFrame()
+    paare = match_by_distance(zones_a["start_m"], zones_b["start_m"],
+                              tolerance_m)
+    zeilen = [{"start_m_a": zones_a["start_m"].iloc[i],
+              "start_m_b": zones_b["start_m"].iloc[j],
+              "delta_m": zones_b["start_m"].iloc[j] - zones_a["start_m"].iloc[i]}
+             for i, j in paare]
+    return pd.DataFrame(zeilen).sort_values("start_m_a", ignore_index=True)
+
+
+# --------------------------------------------------------------- DRS
+def drs_zones(session, driver: str, min_length_m: float = 100.0
+             ) -> pd.DataFrame:
+    """DRS-Aktivzonen der schnellsten Runde eines Fahrers (siehe P10).
+
+    Filtert alles unter ``min_length_m`` als Rauschen - ohne den Filter
+    meldet dieselbe Flankenlogik am Start/Ziel-Bereich mehrere kurze
+    Wackel-Zonen, Rest-Aktivierung vom Ende der Vorrunde.
+    """
+    lap = session.laps.pick_drivers(driver).pick_fastest()
+    if lap is None or pd.isna(lap["LapTime"]):
+        return pd.DataFrame()
+    car = lap.get_car_data().add_distance()
+    offen = drs_state(car["DRS"].to_numpy()) == 2
+    return pd.DataFrame(active_distance_zones(offen, car["Distance"].to_numpy(),
+                                              min_length_m=min_length_m))
+
+
+def drs_usage(session) -> pd.DataFrame:
+    """DRS-Zeitanteil und Topspeed-Gewinn je Fahrer (siehe P10 VORGEHEN 1/3/4)."""
+    rows = []
+    for drv in session.drivers:
+        try:
+            lap = session.laps.pick_drivers(drv).pick_fastest()
+            tel = lap.get_car_data().add_distance()
+        except Exception:
+            continue
+        if tel is None or tel.empty or pd.isna(lap["LapTime"]):
+            continue
+
+        offen = drs_state(tel["DRS"].to_numpy()) == 2
+        dt = tel["Time"].diff().dt.total_seconds().fillna(0).to_numpy()
+        total_t = dt.sum()
+        if total_t <= 0:
+            continue
+
+        info = session.get_driver(drv)
+        vmax_offen = tel.loc[offen, "Speed"].max()
+        vmax_zu = tel.loc[~offen, "Speed"].max()
+        rows.append({
+            "driver": info["Abbreviation"], "team": info["TeamName"],
+            "drs_s": round(float(dt[offen].sum()), 2),
+            "drs_pct": round(100 * dt[offen].sum() / total_t, 1),
+            "vmax_offen": vmax_offen, "vmax_zu": vmax_zu,
+            "gewinn_kmh": round(vmax_offen - vmax_zu, 1) if pd.notna(vmax_offen)
+            and pd.notna(vmax_zu) else float("nan"),
+        })
+    return pd.DataFrame(rows).sort_values("drs_pct", ascending=False,
+                                          ignore_index=True)
+
+
+# --------------------------------------------------------------- Position
+def position_progression(session) -> pd.DataFrame:
+    """Position je Runde und Fahrer, pivotiert (siehe P20 VORGEHEN 1)."""
+    return session.laps.pivot_table(index="LapNumber", columns="Driver",
+                                    values="Position", aggfunc="first")
+
+
+def overtakes_matrix(session) -> pd.DataFrame:
+    """Wer ueberholt wen wie oft, ohne Boxenstopp-Effekt und nur auf gruener
+    Flagge (siehe P20 VORGEHEN 3/4).
+
+    Zeile ueberholt Spalte. Zwei Faelle zaehlen nicht als echtes Duell:
+    ein Boxenstopp verschiebt die Position ohne Ueberholen auf der Strecke,
+    und ein Safety-Car-Restart wirbelt das Feld durcheinander, ohne dass
+    Position durch Tempo gewonnen wurde. Die Positionstabelle selbst bleibt
+    ueber die volle, ungefilterte Rundenliste - sonst fehlen Rundennummern
+    in der Reihe, sobald eine Runde komplett herausfaellt, und lap - 1
+    zeigt ins Leere.
+    """
+    laps = session.laps
+    pos = laps.pivot_table(index="LapNumber", columns="Driver",
+                           values="Position", aggfunc="first")
+    if pos.empty:
+        return pd.DataFrame()
+
+    box_laps = set(zip(laps.loc[laps["PitInTime"].notna(), "Driver"],
+                       laps.loc[laps["PitInTime"].notna(), "LapNumber"]))
+    gruene_laps = set(zip(laps.pick_track_status("1")["Driver"],
+                          laps.pick_track_status("1")["LapNumber"]))
+    drivers = list(pos.columns)
+    mat = pd.DataFrame(0, index=drivers, columns=drivers)
+
+    for lap in pos.index[1:]:
+        prev, cur = pos.loc[lap - 1], pos.loc[lap]
+        for a in drivers:
+            for b in drivers:
+                if a == b or pd.isna(prev[a]) or pd.isna(cur[a]) \
+                        or pd.isna(prev[b]) or pd.isna(cur[b]):
+                    continue
+                if prev[a] > prev[b] and cur[a] < cur[b]:
+                    if (b, lap) in box_laps or (a, lap - 1) in box_laps:
+                        continue
+                    if (a, lap) not in gruene_laps or (b, lap) not in gruene_laps:
+                        continue
+                    mat.loc[a, b] += 1
+    return mat
+
+
+# --------------------------------------------------------------- Start
+def _zeit_bei_speed(t: np.ndarray, v: np.ndarray, ziel: float, t0: float
+                    ) -> float | None:
+    """Erste Zeit (relativ zu t0), zu der v mindestens ziel erreicht."""
+    mask = v >= ziel
+    return round(float(t[mask.argmax()] - t0), 2) if mask.any() else None
+
+
+def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
+    """Startkennzahlen je Fahrer: Zeit bis 100/200 km/h, Distanz nach 5s,
+    Positionsgewinn Grid -> Ende Runde 1 (siehe P31).
+
+    Boxenstarts (PitOutTime auf Runde 1 gesetzt) werden ausgeschlossen - ein
+    Start aus der Box hat eine komplett andere Ausgangsgeschwindigkeit
+    (Boxengassen-Limit statt Ampel-Start) und ist nicht vergleichbar.
+    """
+    rows = []
+    for drv in session.drivers:
+        info = session.get_driver(drv)
+        try:
+            lap1 = session.laps.pick_drivers(drv).pick_laps(1).iloc[0]
+        except (IndexError, KeyError):
+            continue
+        if pd.notna(lap1["PitOutTime"]):
+            continue
+
+        tel = lap1.get_car_data().add_distance()
+        if tel is None or tel.empty:
+            continue
+        start = tel["SessionTime"].iloc[0]
+        fenster = tel.slice_by_time(start, start + pd.Timedelta(seconds=fenster_s))
+        if fenster.empty:
+            continue
+
+        t = fenster["Time"].dt.total_seconds().to_numpy()
+        v = fenster["Speed"].to_numpy()
+        d = fenster["Distance"].to_numpy()
+        t0 = t[0]
+        nach_5s = d[(t - t0) <= 5]
+        grid = session.results.loc[session.results["DriverNumber"] == drv,
+                                   "GridPosition"].squeeze()
+        ende = lap1["Position"]
+        rows.append({
+            "driver": info["Abbreviation"], "grid": grid, "ende_r1": ende,
+            "gewinn": (grid - ende) if pd.notna(ende) and pd.notna(grid)
+            else None,
+            "t_100": _zeit_bei_speed(t, v, 100, t0),
+            "t_200": _zeit_bei_speed(t, v, 200, t0),
+            "m_nach_5s": round(float(nach_5s.max()), 1) if nach_5s.size else None,
+        })
+    return pd.DataFrame(rows).sort_values("m_nach_5s", ascending=False,
+                                          ignore_index=True)
+
+
+# --------------------------------------------------------------- Verfolgung
+def close_following(session, driver: str, nah_schwelle_m: float = 50.0
+                    ) -> pd.DataFrame:
+    """Abstand zum Vordermann je gruener Runde, treibstoffkorrigiert
+    (siehe P32 VORGEHEN 1-2).
+
+    add_driver_ahead() laeuft einmal auf die gesamte Renntelemetrie des
+    Fahrers, nicht einmal je Runde - um ein Vielfaches schneller bei
+    identischem Ergebnis (siehe P05/P20/P32).
+    """
+    laps = (session.laps.pick_drivers(driver).pick_wo_box().pick_accurate()
+           .pick_track_status("1").sort_values("LapStartTime"))
+    if laps.empty:
+        return pd.DataFrame()
+    try:
+        tel = laps.get_telemetry().add_driver_ahead().sort_values("SessionTime")
+    except Exception:
+        return pd.DataFrame()
+    if tel.empty:
+        return pd.DataFrame()
+
+    grenzen = (laps[["LapNumber", "LapStartTime"]]
+              .rename(columns={"LapStartTime": "SessionTime"})
+              .sort_values("SessionTime"))
+    zug = pd.merge_asof(tel, grenzen, on="SessionTime", direction="backward")
+    zug["gap"] = zug["DistanceToDriverAhead"].replace(0, float("nan"))
+
+    total_laps = int(session.total_laps)
+    rows = []
+    for lapnum, g in zug.groupby("LapNumber"):
+        treffer = laps.loc[laps["LapNumber"] == lapnum]
+        if treffer.empty or pd.isna(treffer.iloc[0]["LapTime"]):
+            continue
+        lap = treffer.iloc[0]
+        sec = lap["LapTime"].total_seconds()
+        rows.append({
+            "lap": int(lapnum),
+            "sec_fuel": float(fuel_correct([sec], [lapnum], total_laps)[0]),
+            "gap_median_m": g["gap"].median(), "gap_min_m": g["gap"].min(),
+            "anteil_nah": 100 * (g["gap"] < nah_schwelle_m).mean(),
+            "compound": lap["Compound"], "tyre_life": lap["TyreLife"],
+        })
+    return pd.DataFrame(rows)
+
+
+def dirty_air_effect(df: pd.DataFrame) -> tuple[float, float, float, pd.DataFrame]:
+    """Rundenzeit (bereits treibstoffkorrigiert) gegen Nahanteil regressieren,
+    nach Herausrechnen der Reifendegradation (siehe P32).
+
+    Nutzt :func:`fit_degradation` fuer die Degradations-Bereinigung - dieselbe
+    Funktion wie in P13/Dashboard, nur hier auf Nahanteil statt Compound
+    angewendet.
+
+    Args:
+        df: Ergebnis von :func:`close_following`.
+
+    Returns:
+        (slope, intercept, r2, df mit zusaetzlicher Spalte ``sec_corr``).
+        slope/intercept/r2 sind NaN, wenn zu wenige Runden vorliegen.
+    """
+    d = df.dropna(subset=["gap_median_m", "tyre_life"]).copy()
+    d = d[d["gap_median_m"] < 500]
+    if len(d) < 5 or d["tyre_life"].nunique() < 2:
+        return float("nan"), float("nan"), float("nan"), d
+
+    fit = fit_degradation(d["tyre_life"], d["sec_fuel"])
+    d["sec_corr"] = d["sec_fuel"] - fit.slope * d["tyre_life"]
+
+    slope, inter = np.polyfit(d["anteil_nah"], d["sec_corr"], 1)
+    pred = slope * d["anteil_nah"] + inter
+    ss_res = float(((d["sec_corr"] - pred) ** 2).sum())
+    ss_tot = float(((d["sec_corr"] - d["sec_corr"].mean()) ** 2).sum())
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    return float(slope), float(inter), r2, d
+
+
+# --------------------------------------------------------------- Mini-Sektoren
+def mini_sectors(session, drivers: list[str], n: int = 25) -> dict:
+    """Zerlegt die Runde in n gleich lange Distanz-Abschnitte und ermittelt
+    je Abschnitt, welcher der uebergebenen Fahrer dort am wenigsten Zeit
+    gebraucht hat (siehe P06).
+
+    Nur wenige Fahrer uebergeben (MAX_SERIEN aus f1lab.design) - bei allen
+    20 waere weder die Farbdarstellung noch die Frage "wer dominiert wo"
+    sinnvoll, siehe P06-Docstring.
+
+    Returns:
+        dict mit ``telemetrie`` (Distanz/Zeit/X/Y je Fahrer),
+        ``edges`` (Grenzen der Abschnitte) und ``gewinner`` (Fahrer je
+        Abschnitt, laenge n).
+    """
+    telemetrie = {}
+    for drv in drivers:
+        lap = session.laps[session.laps["Driver"] == drv].pick_fastest()
+        if lap is None or pd.isna(lap["LapTime"]):
+            continue
+        tel = lap.get_telemetry()
+        telemetrie[drv] = pd.DataFrame({
+            "Distance": tel["Distance"].to_numpy(dtype=float),
+            "sec": tel["Time"].dt.total_seconds().to_numpy(),
+            "X": tel["X"].to_numpy(dtype=float),
+            "Y": tel["Y"].to_numpy(dtype=float),
+        })
+    if len(telemetrie) < 2:
+        return {"telemetrie": telemetrie, "edges": None, "gewinner": None}
+
+    strecke = min(t["Distance"].max() for t in telemetrie.values())
+    edges = np.linspace(0, strecke, n + 1)
+    dauer = pd.DataFrame({
+        drv: np.diff(np.interp(edges, t["Distance"], t["sec"]))
+        for drv, t in telemetrie.items()
+    })
+    return {"telemetrie": telemetrie, "edges": edges,
+           "gewinner": dauer.idxmin(axis=1).to_numpy(), "dauer": dauer}
+
+
+# --------------------------------------------------------------- Teamkollegen
+def teammate_duels(session) -> list[dict]:
+    """Team-Duelle einer Session: schneller Teamkollege gegen langsamer,
+    aus Quali-Bestzeit (gueltig, nicht gestrichen) oder Race Pace
+    (siehe P05).
+
+    Race-Sessions nutzen :func:`pace_table` (bereinigt, treibstoffkorrigiert),
+    alle anderen die schnellste gueltige Runde je Fahrer.
+    """
+    if session.name in ("Race", "Sprint"):
+        pace = pace_table(session)
+        if pace.empty:
+            return []
+        return _duelle(pace, "team", "driver", "median_s")
+
+    laps = session.laps.pick_wo_box().pick_accurate()
+    laps = laps[not_deleted_mask(laps["Deleted"]).to_numpy()]
+    beste = (laps.groupby(["Team", "Driver"])["LapTime"].min()
+            .dt.total_seconds().reset_index())
+    return _duelle(beste, "Team", "Driver", "LapTime")
+
+
+def _duelle(tab: pd.DataFrame, team_col: str, driver_col: str,
+           wert_col: str) -> list[dict]:
+    out = []
+    for team, grp in tab.groupby(team_col):
+        if len(grp) != 2:
+            continue
+        grp = grp.sort_values(wert_col)
+        schnell, langsam = grp.iloc[0], grp.iloc[1]
+        out.append({
+            "team": team, "a": schnell[driver_col], "b": langsam[driver_col],
+            "score_a": 1.0,
+            "delta_pct": float((langsam[wert_col] / schnell[wert_col] - 1) * 100),
+        })
+    return out

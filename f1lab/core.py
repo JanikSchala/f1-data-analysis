@@ -383,6 +383,67 @@ def match_by_distance(a, b, tolerance: float) -> list[tuple[int, int]]:
     return paare
 
 
+def active_distance_zones(active, distance, min_length_m: float = 20.0
+                          ) -> list[dict]:
+    """Zerlegt ein beliebiges binaeres Signal in zusammenhaengende
+    Distanz-Zonen - dieselbe Flankenlogik wie :func:`braking_zones`, aber
+    ohne die bremsspezifischen Kennwerte (Geschwindigkeit/Verzoegerung).
+    Fuer DRS-Aktivzonen gedacht, funktioniert fuer jedes binaere
+    Distanzsignal (z.B. auch Throttle > 0).
+
+    Args:
+        active: Binaeres Signal, wird nach bool konvertiert.
+        distance: Zurueckgelegte Distanz in Metern.
+        min_length_m: Kuerzere Zonen sind meist Messrauschen.
+
+    Returns:
+        Liste von Zonen (start_m, end_m, length_m), sortiert nach Distanz.
+    """
+    a = np.asarray(active).astype(bool)
+    d = np.asarray(distance, dtype=float)
+    if a.size != d.size:
+        raise ValueError("alle Kanaele muessen gleich lang sein")
+    if a.size == 0 or not a.any():
+        return []
+
+    edges = np.diff(a.astype(np.int8))
+    starts = np.flatnonzero(edges == 1) + 1
+    ends = np.flatnonzero(edges == -1)
+    if a[0]:
+        starts = np.r_[0, starts]
+    if a[-1]:
+        ends = np.r_[ends, a.size - 1]
+
+    zones = []
+    for s, e in zip(starts, ends):
+        length = d[e] - d[s]
+        if length < min_length_m:
+            continue
+        zones.append({"start_m": round(float(d[s]), 1),
+                      "end_m": round(float(d[e]), 1),
+                      "length_m": round(float(length), 1)})
+    return zones
+
+
+def drs_state(drs_values, open_codes: tuple[int, ...] = (10, 12, 14),
+              detected_code: int = 8):
+    """Klassifiziert den codierten DRS-Kanal in drei Zustaende.
+
+    0 = zu, 1 = erkannt/im Aktivierungsbereich (Code 8), 2 = offen. FastF1s
+    eigene Dokumentation bezeichnet die Codes unterhalb von 10 als unsicher
+    ("Unknown Distinction", "Noted Sometimes") - das hier ist die in der
+    Community uebliche Lesart, nicht eine offiziell bestaetigte.
+
+    Returns:
+        Ganzzahl-Array derselben Laenge wie ``drs_values``.
+    """
+    v = np.asarray(drs_values)
+    status = np.zeros(v.shape, dtype=int)
+    status[v == detected_code] = 1
+    status[np.isin(v, open_codes)] = 2
+    return status
+
+
 # --------------------------------------------------------------- Streckengeometrie
 def path_length(x, y, closed: bool = True) -> float:
     """Laenge eines Streckenzugs als Summe der Segmentlaengen.
