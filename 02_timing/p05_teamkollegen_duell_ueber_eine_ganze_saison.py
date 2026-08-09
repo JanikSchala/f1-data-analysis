@@ -34,10 +34,11 @@ in f1lab.core, mit Tests auf bekannten Referenzwerten (Gleichstand -> 50%,
 bleiben Skript, weil sie nur hier gebraucht werden (siehe P01: derselbe
 Schnitt zwischen wiederverwendbarer Rechnung und einmaliger Orchestrierung).
 
-Eine zweite, kleinere Korrektur gegenueber der urspruenglichen Fassung: die
-Quali-Bestzeit zaehlt nur, wenn sie nicht wegen Streckenlimits gestrichen
-wurde (dieselbe not_deleted_mask() wie in P03/P04) - eine gestrichene
-Bestzeit ist keine gueltige Rundenzeit, auch wenn sie im Rohdatenblatt steht.
+Die Duell-Extraktion selbst (Quali-Bestzeit, nicht wegen Streckenlimits
+gestrichen, dieselbe not_deleted_mask() wie in P03/P04; Rennen ueber die
+bereinigte, treibstoffkorrigierte Race Pace) sitzt seit der App-Integration
+in f1lab.teammate_duels() - dieselbe Funktion, die auch die Teamkollegen-
+Seite im Dashboard nutzt, statt einer zweiten Kopie hier im Skript.
 
 Saison 2024, 450 Duelle aus 24 Wochenenden: Verstappen fuehrt das Elo-Ranking
 mit 1676 klar an (23 von 24 Quali-Duellen gegen Perez gewonnen), gefolgt von
@@ -66,7 +67,6 @@ from matplotlib.colors import LinearSegmentedColormap
 
 import f1lab
 from f1lab.design import FG, GRID, MUTED, RAMPE, SERIEN, matplotlib_stil
-from f1lab.session import not_deleted_mask
 
 warnings.filterwarnings("ignore")
 # Der Saison-Scan laedt 48 Sessions am Stueck - FastF1s Hintergrundabgleich
@@ -85,51 +85,21 @@ RAMPE_CMAP = LinearSegmentedColormap.from_list("rampe", RAMPE)
 plt.rcParams.update(matplotlib_stil())
 
 
-def _duelle(tab: pd.DataFrame, team_col: str, driver_col: str,
-           wert_col: str) -> list[dict]:
-    """Paart Teamkollegen und macht daraus ein Duell: schneller gegen
-    langsamer, mit dem prozentualen Rueckstand."""
-    out = []
-    for team, grp in tab.groupby(team_col):
-        if len(grp) != 2:
-            continue
-        grp = grp.sort_values(wert_col)
-        schnell, langsam = grp.iloc[0], grp.iloc[1]
-        out.append({
-            "team": team, "a": schnell[driver_col], "b": langsam[driver_col],
-            "score_a": 1.0,
-            "delta_pct": float((langsam[wert_col] / schnell[wert_col] - 1) * 100),
-        })
-    return out
-
-
-def quali_duell(ses) -> list[dict]:
-    """Team-Duelle einer Qualifying-Session: schnellste gueltige Runde je Fahrer."""
-    laps = ses.laps.pick_wo_box().pick_accurate()
-    laps = laps[not_deleted_mask(laps["Deleted"]).to_numpy()]
-    beste = (laps.groupby(["Team", "Driver"])["LapTime"].min()
-             .dt.total_seconds().reset_index())
-    return _duelle(beste, "Team", "Driver", "LapTime")
-
-
-def race_duell(ses) -> list[dict]:
-    """Team-Duelle aus der bereinigten, treibstoffkorrigierten Race Pace."""
-    pace = f1lab.pace_table(ses)
-    if pace.empty:
-        return []
-    return _duelle(pace, "team", "driver", "median_s")
-
-
 def saison_scannen(year: int) -> pd.DataFrame:
-    """Iteriert den ganzen Kalender, ueberspringt fehlende Sessions robust."""
+    """Iteriert den ganzen Kalender, ueberspringt fehlende Sessions robust.
+
+    Die Duell-Extraktion je Session steckt in f1lab.teammate_duels() - dort
+    entscheidet die Funktion selbst anhand von session.name, ob Quali- oder
+    Renn-Logik greift.
+    """
     schedule = fastf1.get_event_schedule(year, include_testing=False)
     rows = []
     for _, ev in schedule.iterrows():
         rnd = int(ev["RoundNumber"])
-        for ident, extrahiere in (("Q", quali_duell), ("R", race_duell)):
+        for ident in ("Q", "R"):
             try:
                 ses = f1lab.load(year, rnd, ident)
-                duelle = extrahiere(ses)
+                duelle = f1lab.teammate_duels(ses)
             except Exception as exc:
                 print(f"      R{rnd:>2} {ident} uebersprungen: "
                      f"{type(exc).__name__}")

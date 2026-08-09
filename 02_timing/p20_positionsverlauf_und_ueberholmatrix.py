@@ -41,11 +41,20 @@ Monza 2024 R: 193 Versuche unter 3 m, davon 23 erfolgreich (12 %) - der
 Rest, 170 Versuche, blieb ohne Positionswechsel. Die Verteidigung gewinnt die
 meisten knappen Duelle, nicht der Angriff.
 
-Zwei kleinere Korrekturen gegenueber der urspruenglichen Formulierung:
+Eine kleinere Korrektur gegenueber der urspruenglichen Formulierung:
 DriverAhead traegt die Startnummer, nicht das Kuerzel (Mapping ueber
-DriverNumber -> Driver noetig); und die Ueberholmatrix zaehlt jetzt nur
-gruene Flagge - bei diesem Rennen ohne Safety Car zwar ohne Effekt auf die
-Zahlen, aber sonst wuerde ein Safety-Car-Restart als "Ueberholung" durchgehen.
+DriverNumber -> Driver noetig).
+
+Eine zweite, groessere kam erst bei der App-Integration ans Licht: Position
+und Ueberholmatrix sitzen jetzt in f1lab.position_progression()/
+f1lab.overtakes_matrix() (dieselben Funktionen wie die Renndynamik-Seite im
+Dashboard), und beim Herausziehen fiel auf, dass die Boxenstopp-Ausnahme
+hier nie gegriffen hat: `laps_gruen.pick_wo_box()` entfernt alle
+Boxenrunden, bevor `PitInTime.notna()` danach sucht - die Menge war immer
+leer, in dieser wie in der urspruenglichen Fassung. f1lab.overtakes_matrix()
+baut box_laps jetzt aus ungefilterten Daten und prueft die Gruen-Flagge
+korrekt auf der Ueberholrunde selbst statt nur auf die (wirkungslose)
+Boxenerkennung.
 """
 from __future__ import annotations
 
@@ -77,36 +86,6 @@ ANNAEHERUNG_M = 3.0
 
 plt.rcParams.update(matplotlib_stil())
 f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
-
-
-def positionsverlauf(laps: pd.DataFrame) -> pd.DataFrame:
-    return laps.pivot_table(index="LapNumber", columns="Driver",
-                            values="Position", aggfunc="first")
-
-
-def ueberholmatrix(laps: pd.DataFrame, pos: pd.DataFrame) -> pd.DataFrame:
-    """VORGEHEN 3-4: Positionswechsel zwischen Runden, ohne Boxenstopp-Effekt.
-
-    `laps` sollte hier bereits auf gruene Flagge gefiltert sein - siehe
-    AUSBAUSTUFE-Hinweis im Modul-Docstring.
-    """
-    box_laps = set(zip(laps.loc[laps["PitInTime"].notna(), "Driver"],
-                       laps.loc[laps["PitInTime"].notna(), "LapNumber"]))
-    drivers = list(pos.columns)
-    mat = pd.DataFrame(0, index=drivers, columns=drivers)
-
-    for lap in pos.index[1:]:
-        prev, cur = pos.loc[lap - 1], pos.loc[lap]
-        for a in drivers:
-            for b in drivers:
-                if a == b or pd.isna(prev[a]) or pd.isna(cur[a]) \
-                        or pd.isna(prev[b]) or pd.isna(cur[b]):
-                    continue
-                if prev[a] > prev[b] and cur[a] < cur[b]:
-                    if (b, lap) in box_laps or (a, lap - 1) in box_laps:
-                        continue
-                    mat.loc[a, b] += 1
-    return mat
 
 
 def naeherungen(laps_gruen: pd.DataFrame, pos: pd.DataFrame,
@@ -230,8 +209,8 @@ def main():
                       .set_index("DriverNumber")["Driver"].to_dict())
 
     print("[2/4] Positionsverlauf und Ueberholmatrix ...")
-    pos = positionsverlauf(laps_alle)
-    mat = ueberholmatrix(laps_gruen, pos)
+    pos = f1lab.position_progression(ses)
+    mat = f1lab.overtakes_matrix(ses)
     print("Ueberholungen gesamt je Fahrer:")
     print(mat.sum(axis=1).sort_values(ascending=False).head(8).to_string())
 

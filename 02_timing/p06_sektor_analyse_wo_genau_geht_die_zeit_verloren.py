@@ -43,6 +43,10 @@ gehen an Piastri, je 8 an Leclerc und Sainz - trotz 0.25s Rueckstand auf
 Leclercs Gesamtzeit. Verteilte Staerke schlaegt sich nicht eins zu eins in
 der Rundenzeit nieder, weil die Abschnitte unterschiedlich lang sind und
 Piastris Vorteile in kuerzeren Abschnitten liegen.
+
+Die Mini-Sektor-Berechnung selbst sitzt seit der App-Integration in
+f1lab.mini_sectors() - dieselbe Funktion, die auch der Vergleichs-Reiter der
+Telemetrie-Seite im Dashboard nutzt.
 """
 from __future__ import annotations
 
@@ -83,32 +87,6 @@ def sektor_tabelle(laps: pd.DataFrame) -> pd.DataFrame:
     sec["real"] = laps.groupby("Driver")["LapTime"].min().dt.total_seconds()
     sec["ungenutzt"] = sec["real"] - sec["theoretisch"]
     return sec.sort_values("real")
-
-
-def mini_sektoren(laps: pd.DataFrame, fahrer: list[str], n: int = N_MINISEKTOREN
-                  ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame], np.ndarray, np.ndarray]:
-    """Zerlegt die Runde in n gleich lange Distanz-Abschnitte und ermittelt
-    je Abschnitt, wer dort am wenigsten Zeit gebraucht hat."""
-    telemetrie = {}
-    for drv in fahrer:
-        lap = laps[laps["Driver"] == drv].pick_fastest()
-        tel = lap.get_telemetry()
-        telemetrie[drv] = pd.DataFrame({
-            "Distance": tel["Distance"].to_numpy(dtype=float),
-            "sec": tel["Time"].dt.total_seconds().to_numpy(),
-            "X": tel["X"].to_numpy(dtype=float),
-            "Y": tel["Y"].to_numpy(dtype=float),
-        })
-
-    strecke = min(t["Distance"].max() for t in telemetrie.values())
-    edges = np.linspace(0, strecke, n + 1)
-
-    dauer = pd.DataFrame({
-        drv: np.diff(np.interp(edges, t["Distance"], t["sec"]))
-        for drv, t in telemetrie.items()
-    })
-    gewinner = dauer.idxmin(axis=1).to_numpy()
-    return dauer, telemetrie, edges, gewinner
 
 
 def zeichne_potenzial(ax, sec: pd.DataFrame) -> None:
@@ -192,7 +170,9 @@ def main():
 
     print(f"\n[3/4] Mini-Sektoren (Top 3, n={N_MINISEKTOREN}) ...")
     top3 = sec.index[:3].tolist()
-    dauer, telemetrie, edges, gewinner = mini_sektoren(laps, top3)
+    r = f1lab.mini_sectors(ses, top3, n=N_MINISEKTOREN)
+    telemetrie, edges, gewinner, dauer = (r["telemetrie"], r["edges"],
+                                          r["gewinner"], r["dauer"])
     for drv in top3:
         print(f"      {drv}: {int((gewinner == drv).sum())} Mini-Sektoren gewonnen")
 
