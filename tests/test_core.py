@@ -13,8 +13,10 @@ import pytest
 
 from f1lab.core import (
     Interval,
+    active_distance_zones,
     bootstrap_median,
     braking_zones,
+    drs_state,
     elevation_profile,
     elo_expected,
     elo_update,
@@ -372,6 +374,51 @@ class TestMatchByDistance:
     def test_order_follows_a(self):
         paare = match_by_distance([500, 100], [500, 100], tolerance=1)
         assert paare == [(0, 0), (1, 1)]
+
+
+class TestActiveDistanceZones:
+    def test_single_zone(self):
+        active = [False, False, True, True, True, False]
+        d = [0, 10, 20, 30, 40, 50]
+        zonen = active_distance_zones(active, d, min_length_m=5)
+        assert len(zonen) == 1
+        assert zonen[0] == {"start_m": 20.0, "end_m": 40.0, "length_m": 20.0}
+
+    def test_short_zone_filtered(self):
+        active = [False, True, False]
+        d = [0, 10, 20]
+        assert active_distance_zones(active, d, min_length_m=5) == []
+
+    def test_active_at_edges_captured(self):
+        """Flankenerkennung darf Zonen am Anfang/Ende nicht verlieren -
+        beide Randlaeufe brauchen genug Punkte fuer eine echte Distanz."""
+        active = [True, True, False, False, True, True]
+        d = [0, 10, 20, 30, 40, 50]
+        zonen = active_distance_zones(active, d, min_length_m=5)
+        assert len(zonen) == 2
+        assert zonen[0] == {"start_m": 0.0, "end_m": 10.0, "length_m": 10.0}
+        assert zonen[1] == {"start_m": 40.0, "end_m": 50.0, "length_m": 10.0}
+
+    def test_never_active_returns_empty(self):
+        assert active_distance_zones([False] * 5, range(5)) == []
+
+    def test_mismatched_lengths_raise(self):
+        with pytest.raises(ValueError, match="gleich lang"):
+            active_distance_zones([True, False], [0, 1, 2])
+
+
+class TestDrsState:
+    def test_closed_by_default(self):
+        assert drs_state([0, 1, 3]).tolist() == [0, 0, 0]
+
+    def test_detected_is_one(self):
+        assert drs_state([8, 8]).tolist() == [1, 1]
+
+    def test_open_codes_are_two(self):
+        assert drs_state([10, 12, 14]).tolist() == [2, 2, 2]
+
+    def test_mixed_sequence(self):
+        assert drs_state([0, 8, 10, 1, 12]).tolist() == [0, 1, 2, 0, 2]
 
 
 # --------------------------------------------------------------- path_length
