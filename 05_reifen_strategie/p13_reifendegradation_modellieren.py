@@ -23,62 +23,200 @@ GENUTZTE FASTF1-BAUSTEINE
   - Laps.pick_compounds
   - numpy polyfit
 
-AUSBAUSTUFE
-Ersetze die lineare Regression durch ein Modell mit Cliff-Effekt (stueckweise linear) und finde den Knickpunkt je Compound.
-"""
+AUSBAUSTUFE  [umgesetzt]
+Ersetze die lineare Regression durch ein Modell mit Cliff-Effekt (stueckweise
+linear) und finde den Knickpunkt je Compound.
 
+VORGEHEN 1-3 laufen ueber f1lab.clean_laps()/fuel_correct() (Punkt 1-2) und
+f1lab.degradation() (Punkt 3, ruft intern fit_degradation() je Stint) -
+dieselben Bausteine wie die Reifen-Seite im Dashboard, hier zusaetzlich mit
+den Rohdaten fuer die Kurven-Grafik. Bahrain 2024 R: 62 Stints mit
+mindestens 6 Runden (59 belastbar), Degradation im Median 0.095 s/Runde auf
+Hard, 0.124 auf Soft - McLaren im Team-Mittel am flachsten (0.091), Williams
+am staerksten betroffen (0.140).
+
+AUSBAUSTUFE als f1lab.find_cliff(): stueckweise lineare Anpassung mit einer
+Modellwahl ueber die Fehlerquadratsumme (nur akzeptiert, wenn die zweite
+Steigung die erste deutlich uebertrifft). Von 50 Stints mit mindestens 10
+Runden zeigen 19 (38 %) einen echten Knick - kein Nischenfall, aber auch
+nicht die Mehrheit: der Reifen degradiert in Bahrain meistens durchgehend
+linear genug, dass ein einfacher Fit ausreicht. Deutlichstes Beispiel:
+Alonsos zweiter Stint (Hard, 24 Runden) laeuft bis Reifenalter 22 mit
+0.07 s/Runde, danach mit 0.50 s/Runde - der Reifen bricht in den letzten
+drei Runden sichtbar ein.
+"""
+from __future__ import annotations
+
+import sys
+import warnings
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import matplotlib
+
+matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import fastf1
 
-fastf1.Cache.enable_cache("~/f1_cache")
-ses = fastf1.get_session(2024, "Bahrain", "R")
-ses.load(telemetry=False)
+import f1lab
+from f1lab.design import COMPOUND, FG, GRID, MUTED, SERIEN, matplotlib_stil
 
-FUEL_EFFECT = 0.03      # s pro Runde pro kg
-FUEL_PER_LAP = 1.8      # kg
+warnings.filterwarnings("ignore")
 
-laps = (ses.laps.pick_wo_box().pick_accurate()
-        .pick_track_status("1").pick_quicklaps(1.10)).copy()
-laps["Sec"] = laps["LapTime"].dt.total_seconds()
+OUT = Path(__file__).parent / "out"
+OUT.mkdir(exist_ok=True)
 
-total = ses.total_laps
-laps["FuelCorr"] = laps["Sec"] - (total - laps["LapNumber"]) * FUEL_PER_LAP * FUEL_EFFECT
+SEASON, EVENT, IDENT = 2024, "Bahrain", "R"
+SCHWELLE, MIN_RUNDEN = 1.10, 6
+MIN_RUNDEN_CLIFF = 10
 
-rows = []
-for (drv, stint), g in laps.groupby(["Driver", "Stint"]):
-    g = g.sort_values("TyreLife")
-    if len(g) < 6:
-        continue
-    slope, intercept = np.polyfit(g["TyreLife"], g["FuelCorr"], 1)
-    rows.append({
-        "Driver": drv,
-        "Team": g["Team"].iloc[0],
-        "Stint": int(stint),
-        "Compound": g["Compound"].iloc[0],
-        "Laps": len(g),
-        "Deg_s_pro_Runde": round(slope, 4),
-        "Basiszeit": round(intercept, 3),
-    })
+plt.rcParams.update(matplotlib_stil())
 
-deg = pd.DataFrame(rows)
-print(deg.sort_values("Deg_s_pro_Runde").to_string(index=False))
 
-print("\nMittlere Degradation je Compound:")
-print(deg.groupby("Compound")["Deg_s_pro_Runde"]
-      .agg(["mean", "std", "count"]).round(4).to_string())
+def cliffs_suchen(laps: pd.DataFrame) -> list[dict]:
+    """AUSBAUSTUFE: f1lab.find_cliff() je Stint mit genug Runden."""
+    treffer = []
+    for (drv, stint), g in laps.groupby(["Driver", "Stint"]):
+        g = g.sort_values("TyreLife")
+        if len(g) < MIN_RUNDEN_CLIFF:
+            continue
+        knick, links, rechts = f1lab.find_cliff(g["TyreLife"], g["corrected"])
+        if knick is not None:
+            treffer.append({
+                "driver": str(drv), "stint": int(stint),
+                "compound": str(g["Compound"].iloc[0]), "n": len(g),
+                "knick_tyrelife": knick, "slope_vorher": links.slope,
+                "slope_danach": rechts.slope, "laps": g,
+            })
+    return treffer
 
-fig, ax = plt.subplots(figsize=(10, 6))
-colors = {"SOFT": "#da291c", "MEDIUM": "#ffd12e", "HARD": "#f0f0ec",
-          "INTERMEDIATE": "#43b02a", "WET": "#0067ad"}
-for (drv, stint), g in laps.groupby(["Driver", "Stint"]):
-    if len(g) < 6:
-        continue
-    c = colors.get(g["Compound"].iloc[0], "grey")
-    ax.plot(g["TyreLife"], g["FuelCorr"], marker=".", lw=0.8, alpha=0.6, color=c)
-ax.set_xlabel("Reifenalter [Runden]")
-ax.set_ylabel("Fuel-korrigierte Rundenzeit [s]")
-ax.set_title(f"{ses.event['EventName']} - Degradationskurven je Stint")
-plt.tight_layout()
-plt.show()
+
+def zeichne_kurven(ax, laps: pd.DataFrame) -> None:
+    """VORGEHEN 3: alle Stints, Fuel-korrigiert, eingefaerbt nach Mischung."""
+    for (_, _), g in laps.groupby(["Driver", "Stint"]):
+        if len(g) < MIN_RUNDEN:
+            continue
+        g = g.sort_values("TyreLife")
+        farbe = COMPOUND.get(str(g["Compound"].iloc[0]).upper(), MUTED)
+        ax.plot(g["TyreLife"], g["corrected"], marker=".", ms=3, lw=0.8,
+               alpha=0.55, color=farbe)
+    vorhanden = {str(c).upper() for c in laps["Compound"].unique()}
+    for mischung in ("SOFT", "MEDIUM", "HARD"):
+        if mischung in vorhanden:
+            ax.plot([], [], color=COMPOUND[mischung], lw=2, label=mischung.title())
+    ax.legend(loc="upper left", frameon=False, labelcolor=FG, fontsize=9)
+    ax.set_xlabel("Reifenalter [Runden]")
+    ax.set_ylabel("Fuel-korrigierte Rundenzeit [s]")
+    ax.set_title(f"{EVENT} {SEASON} - Degradationskurven je Stint", loc="left",
+                color=FG, fontsize=13, pad=10)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def zeichne_teams(ax, deg: pd.DataFrame) -> None:
+    """VORGEHEN 4: mittlere Degradation je Team, nur belastbare Fits, die
+    drei Teams mit der staerksten Degradation hervorgehoben."""
+    rel = deg[deg["reliable"]]
+    je_team = rel.groupby("team")["deg_s_per_lap"].mean().sort_values()
+    farben = [SERIEN[1] if i >= len(je_team) - 3 else MUTED
+             for i in range(len(je_team))]
+    ax.barh(je_team.index, je_team.to_numpy(), color=farben, height=0.65)
+    ax.set_xlabel("Mittlere Degradation [s/Runde]")
+    ax.set_title("Team-Vergleich (nur belastbare Fits)", loc="left", color=FG,
+                fontsize=13, pad=10)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(axis="x", alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def zeichne_cliff(ax, beispiel: dict) -> None:
+    """AUSBAUSTUFE: staerkstes Cliff-Beispiel, zwei Geraden ueber den echten
+    Runden."""
+    g = beispiel["laps"]
+    ax.scatter(g["TyreLife"], g["corrected"], s=26, color=MUTED, zorder=2)
+    knick = beispiel["knick_tyrelife"]
+    vor = g[g["TyreLife"] <= knick]
+    nach = g[g["TyreLife"] >= knick]
+    xv = np.array([vor["TyreLife"].min(), knick])
+    xn = np.array([knick, nach["TyreLife"].max()])
+    b_vor = vor["corrected"].mean() - beispiel["slope_vorher"] * vor["TyreLife"].mean()
+    b_nach = nach["corrected"].mean() - beispiel["slope_danach"] * nach["TyreLife"].mean()
+    ax.plot(xv, beispiel["slope_vorher"] * xv + b_vor, color=SERIEN[0], lw=2.2,
+           label=f"vor Knick: {beispiel['slope_vorher']:+.2f} s/Runde")
+    ax.plot(xn, beispiel["slope_danach"] * xn + b_nach, color=SERIEN[1], lw=2.2,
+           label=f"nach Knick: {beispiel['slope_danach']:+.2f} s/Runde")
+    ax.axvline(knick, color=MUTED, lw=1, ls="--")
+    ax.legend(loc="upper left", frameon=False, labelcolor=FG, fontsize=9)
+    ax.set_xlabel("Reifenalter [Runden]")
+    ax.set_ylabel("Fuel-korrigierte Rundenzeit [s]")
+    ax.set_title(f"{beispiel['driver']} Stint {beispiel['stint']} "
+                f"({beispiel['compound'].title()}) - deutlichster Cliff",
+                loc="left", color=FG, fontsize=13, pad=10)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def main():
+    f1lab.enable_cache()
+
+    print(f"[1/4] {EVENT} {SEASON} {IDENT} laden ...")
+    ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=False)
+
+    print("[2/4] Runden filtern, Fuel-Korrektur (VORGEHEN 1-2) ...")
+    laps = f1lab.clean_laps(ses, threshold=SCHWELLE).copy()
+    laps["sec"] = laps["LapTime"].dt.total_seconds()
+    laps["corrected"] = f1lab.fuel_correct(
+        laps["sec"], laps["LapNumber"], ses.total_laps)
+    print(f"      {len(laps)} saubere Runden, {laps.groupby(['Driver', 'Stint']).ngroups} Stints")
+
+    print("\n[3/4] Degradation je Stint (VORGEHEN 3) und Aggregation "
+         "(VORGEHEN 4) ...")
+    deg = f1lab.degradation(ses, threshold=SCHWELLE, min_laps=MIN_RUNDEN)
+    print(f"      {len(deg)} Stints mit >= {MIN_RUNDEN} Runden, "
+         f"{deg['reliable'].sum()} davon belastbar")
+    je_compound = f1lab.degradation_by_compound(ses, threshold=SCHWELLE,
+                                                min_laps=MIN_RUNDEN)
+    print("\n      Mittel/Median je Mischung:")
+    print(je_compound.to_string())
+    print(deg[deg["reliable"]].groupby("compound")["deg_s_per_lap"]
+         .median().round(4).rename("median").to_string())
+    print("\n      Team-Mittel (belastbar):")
+    print(deg[deg["reliable"]].groupby("team")["deg_s_per_lap"]
+         .mean().round(4).sort_values().to_string())
+
+    print(f"\n[4/4] AUSBAUSTUFE: Cliff-Suche (mind. {MIN_RUNDEN_CLIFF} Runden) ...")
+    cliffs = cliffs_suchen(laps)
+    kandidaten = [(d, s) for (d, s), g in laps.groupby(["Driver", "Stint"])
+                 if len(g) >= MIN_RUNDEN_CLIFF]
+    print(f"      {len(cliffs)}/{len(kandidaten)} Stints mit erkanntem Knick "
+         f"({100 * len(cliffs) / len(kandidaten):.0f} %)")
+    beispiel = max(cliffs, key=lambda c: c["slope_danach"] - c["slope_vorher"])
+    print(f"      Deutlichster Fall: {beispiel['driver']} Stint "
+         f"{beispiel['stint']} ({beispiel['compound']}) - Knick bei "
+         f"Reifenalter {beispiel['knick_tyrelife']}, "
+         f"{beispiel['slope_vorher']:+.3f} -> {beispiel['slope_danach']:+.3f} s/Runde")
+
+    print("\nGrafik ...")
+    fig = plt.figure(figsize=(15, 10))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.2, 1], hspace=0.4, wspace=0.28)
+    zeichne_kurven(fig.add_subplot(gs[0, :]), laps)
+    zeichne_teams(fig.add_subplot(gs[1, 0]), deg)
+    zeichne_cliff(fig.add_subplot(gs[1, 1]), beispiel)
+    fig.suptitle(f"{ses.event['EventName']} {SEASON} - Reifendegradation",
+                x=0.09, ha="left", fontsize=16, color=FG, y=0.995)
+    path = OUT / "reifendegradation.png"
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\n      -> {path}")
+
+
+if __name__ == "__main__":
+    main()
