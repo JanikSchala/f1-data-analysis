@@ -508,6 +508,66 @@ def circuit_dimension(events, identifier: str = "Q") -> pd.DataFrame:
     return df
 
 
+def corner_labels(session) -> pd.DataFrame:
+    """Kurven der Session, auf die Distanz einer Referenzrunde projiziert.
+
+    Die XY-Position jeder Kurve (aus get_circuit_info(), unabhaengig von
+    jedem Fahrer) wird auf den naechstgelegenen Punkt der schnellsten Runde
+    der Session projiziert - das gibt jeder Kurve eine Distanz entlang der
+    Strecke, mit der sich Telemetrie faehrerbergreifend vergleichen laesst.
+    """
+    ci = session.get_circuit_info()
+    ref = session.laps.pick_fastest().get_telemetry().add_distance()
+    ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
+    ref_dist = ref["Distance"].to_numpy()
+
+    distanzen = []
+    for c in ci.corners.itertuples():
+        d = np.hypot(ref_xy[:, 0] - c.X, ref_xy[:, 1] - c.Y)
+        distanzen.append(float(ref_dist[np.argmin(d)]))
+
+    out = ci.corners.copy()
+    out["Distance"] = distanzen
+    out["label"] = [f"T{int(n)}{letter}" for n, letter in
+                    zip(out["Number"], out["Letter"], strict=True)]
+    return out.sort_values("Distance", ignore_index=True)
+
+
+def corner_speeds(session, window_m: float = 60.0) -> pd.DataFrame:
+    """Minimalgeschwindigkeit je Kurve und Fahrer (siehe P11/P12).
+
+    Kurven kommen aus :func:`corner_labels` (auf eine Referenzrunde
+    projiziert); je Fahrer wird die Minimalgeschwindigkeit in einem Fenster
+    von +/- window_m um die Kurvendistanz gesucht - nicht per exakter
+    naechster-Nachbar-Zuordnung, weil benachbarte Kurven sich sonst
+    gegenseitig Telemetriepunkte wegnehmen koennten.
+
+    Returns:
+        DataFrame Fahrer x Kurve (Kuerzel wie "T7"), NaN wo kein
+        Telemetriepunkt im Fenster liegt.
+    """
+    corners = corner_labels(session)
+    rows = {}
+    for drv in session.drivers:
+        try:
+            lap = session.laps.pick_drivers(drv).pick_fastest()
+            tel = lap.get_telemetry().add_distance()
+        except Exception:
+            continue
+        if tel is None or tel.empty or pd.isna(lap["LapTime"]):
+            continue
+        info = session.get_driver(drv)
+        d = tel["Distance"].to_numpy()
+        v = tel["Speed"].to_numpy()
+        speeds = {}
+        for c in corners.itertuples():
+            m = (d > c.Distance - window_m) & (d < c.Distance + window_m)
+            if m.any():
+                speeds[c.label] = float(v[m].min())
+        rows[info["Abbreviation"]] = speeds
+    return pd.DataFrame(rows).T
+
+
 # --------------------------------------------------------------- Bremszonen
 def driver_braking_zones(session, driver: str, min_length_m: float = 20.0
                          ) -> pd.DataFrame:
