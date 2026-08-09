@@ -19,68 +19,240 @@ VORGEHEN
   4. Positionsgewinn Grid -> Ende Runde 1 gegenueberstellen
 
 GENUTZTE FASTF1-BAUSTEINE
-  - Laps.pick_lap
-  - Lap.get_telemetry
+  - Laps.pick_laps
+  - Lap.get_car_data / Telemetry.add_distance
   - Telemetry.slice_by_time
   - Session.results GridPosition
 
-AUSBAUSTUFE
-Vergleiche Starts derselben Fahrer ueber eine Saison und pruefe, ob Kupplungs-Updates messbar etwas gebracht haben.
+AUSBAUSTUFE  [umgesetzt]
+Starts derselben Fahrer ueber eine Saison vergleichen und pruefen, ob sich
+etwas an der Launch-Performance veraendert.
+
+Neun Rennen 2024 mit Telemetrie im Cache (Bahrain bis Monaco durchgehend,
+dann Monza - Runde 9 bis 16 fehlt telemetrisch komplett). Kein
+Kupplungs-Update ist dokumentiert bekannt, also wird hier nicht behauptet,
+eines gefunden zu haben - gemessen wird nur, ob und wie stark sich die
+Launch-Staerke innerhalb der Saison bewegt, ohne Ursache zu unterstellen.
+
+Panel 1 (Oesterreich 2024 allein) zeigt dabei den Cross-Check zu Panel 2:
+Positionsgewinn in Runde 1 korreliert kaum mit reiner Launch-Distanz - Leclerc
+verliert trotz guter Startdistanz zwoelf Plaetze, vermutlich Kurve-1-Chaos.
+Verkehr und Startplatz ueberlagern die reine Beschleunigung.
+
+Nebenbei: VORGEHEN Punkt 2 nennt Telemetry.slice_by_time als Baustein, die
+urspruengliche Fassung nutzte ihn aber nie - die Fensterung passierte per
+Hand ueber einen Zeit-Array-Vergleich. start_kennzahlen() unten schneidet
+jetzt tatsaechlich per slice_by_time auf die ersten acht Sekunden.
+
+Ein echter Datenfehler beim ersten Lauf gegen Oesterreich 2024: Zhou stand
+mit m_nach_5s = 0 in der Tabelle, kein Ausreisser, sondern PitOutTime war
+gesetzt - er startete aus der Box, nicht vom Grid. Ein Boxenstart hat eine
+komplett andere Anfangsgeschwindigkeit (Boxengassen-Limit statt Ampel-Start)
+und gehoert nicht in denselben Vergleich. lap1["PitOutTime"].notna() filtert
+das jetzt vor der Berechnung heraus, in beiden Funktionen.
+
+Ein zweiter, subtilerer Fehler waere fast unbemerkt geblieben: die rohe
+Distanz nach 5 s ueber die Saison geplottet zeigte einen dramatischen
+Einbruch zwischen Monaco und Monza - keine Launch-Schwaeche, sondern
+Streckengeometrie (Monza deckt in 5 s ein Vielfaches der Distanz von Monaco
+ab). Der Saisontrend zeigt deshalb nicht die rohe Distanz, sondern die
+Abweichung vom Feld-Mittel desselben Rennens - erst die ist ueber
+unterschiedliche Strecken hinweg vergleichbar.
 """
+from __future__ import annotations
 
-import pandas as pd
+import sys
+import warnings
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import matplotlib
+
+matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+
 import matplotlib.pyplot as plt
-import fastf1
+import pandas as pd
 
-fastf1.Cache.enable_cache("~/f1_cache")
-ses = fastf1.get_session(2024, "Austria", "R")
-ses.load()
+import f1lab
+from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
 
-rows = []
-for drv in ses.drivers:
-    info = ses.get_driver(drv)
-    try:
-        lap1 = ses.laps.pick_drivers(drv).pick_laps(1).iloc[0]
-        tel = lap1.get_car_data().add_distance()
-    except Exception:
-        continue
+warnings.filterwarnings("ignore")
+
+OUT = Path(__file__).parent / "out"
+OUT.mkdir(exist_ok=True)
+
+SEASON, EVENT, IDENT = 2024, "Austria", "R"
+SAISON_EVENTS = ["Bahrain", "Saudi Arabia", "Australia", "Japan", "China",
+                "Miami", "Emilia Romagna", "Monaco", "Italy"]
+FENSTER_S = 8.0
+
+plt.rcParams.update(matplotlib_stil())
+
+
+def start_kennzahlen(lap1, fenster_s: float = FENSTER_S) -> dict | None:
+    """VORGEHEN 2-3: Telemetrie per slice_by_time auf die Startphase
+    schneiden, daraus t_100/t_200/m_nach_5s bilden."""
+    tel = lap1.get_car_data().add_distance()
     if tel is None or tel.empty:
-        continue
+        return None
 
-    t = tel["Time"].dt.total_seconds().to_numpy()
-    v = tel["Speed"].to_numpy()
-    d = tel["Distance"].to_numpy()
+    start = tel["SessionTime"].iloc[0]
+    fenster = tel.slice_by_time(start, start + pd.Timedelta(seconds=fenster_s))
+    if fenster.empty:
+        return None
+
+    t = fenster["Time"].dt.total_seconds().to_numpy()
+    v = fenster["Speed"].to_numpy()
+    d = fenster["Distance"].to_numpy()
     t0 = t[0]
 
-    def t_at(target):
-        idx = (v >= target).argmax() if (v >= target).any() else None
-        return round(t[idx] - t0, 2) if idx is not None else None
+    def t_bei(ziel: float) -> float | None:
+        mask = v >= ziel
+        return round(float(t[mask.argmax()] - t0), 2) if mask.any() else None
 
-    end_pos = lap1["Position"]
-    grid = ses.results.loc[ses.results["DriverNumber"] == drv,
-                           "GridPosition"].squeeze()
+    nach_5s = d[(t - t0) <= 5]
+    return {
+        "t_100": t_bei(100), "t_200": t_bei(200),
+        "m_nach_5s": round(float(nach_5s.max()), 1) if nach_5s.size else None,
+    }
 
-    rows.append({
-        "Driver": info["Abbreviation"],
-        "Grid": grid,
-        "Ende_L1": end_pos,
-        "Gewinn": (grid - end_pos) if pd.notna(end_pos) else None,
-        "t_100": t_at(100),
-        "t_200": t_at(200),
-        "m_nach_5s": round(float(d[(t - t0) <= 5].max()), 1),
-    })
 
-df = pd.DataFrame(rows).sort_values("m_nach_5s", ascending=False)
-print(df.to_string(index=False))
+def renn_start(ses) -> pd.DataFrame:
+    """VORGEHEN 1, 4: Startkennzahlen und Positionsgewinn je Fahrer."""
+    rows = []
+    for drv in ses.drivers:
+        info = ses.get_driver(drv)
+        try:
+            lap1 = ses.laps.pick_drivers(drv).pick_laps(1).iloc[0]
+        except (IndexError, KeyError):
+            continue
+        if pd.notna(lap1["PitOutTime"]):
+            continue                    # aus der Box gestartet, kein Grid-Launch
+        kennzahlen = start_kennzahlen(lap1)
+        if kennzahlen is None:
+            continue
 
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.scatter(df["m_nach_5s"], df["Gewinn"], s=80, color="#e10600")
-for _, r in df.iterrows():
-    ax.annotate(r["Driver"], (r["m_nach_5s"], r["Gewinn"]),
-                xytext=(5, 3), textcoords="offset points", fontsize=8)
-ax.axhline(0, color="grey", lw=0.8)
-ax.set_xlabel("Distanz nach 5 s [m]")
-ax.set_ylabel("Positionsgewinn Runde 1")
-ax.set_title(f"{ses.event['EventName']} - Startperformance")
-plt.tight_layout()
-plt.show()
+        grid = ses.results.loc[ses.results["DriverNumber"] == drv,
+                               "GridPosition"].squeeze()
+        ende = lap1["Position"]
+        rows.append({
+            "driver": info["Abbreviation"], "grid": grid, "ende_r1": ende,
+            "gewinn": (grid - ende) if pd.notna(ende) and pd.notna(grid)
+            else None,
+            **kennzahlen,
+        })
+    return pd.DataFrame(rows).sort_values("m_nach_5s", ascending=False,
+                                          ignore_index=True)
+
+
+def saison_scan(events: list[str], year: int = SEASON) -> pd.DataFrame:
+    """AUSBAUSTUFE: dieselben Startkennzahlen ueber mehrere Rennen."""
+    zeilen = []
+    for gp in events:
+        ses = f1lab.load(year, gp, "R", telemetry=True)
+        for drv in ses.drivers:
+            info = ses.get_driver(drv)
+            try:
+                lap1 = ses.laps.pick_drivers(drv).pick_laps(1).iloc[0]
+            except (IndexError, KeyError):
+                continue
+            if pd.notna(lap1["PitOutTime"]):
+                continue                # aus der Box gestartet, kein Grid-Launch
+            kennzahlen = start_kennzahlen(lap1)
+            if kennzahlen is None:
+                continue
+            zeilen.append({
+                "round": int(ses.event["RoundNumber"]),
+                "event": ses.event["EventName"], "driver": info["Abbreviation"],
+                **kennzahlen,
+            })
+        print(f"      {ses.event['EventName']} ausgewertet")
+    return pd.DataFrame(zeilen)
+
+
+def zeichne_positionsgewinn(ax, df: pd.DataFrame) -> None:
+    d = df.dropna(subset=["m_nach_5s", "gewinn"])
+    ax.scatter(d["m_nach_5s"], d["gewinn"], s=70, color=SERIEN[0], zorder=3)
+    for _, r in d.iterrows():
+        ax.annotate(r["driver"], (r["m_nach_5s"], r["gewinn"]), xytext=(6, 4),
+                   textcoords="offset points", color=FG, fontsize=8)
+    ax.axhline(0, color=MUTED, lw=0.8)
+    ax.set_xlabel("Distanz nach 5 s [m]")
+    ax.set_ylabel("Positionsgewinn Runde 1")
+    ax.set_title(f"Start-Distanz gegen Positionsgewinn - {EVENT} {SEASON}",
+                loc="left", color=FG, fontsize=13, pad=10)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def zeichne_saisontrend(ax, saison: pd.DataFrame, top_n: int = 3) -> None:
+    """Nicht die rohe Distanz, sondern die Abweichung vom Feld-Mittel dieses
+    Rennens - Monza deckt in 5 s um ein Vielfaches mehr Strecke ab als
+    Monaco, das ist Streckengeometrie, keine Launch-Qualitaet. Erst die
+    Abweichung vom selben Rennen ist ueber die Saison vergleichbar."""
+    saison = saison.copy()
+    saison["rel_m"] = saison.groupby("event")["m_nach_5s"].transform(
+        lambda s: s - s.mean())
+
+    pivot = saison.pivot_table(index="round", columns="driver", values="rel_m")
+    vollstaendig = pivot.dropna(axis=1)
+    top = (vollstaendig.mean().sort_values(ascending=False).index[:top_n]
+          if not vollstaendig.empty else pivot.mean().sort_values(
+              ascending=False).index[:top_n])
+
+    for drv in pivot.columns:
+        if drv not in top:
+            ax.plot(pivot.index, pivot[drv], color=GRID, lw=1.0, alpha=0.8)
+    for i, drv in enumerate(top):
+        serie = pivot[drv].dropna()
+        ax.plot(serie.index, serie, color=SERIEN[i], lw=2.2, marker="o",
+               markersize=4, label=drv)
+
+    ax.axhline(0, color=MUTED, lw=0.8)
+    ax.set_xlabel("Rennwoche (Saison 2024)")
+    ax.set_ylabel("Abweichung vom Feld-Mittel [m]")
+    ax.set_title(f"Launch-Staerke relativ zum Feld, Top {top_n} im Mittel "
+                f"hervorgehoben", loc="left", color=FG, fontsize=13, pad=10)
+    ax.legend(loc="lower left", frameon=False, labelcolor=FG, fontsize=9,
+             ncol=top_n)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def main():
+    f1lab.enable_cache()
+
+    print(f"[1/3] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
+    ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
+    start = renn_start(ses)
+    print(start.to_string(index=False))
+
+    print(f"\n[2/3] Saison-Scan ueber {len(SAISON_EVENTS)} Rennen mit "
+         f"Telemetrie ...")
+    saison = saison_scan(SAISON_EVENTS)
+    ranking = (saison.groupby("driver")["m_nach_5s"]
+              .agg(["mean", "count"]).sort_values("mean", ascending=False))
+    print("\nMittlere Startdistanz nach 5s, ganze Saison (Top 8):")
+    print(ranking.head(8).round(1).to_string())
+
+    print("\n[3/3] Grafik ...")
+    fig, ax = plt.subplots(1, 2, figsize=(15, 6))
+    zeichne_positionsgewinn(ax[0], start)
+    zeichne_saisontrend(ax[1], saison)
+    fig.suptitle("Startphasen-Analyse: Launch-Distanz, Positionsgewinn, "
+                "Saisonverlauf", x=0.09, ha="left", fontsize=16, color=FG,
+                y=1.02)
+    plt.tight_layout()
+    path = OUT / "startphasen_analyse.png"
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\n      -> {path}")
+
+
+if __name__ == "__main__":
+    main()
