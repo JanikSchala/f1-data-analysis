@@ -44,6 +44,8 @@ from .session import (
     clean_laps,
     close_following,
     compare_braking_zones,
+    corner_labels,
+    corner_speeds,
     degradation,
     degradation_by_compound,
     dirty_air_effect,
@@ -84,4 +86,5 @@ __all__ = [
     "driver_braking_zones", "compare_braking_zones", "drs_zones", "drs_usage",
     "position_progression", "overtakes_matrix", "start_performance",
     "close_following", "dirty_air_effect", "mini_sectors", "teammate_duels",
+    "corner_labels", "corner_speeds",
 ]
