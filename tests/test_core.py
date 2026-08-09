@@ -28,6 +28,7 @@ from f1lab.core import (
     match_by_distance,
     optimal_undercut_window,
     path_length,
+    status_intervals,
     undercut_gain,
 )
 
@@ -553,3 +554,56 @@ class TestElevationProfile:
     def test_nan_is_dropped(self):
         got = elevation_profile([0.0, np.nan, 10.0])
         assert got.gain == pytest.approx(10.0)
+
+
+# --------------------------------------------------------------- StatusIntervals
+class TestStatusIntervals:
+    """Sparses Aenderungs-Log (wie FastF1s track_status) in Intervalle."""
+
+    def test_end_is_next_start_not_own_last_occurrence(self):
+        """Der eigentliche Zweck: 'SCDeployed' erscheint einmal, gilt aber
+        bis zum naechsten Statuswechsel - nicht nur an seinem eigenen
+        Zeitpunkt (das waere ein Intervall der Laenge 0)."""
+        status = ["1", "4", "1"]
+        zeit = [0.0, 100.0, 500.0]
+        s, start, ende = status_intervals(status, zeit)
+        assert list(s) == ["1", "4", "1"]
+        assert list(start) == [0.0, 100.0, 500.0]
+        assert ende[0] == pytest.approx(100.0)
+        assert ende[1] == pytest.approx(500.0)
+        assert np.isnan(ende[2])                  # letztes Intervall offen
+
+    def test_immediate_repeats_are_merged(self):
+        status = ["1", "1", "4", "1"]
+        zeit = [0.0, 10.0, 100.0, 500.0]
+        s, start, ende = status_intervals(status, zeit)
+        assert list(s) == ["1", "4", "1"]
+        assert list(start) == [0.0, 100.0, 500.0]
+
+    def test_naive_groupby_would_give_zero_length(self):
+        """Dokumentiert den Fehler, den die Funktion vermeidet: Gruppieren
+        nach *aufeinanderfolgend* gleichem Status (cumsum ueber Wechsel) und
+        dessen eigenem Min/Max ergibt hier ueberall Laenge 0, weil kein
+        Status zweimal hintereinander steht - das war die urspruengliche
+        Fassung von f1lab.session.track_status_phases()."""
+        status = np.array(["1", "4", "1", "6", "1"])
+        zeit = np.array([0.0, 100.0, 500.0, 600.0, 900.0])
+        gruppe = np.cumsum(np.r_[True, status[1:] != status[:-1]])
+        naiv_dauer = 0.0
+        for g in np.unique(gruppe):
+            m = gruppe == g
+            naiv_dauer += float(zeit[m].max() - zeit[m].min())
+        assert naiv_dauer == 0.0
+
+        _, start, ende = status_intervals(status, zeit)
+        echte_dauer = np.nansum(ende - start)
+        assert echte_dauer == pytest.approx(900.0)
+
+    def test_empty_input(self):
+        s, start, ende = status_intervals([], [])
+        assert len(s) == 0 and len(start) == 0 and len(ende) == 0
+
+    def test_single_entry_is_open_ended(self):
+        s, start, ende = status_intervals(["1"], [0.0])
+        assert list(s) == ["1"]
+        assert np.isnan(ende[0])
