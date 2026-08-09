@@ -29,13 +29,13 @@ Zonen beider Fahrer ueber die Distanz matchen und ausgeben, wer wo wie viele
 Meter spaeter bremst.
 
 Die Flankenerkennung selbst (VORGEHEN 1-3) dupliziert nicht mehr die eigene
-Funktion aus der urspruenglichen Fassung, sondern ruft f1lab.braking_zones()
-- exakt dieselbe Funktion, die auch die Telemetrie-Seite des Dashboards und
-P07 verwenden. Zwei eigene Implementationen desselben Flanken-Algorithmus
-waeren genau die Art Duplikat, die in diesem Projekt schon einmal zur
-Bug-Quelle wurde (siehe CLAUDE.md). Die Zonen-Zuordnung (AUSBAUSTUFE) sitzt
-jetzt ebenfalls in f1lab (match_by_distance) statt nur hier - P07 nutzt
-dieselbe Funktion fuer sein eigenes Zonen-Overlay.
+Funktion aus der urspruenglichen Fassung, sondern ruft
+f1lab.driver_braking_zones() - exakt dieselbe Funktion, die auch die
+Telemetrie-Seite des Dashboards und P07 verwenden. Zwei eigene
+Implementationen desselben Flanken-Algorithmus waeren genau die Art
+Duplikat, die in diesem Projekt schon einmal zur Bug-Quelle wurde (siehe
+CLAUDE.md). Die Zonen-Zuordnung (AUSBAUSTUFE) nutzt f1lab.match_by_distance
+- P07 nutzt dieselbe Funktion fuer sein eigenes Zonen-Overlay.
 
 Oesterreich 2024 Q, VER gegen LEC: Verstappen bremst in 4 von 5 gematchten
 Zonen spaeter (bis zu 25.9 m) - und ist am Ende 0.730s schneller. Leclerc hat
@@ -78,12 +78,10 @@ f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
 
 
 def bremsphasen_report(ses, driver: str) -> pd.DataFrame:
-    """VORGEHEN 1-3: Bremszonen einer Runde, ueber f1lab.braking_zones."""
-    lap = ses.laps.pick_drivers(driver).pick_fastest()
-    car = lap.get_car_data().add_distance()
-    zonen = pd.DataFrame(f1lab.braking_zones(
-        car["Brake"], car["Distance"], car["Speed"],
-        car["Time"].dt.total_seconds()))
+    """VORGEHEN 1-3: Bremszonen einer Runde, ueber f1lab.driver_braking_zones
+    (dieselbe Funktion wie P07 und der Bremszonen-Reiter im Dashboard) - hier
+    nur um Fahrerkuerzel und Zonennummer fuer den Report ergaenzt."""
+    zonen = f1lab.driver_braking_zones(ses, driver)
     zonen.insert(0, "driver", driver)
     zonen.insert(1, "zone", range(1, len(zonen) + 1))
     return zonen

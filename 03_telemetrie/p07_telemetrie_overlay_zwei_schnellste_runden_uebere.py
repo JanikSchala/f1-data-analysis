@@ -45,6 +45,10 @@ Abweichung von 50 ms, die man ohne diese Gegenprobe nicht sehen wuerde. Die
 Kurve bleibt trotzdem die richtige Wahl fuer den Streckenverlauf (Sektorzeiten
 allein zeigen nur drei Punkte, keinen Verlauf) - nur eben mit der
 Unsicherheitsangabe, die FastF1 selbst empfiehlt.
+
+Bremszonen-Erkennung und -Paarung sitzen seit der App-Integration komplett in
+f1lab (driver_braking_zones, compare_braking_zones) - dieselben Funktionen
+wie in P08 und im Bremszonen-Reiter des Dashboards.
 """
 from __future__ import annotations
 
@@ -78,29 +82,6 @@ ZONEN_TOLERANZ_M = 150.0
 
 plt.rcParams.update(matplotlib_stil())
 f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
-
-
-def bremszonen(car: pd.DataFrame) -> pd.DataFrame:
-    return pd.DataFrame(f1lab.braking_zones(
-        car["Brake"], car["Distance"], car["Speed"],
-        car["Time"].dt.total_seconds()))
-
-
-def passe_zonen_zu(z1: pd.DataFrame, z2: pd.DataFrame,
-                   toleranz_m: float = ZONEN_TOLERANZ_M) -> pd.DataFrame:
-    """Paart Bremszonen zweier Fahrer ueber die naechstgelegene Distanz.
-
-    Beide Runden umrunden dieselbe Strecke - der Bremspunkt fuer dieselbe
-    Kurve liegt also nah beieinander, auch wenn die Zonenanzahl abweicht.
-    Die eigentliche Paarung steckt in f1lab.match_by_distance (auch von P08
-    genutzt) - hier wird nur noch die Tabelle drumherum gebaut.
-    """
-    paare = f1lab.match_by_distance(z1["start_m"], z2["start_m"], toleranz_m)
-    zeilen = [{"start_m_1": z1["start_m"].iloc[i],
-              "start_m_2": z2["start_m"].iloc[j],
-              "delta_m": z2["start_m"].iloc[j] - z1["start_m"].iloc[i]}
-             for i, j in paare]
-    return pd.DataFrame(zeilen).sort_values("start_m_1", ignore_index=True)
 
 
 def sektor_check(lap1, lap2, ref: pd.DataFrame, delta: np.ndarray) -> pd.DataFrame:
@@ -144,8 +125,9 @@ def main():
         delta, ref, _cmp = delta_time(lap1, lap2)
 
     print("[2/3] Bremszonen und Sektor-Gegenprobe ...")
-    z1, z2 = bremszonen(t1), bremszonen(t2)
-    zonen = passe_zonen_zu(z1, z2)
+    z1 = f1lab.driver_braking_zones(ses, D1)
+    z2 = f1lab.driver_braking_zones(ses, D2)
+    zonen = f1lab.compare_braking_zones(z1, z2, tolerance_m=ZONEN_TOLERANZ_M)
     zonen["spaeter"] = np.where(zonen["delta_m"] > 0, D2, D1)
     print(f"      {D1}: {len(z1)} Zonen, {D2}: {len(z2)} Zonen, "
          f"{len(zonen)} gepaart")
@@ -172,7 +154,7 @@ def main():
     for _, z in zonen.iterrows():
         if abs(z["delta_m"]) < 3:
             continue
-        x = max(z["start_m_1"], z["start_m_2"])
+        x = max(z["start_m_a"], z["start_m_b"])
         ax[0].annotate(f"{z['spaeter']} +{abs(z['delta_m']):.0f} m",
                        xy=(x, 0.03), xycoords=("data", "axes fraction"),
                        rotation=90, va="bottom", ha="right", color=MUTED,

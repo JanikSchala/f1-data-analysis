@@ -58,6 +58,12 @@ Streckengeometrie (Monza deckt in 5 s ein Vielfaches der Distanz von Monaco
 ab). Der Saisontrend zeigt deshalb nicht die rohe Distanz, sondern die
 Abweichung vom Feld-Mittel desselben Rennens - erst die ist ueber
 unterschiedliche Strecken hinweg vergleichbar.
+
+Die Startkennzahlen selbst (frueher start_kennzahlen()/renn_start()) sitzen
+seit der App-Integration in f1lab.start_performance() - dieselbe Funktion
+wie der Start-Reiter der Renndynamik-Seite im Dashboard. saison_scan() ruft
+sie jetzt nur noch einmal je Rennen auf, statt den Fahrer-Loop hier zu
+wiederholen.
 """
 from __future__ import annotations
 
@@ -90,85 +96,18 @@ FENSTER_S = 8.0
 plt.rcParams.update(matplotlib_stil())
 
 
-def start_kennzahlen(lap1, fenster_s: float = FENSTER_S) -> dict | None:
-    """VORGEHEN 2-3: Telemetrie per slice_by_time auf die Startphase
-    schneiden, daraus t_100/t_200/m_nach_5s bilden."""
-    tel = lap1.get_car_data().add_distance()
-    if tel is None or tel.empty:
-        return None
-
-    start = tel["SessionTime"].iloc[0]
-    fenster = tel.slice_by_time(start, start + pd.Timedelta(seconds=fenster_s))
-    if fenster.empty:
-        return None
-
-    t = fenster["Time"].dt.total_seconds().to_numpy()
-    v = fenster["Speed"].to_numpy()
-    d = fenster["Distance"].to_numpy()
-    t0 = t[0]
-
-    def t_bei(ziel: float) -> float | None:
-        mask = v >= ziel
-        return round(float(t[mask.argmax()] - t0), 2) if mask.any() else None
-
-    nach_5s = d[(t - t0) <= 5]
-    return {
-        "t_100": t_bei(100), "t_200": t_bei(200),
-        "m_nach_5s": round(float(nach_5s.max()), 1) if nach_5s.size else None,
-    }
-
-
-def renn_start(ses) -> pd.DataFrame:
-    """VORGEHEN 1, 4: Startkennzahlen und Positionsgewinn je Fahrer."""
-    rows = []
-    for drv in ses.drivers:
-        info = ses.get_driver(drv)
-        try:
-            lap1 = ses.laps.pick_drivers(drv).pick_laps(1).iloc[0]
-        except (IndexError, KeyError):
-            continue
-        if pd.notna(lap1["PitOutTime"]):
-            continue                    # aus der Box gestartet, kein Grid-Launch
-        kennzahlen = start_kennzahlen(lap1)
-        if kennzahlen is None:
-            continue
-
-        grid = ses.results.loc[ses.results["DriverNumber"] == drv,
-                               "GridPosition"].squeeze()
-        ende = lap1["Position"]
-        rows.append({
-            "driver": info["Abbreviation"], "grid": grid, "ende_r1": ende,
-            "gewinn": (grid - ende) if pd.notna(ende) and pd.notna(grid)
-            else None,
-            **kennzahlen,
-        })
-    return pd.DataFrame(rows).sort_values("m_nach_5s", ascending=False,
-                                          ignore_index=True)
-
-
 def saison_scan(events: list[str], year: int = SEASON) -> pd.DataFrame:
-    """AUSBAUSTUFE: dieselben Startkennzahlen ueber mehrere Rennen."""
+    """AUSBAUSTUFE: dieselben Startkennzahlen (f1lab.start_performance,
+    siehe VORGEHEN 1-4) ueber mehrere Rennen."""
     zeilen = []
     for gp in events:
         ses = f1lab.load(year, gp, "R", telemetry=True)
-        for drv in ses.drivers:
-            info = ses.get_driver(drv)
-            try:
-                lap1 = ses.laps.pick_drivers(drv).pick_laps(1).iloc[0]
-            except (IndexError, KeyError):
-                continue
-            if pd.notna(lap1["PitOutTime"]):
-                continue                # aus der Box gestartet, kein Grid-Launch
-            kennzahlen = start_kennzahlen(lap1)
-            if kennzahlen is None:
-                continue
-            zeilen.append({
-                "round": int(ses.event["RoundNumber"]),
-                "event": ses.event["EventName"], "driver": info["Abbreviation"],
-                **kennzahlen,
-            })
+        sp = f1lab.start_performance(ses, fenster_s=FENSTER_S)
+        if not sp.empty:
+            zeilen.append(sp.assign(round=int(ses.event["RoundNumber"]),
+                                    event=ses.event["EventName"]))
         print(f"      {ses.event['EventName']} ausgewertet")
-    return pd.DataFrame(zeilen)
+    return pd.concat(zeilen, ignore_index=True) if zeilen else pd.DataFrame()
 
 
 def zeichne_positionsgewinn(ax, df: pd.DataFrame) -> None:
@@ -229,7 +168,7 @@ def main():
 
     print(f"[1/3] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
-    start = renn_start(ses)
+    start = f1lab.start_performance(ses, fenster_s=FENSTER_S)
     print(start.to_string(index=False))
 
     print(f"\n[2/3] Saison-Scan ueber {len(SAISON_EVENTS)} Rennen mit "

@@ -37,7 +37,7 @@ Wackel-Zonen, die keine echten DRS-Zonen sind, sondern Rest-Aktivierung vom
 Ende der vorherigen Runde.
 
 Ergebnis Baku 2018 gegen 2024: Zone 1 (Start/Ziel-Gerade) beginnt praktisch
-am selben Punkt (+1 m), Zone 2 und Zone 3 beginnen 2024 dagegen 45 bzw. 60 m
+am selben Punkt (+1 m), Zone 2 und Zone 3 beginnen 2024 dagegen 44 bzw. 60 m
 frueher. Keine gleichmaessige Verschiebung also, sondern eine gezielte -
 zwei von drei Zonen wurden verschoben, eine nicht. Ob das eine bewusste
 FIA-Anpassung ist oder teilweise an der minimal unterschiedlichen gemessenen
@@ -48,7 +48,18 @@ nicht trennen. Festzuhalten ist nur die Beobachtung, nicht die Ursache.
 Nebenbei: P09 behandelt Code 8 als eigenen dritten Zustand ("erkannt, aber
 nicht offen"), hier zaehlt er zu "zu" - beides folgt FastF1s eigener,
 ausdruecklich unsicherer Dokumentation dieses Codes. P10 bleibt bei der
-einfacheren, in VORGEHEN Punkt 1 selbst festgelegten Zweiteilung.
+einfacheren, in VORGEHEN Punkt 1 selbst festgelegten Zweiteilung. Technisch
+ist das kein Widerspruch: beide nutzen seit der App-Integration dieselbe
+f1lab.drs_state()/f1lab.drs_zones()/f1lab.drs_usage() - "offen" (Code
+10/12/14) ist in beiden Faellen Zustand 2, P10 fragt nur nie nach Zustand 1.
+
+Kleine Randnotiz zur Umstellung: f1lab.drs_zones() rundet Start/Ende auf
+einen Dezimeter, bevor die Zone zurueckkommt (dieselbe Konvention wie
+f1lab.braking_zones). Die Verschiebung von Zone 2 wird dadurch aus bereits
+gerundeten Werten gebildet und trifft mit -44.5 m genau eine Rundungs-
+Haelfte - Python rundet das zur geraden Zahl, also -44 statt -45. Der
+tatsaechliche, ungerundete Wert liegt bei -44.5 m; die Aussage ("eine
+gezielte Verschiebung von zwei der drei Zonen") aendert das nicht.
 """
 from __future__ import annotations
 
@@ -76,53 +87,9 @@ OUT.mkdir(exist_ok=True)
 SEASON, EVENT, IDENT = 2024, "Italy", "Q"          # Monza: 2 DRS-Zonen
 ZONEN_STRECKE = "Azerbaijan"
 ZONEN_JAHRE = (2018, 2024)
-DRS_OPEN = {10, 12, 14}                            # aktiv-Codes im F1-Feed
 MIN_ZONE_M = 100.0
 
 plt.rcParams.update(matplotlib_stil())
-
-
-def drs_zonen(tel: pd.DataFrame, min_length_m: float = MIN_ZONE_M) -> pd.DataFrame:
-    """VORGEHEN 2: DRS-Aktivzonen als Distanzintervalle, Rauschen gefiltert."""
-    t = tel.copy()
-    t["open"] = t["DRS"].isin(DRS_OPEN)
-    t["grp"] = (t["open"] != t["open"].shift()).cumsum()
-    zonen = (t[t["open"]].groupby("grp")["Distance"].agg(["min", "max"])
-            .rename(columns={"min": "start_m", "max": "end_m"}))
-    zonen["laenge_m"] = zonen["end_m"] - zonen["start_m"]
-    return zonen[zonen["laenge_m"] >= min_length_m].reset_index(drop=True)
-
-
-def drs_nutzung(ses) -> pd.DataFrame:
-    """VORGEHEN 1, 3, 4: DRS-Zeitanteil und Topspeed-Gewinn je Fahrer."""
-    rows = []
-    for drv in ses.drivers:
-        try:
-            lap = ses.laps.pick_drivers(drv).pick_fastest()
-            tel = lap.get_car_data().add_distance()
-        except Exception:
-            continue
-        if tel is None or tel.empty or pd.isna(lap["LapTime"]):
-            continue
-
-        tel = tel.copy()
-        tel["DRSopen"] = tel["DRS"].isin(DRS_OPEN)
-        tel["dt"] = tel["Time"].diff().dt.total_seconds().fillna(0)
-
-        open_t = tel.loc[tel["DRSopen"], "dt"].sum()
-        total_t = tel["dt"].sum()
-        info = ses.get_driver(drv)
-        vmax_offen = tel.loc[tel["DRSopen"], "Speed"].max()
-        vmax_zu = tel.loc[~tel["DRSopen"], "Speed"].max()
-
-        rows.append({
-            "driver": info["Abbreviation"], "team": info["TeamName"],
-            "drs_s": round(open_t, 2), "drs_pct": round(100 * open_t / total_t, 1),
-            "vmax_offen": vmax_offen, "vmax_zu": vmax_zu,
-            "gewinn_kmh": round(vmax_offen - vmax_zu, 1) if pd.notna(vmax_offen)
-            and pd.notna(vmax_zu) else float("nan"),
-        })
-    return pd.DataFrame(rows).sort_values("drs_pct", ascending=False, ignore_index=True)
 
 
 def zeichne_ranking(ax, df: pd.DataFrame, spalte: str, xlabel: str,
@@ -143,7 +110,7 @@ def zeichne_zonenvergleich(ax, zonen_alt: pd.DataFrame, zonen_neu: pd.DataFrame,
     for jahr, zonen, y, farbe in ((jahr_alt, zonen_alt, 1, SERIEN[0]),
                                   (jahr_neu, zonen_neu, 0, SERIEN[1])):
         for _, z in zonen.iterrows():
-            ax.barh(y, z["laenge_m"], left=z["start_m"], height=0.55,
+            ax.barh(y, z["length_m"], left=z["start_m"], height=0.55,
                    color=farbe, edgecolor="none")
             ax.text(z["start_m"], y + 0.34, f"{z['start_m']:.0f} m",
                    ha="left", va="bottom", color=MUTED, fontsize=8)
@@ -167,11 +134,11 @@ def main():
 
     print(f"[1/3] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
-    nutzung = drs_nutzung(ses)
+    nutzung = f1lab.drs_usage(ses)
     print(nutzung.round(1).to_string(index=False))
 
     lap = ses.laps.pick_fastest()
-    zonen_monza = drs_zonen(lap.get_car_data().add_distance())
+    zonen_monza = f1lab.drs_zones(ses, str(lap["Driver"]), min_length_m=MIN_ZONE_M)
     print(f"\nDRS-Zonen {EVENT} {SEASON} (schnellste Runde {lap['Driver']}):")
     print(zonen_monza.round(0).to_string(index=False))
 
@@ -184,7 +151,8 @@ def main():
     for jahr, s in sessions.items():
         beste = s.laps.pick_fastest()
         car = beste.get_car_data().add_distance()
-        zonen[jahr] = drs_zonen(car)
+        zonen[jahr] = f1lab.drs_zones(s, str(beste["Driver"]),
+                                      min_length_m=MIN_ZONE_M)
         laengen[jahr] = car["Distance"].max()
         print(f"      {jahr}: {len(zonen[jahr])} Zonen, "
              f"Streckenlaenge {laengen[jahr]:.0f} m")

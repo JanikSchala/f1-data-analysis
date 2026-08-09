@@ -40,7 +40,9 @@ Sometimes"). Verwendet wird hier die in der Community uebliche Lesart -
 gerade Werte ab 10 heissen offen, 8 heisst erkannt/im Aktivierungsbereich
 aber noch nicht offen, alles andere zu -, mit drei statt zwei Farben, damit
 der Unterschied zwischen "im Fenster" und "tatsaechlich offen" sichtbar
-bleibt statt in einem einzigen "aktiv" zu verschwinden.
+bleibt statt in einem einzigen "aktiv" zu verschwinden. Die Klassifikation
+selbst ist f1lab.drs_state() (core.py, netzlos getestet) - dieselbe Funktion
+nutzt auch der DRS-Kanal der Telemetrie-Seite im Dashboard.
 
 Bei der Farbwahl zeigt sich ein Grenzfall von f1lab.design: die Rampe dort
 ist fuer Groessen mit echtem Verlauf gedacht (Hoehenmeter, Degradation) und
@@ -119,18 +121,6 @@ def zeichne_karte(ax, x: np.ndarray, y: np.ndarray, werte: np.ndarray, *,
     cb.outline.set_visible(False)
 
 
-def drs_zustand(drs_werte: np.ndarray) -> np.ndarray:
-    """0 = zu, 1 = erkannt/im Aktivierungsbereich (Code 8), 2 = offen (>= 10).
-
-    Siehe Modul-Docstring: die Codes unterhalb von 10 sind laut FastF1s
-    eigener Dokumentation nicht abschliessend geklaert.
-    """
-    status = np.zeros_like(drs_werte, dtype=int)
-    status[drs_werte == 8] = 1
-    status[drs_werte >= 10] = 2
-    return status
-
-
 def main():
     f1lab.enable_cache()
 
@@ -145,7 +135,7 @@ def main():
     gear = tel["nGear"].to_numpy(dtype=float)
     speed = tel["Speed"].to_numpy(dtype=float)
     throttle = tel["Throttle"].to_numpy(dtype=float)
-    drs = drs_zustand(tel["DRS"].to_numpy())
+    drs = f1lab.drs_state(tel["DRS"].to_numpy())
 
     offen_pct = 100 * (drs == 2).mean()
     print(f"      DRS offen auf {offen_pct:.0f}% der Runde "

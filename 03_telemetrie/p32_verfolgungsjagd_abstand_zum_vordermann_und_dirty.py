@@ -59,6 +59,11 @@ eher, als sie zu bestaetigen - mit dem Vorbehalt, dass alle drei R^2-Werte
 niedrig sind: der Effekt ist (nach Korrektur) real, aber schwach gegenueber
 der uebrigen Streuung einer Rundenzeit (Fahrfehler, Verkehr,
 Streckenentwicklung).
+
+Beide Bausteine (Abstandsermittlung, Regression) sitzen seit der
+App-Integration in f1lab.close_following()/f1lab.dirty_air_effect() -
+dieselben Funktionen wie der Verfolgung-Reiter der Renndynamik-Seite im
+Dashboard.
 """
 from __future__ import annotations
 
@@ -94,69 +99,6 @@ FAHRER_JE_STRECKE = 8
 NAH_SCHWELLE_M = 50.0
 
 plt.rcParams.update(matplotlib_stil())
-
-
-def abstands_je_runde(ses, driver: str) -> pd.DataFrame:
-    """VORGEHEN 1-2: Medianabstand und Nahanteil je gruener Runde.
-
-    add_driver_ahead() laeuft einmal auf die gesamte Renntelemetrie des
-    Fahrers, nicht einmal je Runde (siehe Docstring) - die Rundenzuordnung
-    kommt danach per merge_asof ueber die Rundenstartzeit, dieselbe Technik
-    wie in P05/P20.
-    """
-    laps = (ses.laps.pick_drivers(driver).pick_wo_box().pick_accurate()
-           .pick_track_status("1").sort_values("LapStartTime"))
-    if laps.empty:
-        return pd.DataFrame()
-    try:
-        tel = laps.get_telemetry().add_driver_ahead().sort_values("SessionTime")
-    except Exception:
-        return pd.DataFrame()
-    if tel.empty:
-        return pd.DataFrame()
-
-    grenzen = (laps[["LapNumber", "LapStartTime"]]
-              .rename(columns={"LapStartTime": "SessionTime"})
-              .sort_values("SessionTime"))
-    zug = pd.merge_asof(tel, grenzen, on="SessionTime", direction="backward")
-    zug["gap"] = zug["DistanceToDriverAhead"].replace(0, np.nan)
-
-    total_laps = int(ses.total_laps)
-    rows = []
-    for lapnum, g in zug.groupby("LapNumber"):
-        treffer = laps.loc[laps["LapNumber"] == lapnum]
-        if treffer.empty or pd.isna(treffer.iloc[0]["LapTime"]):
-            continue
-        lap = treffer.iloc[0]
-        sec = lap["LapTime"].total_seconds()
-        rows.append({
-            "lap": int(lapnum),
-            "sec_fuel": float(f1lab.fuel_correct([sec], [lapnum], total_laps)[0]),
-            "gap_median_m": g["gap"].median(),
-            "gap_min_m": g["gap"].min(),
-            "anteil_nah": 100 * (g["gap"] < NAH_SCHWELLE_M).mean(),
-            "compound": lap["Compound"], "tyre_life": lap["TyreLife"],
-        })
-    return pd.DataFrame(rows)
-
-
-def dirty_air_regression(df: pd.DataFrame) -> tuple[float, float, float, pd.DataFrame]:
-    """VORGEHEN 3: Rundenzeit (treibstoff- und degradationsbereinigt) gegen
-    Nahanteil regressieren. Returns (slope, intercept, r2, df mit sec_corr)."""
-    d = df.dropna(subset=["gap_median_m", "tyre_life"]).copy()
-    d = d[d["gap_median_m"] < 500]
-    if len(d) < 5 or d["tyre_life"].nunique() < 2:
-        return float("nan"), float("nan"), float("nan"), d
-
-    fit = f1lab.fit_degradation(d["tyre_life"], d["sec_fuel"])
-    d["sec_corr"] = d["sec_fuel"] - fit.slope * d["tyre_life"]
-
-    slope, inter = np.polyfit(d["anteil_nah"], d["sec_corr"], 1)
-    pred = slope * d["anteil_nah"] + inter
-    ss_res = float(((d["sec_corr"] - pred) ** 2).sum())
-    ss_tot = float(((d["sec_corr"] - d["sec_corr"].mean()) ** 2).sum())
-    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
-    return float(slope), float(inter), r2, d
 
 
 def zeichne_regression(ax, d: pd.DataFrame, slope: float, inter: float,
@@ -203,8 +145,8 @@ def main():
 
     print(f"[1/3] {EVENT} {SEASON} {IDENT} laden, Fahrer {DRIVER} ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
-    df = abstands_je_runde(ses, DRIVER)
-    slope, inter, r2, d = dirty_air_regression(df)
+    df = f1lab.close_following(ses, DRIVER, nah_schwelle_m=NAH_SCHWELLE_M)
+    slope, inter, r2, d = f1lab.dirty_air_effect(df)
     print(f"      Dirty-Air-Effekt: {slope:+.4f} s je 1% Zeit unter "
          f"{NAH_SCHWELLE_M:.0f} m (R²={r2:.3f}, n={len(d)})")
     print(d[["lap", "sec_fuel", "sec_corr", "gap_median_m", "anteil_nah",
@@ -216,10 +158,11 @@ def main():
     for gp in STRECKEN:
         s = f1lab.load(SEASON, gp, "R", telemetry=True)
         fahrer = list(s.drivers)[:FAHRER_JE_STRECKE]
-        teile = [abstands_je_runde(s, drv) for drv in fahrer]
+        teile = [f1lab.close_following(s, drv, nah_schwelle_m=NAH_SCHWELLE_M)
+                for drv in fahrer]
         teile = [t for t in teile if not t.empty]
         gesamt = pd.concat(teile, ignore_index=True) if teile else pd.DataFrame()
-        sl, ic, rr, dd = dirty_air_regression(gesamt)
+        sl, ic, rr, dd = f1lab.dirty_air_effect(gesamt)
         ergebnisse.append({"strecke": s.event["EventName"], "slope": sl,
                            "r2": rr, "n": len(dd)})
         print(f"      {s.event['EventName']:<28} {sl:+.4f} s/%  "
