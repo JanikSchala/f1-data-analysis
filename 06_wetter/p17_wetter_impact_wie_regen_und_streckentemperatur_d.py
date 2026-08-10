@@ -59,6 +59,11 @@ Mehrheitsklassen-Basislinie - und die Rundenzeit-Streuung traegt praktisch
 nichts bei, die mittlere Speed-Trap-Geschwindigkeit allein reicht fuer
 dieselbe Genauigkeit (283 km/h im Trockenen, 273 km/h im Nassen, mit
 deutlich groesserer Streuung).
+
+Die vier Rechenschritte (Wetter-Join, Temperatureffekt, Phasenerkennung,
+Klassifikator) stecken seit der App-Integration in f1lab.session statt hier
+lokal (zweiter Konsument: die Wetter-Seite im Dashboard braucht sie auf
+einer beliebigen, vom Nutzer gewaehlten Session statt fest auf Japan/Kanada).
 """
 from __future__ import annotations
 
@@ -75,9 +80,7 @@ matplotlib.use("Agg")                      # kein Fenster, nur Dateien
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix
-from sklearn.model_selection import LeaveOneOut, cross_val_predict
 
 import f1lab
 from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
@@ -91,90 +94,6 @@ TEMP_EVENT = ("Japan", 2024, "R")     # durchgehend trocken, echte Temperaturspa
 NASS_EVENT = ("Canada", 2024, "R")    # echter Regen, echter Mischungswechsel
 
 plt.rcParams.update(matplotlib_stil())
-
-
-def wetter_join(ses) -> pd.DataFrame:
-    """VORGEHEN 2: je Runde der naechstgelegene Wettermesspunkt."""
-    laps = (ses.laps.pick_wo_box().pick_accurate().pick_track_status("1")).copy()
-    wl = laps.get_weather_data().reset_index(drop=True)
-    laps = laps.reset_index(drop=True)
-    merged = pd.concat([laps, wl.loc[:, ~wl.columns.isin(laps.columns)]], axis=1)
-    merged["sec"] = merged["LapTime"].dt.total_seconds()
-    merged["corr"] = f1lab.fuel_correct(
-        merged["sec"], merged["LapNumber"], ses.total_laps)
-    return merged
-
-
-def temperatureffekt(merged: pd.DataFrame) -> dict:
-    """VORGEHEN 3: erst die naive gepoolte Regression (wie im Vorschlag
-    skizziert), dann kontrolliert um Fahrer-Niveau und Reifenalter."""
-    dry = merged[~merged["Rainfall"]].dropna(
-        subset=["TrackTemp", "corr", "TyreLife"]).copy()
-
-    naiv_slope, naiv_inter = np.polyfit(dry["TrackTemp"], dry["corr"], 1)
-    naiv_pred = naiv_slope * dry["TrackTemp"] + naiv_inter
-    naiv_r2 = 1 - ((dry["corr"] - naiv_pred) ** 2).sum() / \
-        ((dry["corr"] - dry["corr"].mean()) ** 2).sum()
-
-    dry["rel"] = dry["corr"] - dry.groupby("Driver")["corr"].transform("median")
-    dry = dry[dry["rel"].abs() < 3]
-    y = dry["rel"].to_numpy()
-
-    x_tyre = np.column_stack([dry["TyreLife"], np.ones(len(dry))])
-    c_tyre, *_ = np.linalg.lstsq(x_tyre, y, rcond=None)
-    r2_tyre = 1 - ((y - x_tyre @ c_tyre) ** 2).sum() / ((y - y.mean()) ** 2).sum()
-
-    x_voll = np.column_stack([dry["TrackTemp"], dry["TyreLife"], np.ones(len(dry))])
-    c_voll, *_ = np.linalg.lstsq(x_voll, y, rcond=None)
-    pred_voll = x_voll @ c_voll
-    r2_voll = 1 - ((y - pred_voll) ** 2).sum() / ((y - y.mean()) ** 2).sum()
-    resid = y - pred_voll
-    sigma2 = (resid ** 2).sum() / (len(y) - 3)
-    se = np.sqrt(np.diag(np.linalg.inv(x_voll.T @ x_voll)) * sigma2)
-
-    # Partial-Residual-Plot: TyreLife-Anteil herausgerechnet, damit die
-    # TrackTemp-Wirkung isoliert sichtbar wird (die rohe (TrackTemp, rel)-
-    # Punktwolke ist durch den nicht entfernten TyreLife-Effekt zu verrauscht).
-    dry["partial"] = y - c_voll[1] * dry["TyreLife"]
-
-    return {
-        "naiv_slope": naiv_slope, "naiv_r2": naiv_r2,
-        "r2_tyre_only": r2_tyre, "r2_voll": r2_voll,
-        "coef_temp": c_voll[0], "intercept": c_voll[2],
-        "se_temp": se[0], "n": len(y), "dry": dry,
-    }
-
-
-def wetterphasen(ses) -> pd.DataFrame:
-    """VORGEHEN 4: Phasenwechsel ueber das Rainfall-Flag."""
-    w = ses.weather_data
-    gruppe = (w["Rainfall"] != w["Rainfall"].shift()).cumsum()
-    return (w.groupby(gruppe)
-            .agg(nass=("Rainfall", "first"), start=("Time", "min"),
-                end=("Time", "max"))
-            .reset_index(drop=True))
-
-
-def klassifikator(ses) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
-    """AUSBAUSTUFE: Feld-Aggregate je Runde, keine Compound-Spalte als
-    Feature - nur was auch ohne Boxenfunk beobachtbar waere."""
-    laps = ses.laps.pick_accurate().copy()
-    laps["sec"] = laps["LapTime"].dt.total_seconds()
-    je_runde = laps.groupby("LapNumber").agg(
-        std_sec=("sec", "std"), mean_speedFL=("SpeedFL", "mean"),
-        n=("sec", "count")).dropna()
-    je_runde = je_runde[je_runde["n"] >= 10]
-
-    mehrheit = laps.groupby("LapNumber")["Compound"].agg(
-        lambda s: s.value_counts().idxmax())
-    je_runde["compound"] = mehrheit.reindex(je_runde.index)
-    je_runde["nass"] = je_runde["compound"].isin(
-        ["INTERMEDIATE", "WET"]).astype(int)
-
-    X = je_runde[["std_sec", "mean_speedFL"]].to_numpy()
-    y = je_runde["nass"].to_numpy()
-    pred = cross_val_predict(LogisticRegression(), X, y, cv=LeaveOneOut())
-    return je_runde, y, pred
 
 
 def zeichne_wetterprofil(ax, ses) -> None:
@@ -265,11 +184,11 @@ def main():
     print(w[["Time", "AirTemp", "TrackTemp", "Humidity", "Rainfall", "WindSpeed"]]
          .describe().round(2).to_string())
 
-    merged = wetter_join(ses_temp)
+    merged = f1lab.weather_join(ses_temp)
     print(f"\n[2/4] {len(merged)} Runden mit Wetter verknuepft")
 
     print("\n[3/4] Temperatureffekt (VORGEHEN 3) ...")
-    erg = temperatureffekt(merged)
+    erg = f1lab.temperature_effect(merged)
     print(f"      naive gepoolte Regression: {erg['naiv_slope']:+.4f} s/°C, "
          f"R²={erg['naiv_r2']:.3f} - praktisch kein Signal")
     print(f"      kontrolliert (Fahrer-Median abgezogen, TyreLife als "
@@ -283,7 +202,7 @@ def main():
          f"AUSBAUSTUFE) ...")
     ses_nass = f1lab.load(NASS_EVENT[1], NASS_EVENT[0], NASS_EVENT[2],
                           telemetry=False, weather=True)
-    phasen = wetterphasen(ses_nass)
+    phasen = f1lab.weather_phases(ses_nass)
     print(f"      {len(phasen)} Wetter-Phasen:")
     print(phasen.assign(
         start_min=lambda d: (d["start"].dt.total_seconds() / 60).round(1),
@@ -291,7 +210,7 @@ def main():
     )[["nass", "start_min", "end_min"]].to_string(index=False))
 
     print("\n      Klassifikator (AUSBAUSTUFE) ...")
-    je_runde, y, pred = klassifikator(ses_nass)
+    je_runde, y, pred = f1lab.wet_dry_classifier(ses_nass)
     acc = (pred == y).mean()
     basislinie = max(y.mean(), 1 - y.mean())
     print(f"      n={len(y)} Runden, Leave-one-out-Trefferquote: {acc:.3f} "

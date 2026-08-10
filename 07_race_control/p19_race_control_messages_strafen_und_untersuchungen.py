@@ -65,10 +65,15 @@ Austin (COTA) fuehrt klar mit 43 Track-Limit-Meldungen vor Kanada (31) und
 Abu Dhabi (28) - und mehr als jede zweite COTA-Meldung (17 von 43) betrifft
 eine einzige Kurve, Turn 12, bekannt fuer ihre breiten Kerbs am Ende der
 Zielgeraden-Kombination.
+
+Die Regex-Parser und die Deleted-Gegenpruefung stecken seit der
+App-Integration in f1lab.session (parse_penalties()/parse_track_limits()/
+track_limit_crosscheck()) statt hier lokal (zweiter Konsument: die
+Race-Control-Seite im Dashboard, auf einer beliebigen vom Nutzer gewaehlten
+Session statt fest auf Oesterreich). Der Saison-Scan bleibt skriptlokal.
 """
 from __future__ import annotations
 
-import re
 import sys
 import warnings
 from pathlib import Path
@@ -100,67 +105,7 @@ SAISON_RENNEN = [
     "United States", "Mexico", "Brazil", "Las Vegas", "Qatar", "Abu Dhabi",
 ]
 
-# VORGEHEN 2: korrigiert - reale FIA-Meldungen nennen Strafmass und Fahrer
-# in umgekehrter Reihenfolge zur ersten Fassung ("10 SECOND ... FOR CAR 14
-# (ALO)", nicht "CAR 14 (ALO) ... 10 SECOND"), siehe Docstring.
-PENALTY = re.compile(
-    r"(\d+ SECOND (?:TIME|STOP/GO) PENALTY|DRIVE.?THROUGH PENALTY|REPRIMAND)"
-    r" FOR CAR (\d+) \(([A-Z]{3})\)(?: - (.*))?", re.I)
-TRACKLIM = re.compile(r"CAR (\d+) \(([A-Z]{3})\).*TRACK LIMITS AT TURN (\d+)", re.I)
-# Fuer die Gegenpruefung (VORGEHEN 4) zusaetzlich die im Text genannte
-# betroffene Runde - das ist NICHT dieselbe Runde, in der die Meldung
-# gepostet wurde (die Loeschung wird oft erst 1-2 Runden spaeter verbucht).
-# Nicht jede Meldung nennt sie explizit: "(NEXT LAP)"-Faelle bleiben aussen
-# vor, siehe Docstring.
-TRACKLIM_RUNDE = re.compile(
-    r"CAR (\d+) \(([A-Z]{3})\).*TRACK LIMITS AT TURN (\d+) LAP (\d+)", re.I)
-
 plt.rcParams.update(matplotlib_stil())
-
-
-def parse_strafen(rcm: pd.DataFrame) -> pd.DataFrame:
-    """VORGEHEN 2."""
-    zeilen = []
-    for m in rcm.itertuples():
-        treffer = PENALTY.search(str(m.Message))
-        if treffer:
-            zeilen.append({"lap": m.Lap, "strafmass": treffer.group(1).upper(),
-                           "nr": treffer.group(2), "driver": treffer.group(3),
-                           "grund": treffer.group(4)})
-    return pd.DataFrame(zeilen)
-
-
-def parse_tracklimits(rcm: pd.DataFrame) -> pd.DataFrame:
-    """VORGEHEN 3."""
-    zeilen = []
-    for m in rcm.itertuples():
-        treffer = TRACKLIM.search(str(m.Message))
-        if treffer:
-            zeilen.append({"lap": m.Lap, "nr": treffer.group(1),
-                           "driver": treffer.group(2), "turn": int(treffer.group(3))})
-    return pd.DataFrame(zeilen)
-
-
-def gegenpruefung(ses, rcm: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, int]:
-    """VORGEHEN 4: Text-Meldungen gegen Laps.Deleted - mit der im Text
-    genannten betroffenen Runde, nicht der Runde, in der die Meldung
-    gepostet wurde (siehe TRACKLIM_RUNDE)."""
-    treffer = []
-    for m in rcm.itertuples():
-        t = TRACKLIM_RUNDE.search(str(m.Message))
-        if t:
-            treffer.append({"driver": t.group(2), "turn": int(t.group(3)),
-                           "runde": int(t.group(4))})
-    mit_runde = pd.DataFrame(treffer)
-
-    deleted = ses.laps[ses.laps["Deleted"]]
-    im_text_nicht_in_laps = []
-    for r in mit_runde.itertuples():
-        passt = ((deleted["Driver"] == r.driver)
-                & (deleted["LapNumber"] == r.runde)).any()
-        if not passt:
-            im_text_nicht_in_laps.append({"driver": r.driver, "runde": r.runde})
-    return pd.DataFrame(im_text_nicht_in_laps), deleted, len(mit_runde)
 
 
 def saison_scan() -> pd.DataFrame:
@@ -171,7 +116,7 @@ def saison_scan() -> pd.DataFrame:
             ses = f1lab.load(SEASON, gp, "R", telemetry=False, messages=True)
         except Exception:
             continue
-        lim = parse_tracklimits(ses.race_control_messages)
+        lim = f1lab.parse_track_limits(ses.race_control_messages)
         for r in lim.itertuples():
             zeilen.append({"gp": gp, "driver": r.driver, "turn": r.turn})
     return pd.DataFrame(zeilen)
@@ -250,8 +195,8 @@ def main():
     print(rcm["Category"].value_counts().to_string())
 
     print("\n[2/3] Strafen und Track Limits parsen (VORGEHEN 2-3) ...")
-    pen = parse_strafen(rcm)
-    lim = parse_tracklimits(rcm)
+    pen = f1lab.parse_penalties(rcm)
+    lim = f1lab.parse_track_limits(rcm)
     print(f"      {len(pen)} Strafen erkannt:")
     print(pen[["lap", "driver", "strafmass", "grund"]].to_string(index=False))
     print(f"\n      {len(lim)} Track-Limit-Meldungen, je Fahrer:")
@@ -260,7 +205,7 @@ def main():
     print(lim["turn"].value_counts().sort_index().to_string())
 
     print("\n      Gegenpruefung mit Laps.Deleted (VORGEHEN 4) ...")
-    fehlend, deleted, n_mit_runde = gegenpruefung(ses, rcm)
+    fehlend, deleted, n_mit_runde = f1lab.track_limit_crosscheck(ses, rcm)
     print(f"      {len(deleted)} Runden mit Deleted=True in den Lap-Daten "
          f"gegen {n_mit_runde} Text-Meldungen mit eindeutiger Rundennummer "
          f"({len(lim) - n_mit_runde} weitere ohne explizite Runde, "

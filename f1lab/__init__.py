@@ -55,6 +55,7 @@ from .session import (
     drs_zones,
     enable_cache,
     event_dimension,
+    field_spread,
     find_cache,
     load,
     marshal_sector_labels,
@@ -62,13 +63,21 @@ from .session import (
     not_deleted_mask,
     overtakes_matrix,
     pace_table,
+    parse_penalties,
+    parse_track_limits,
     pit_loss,
     position_progression,
     race_pace,
+    sc_compaction,
     start_performance,
     stints,
     teammate_duels,
+    temperature_effect,
+    track_limit_crosscheck,
     track_status_phases,
+    weather_join,
+    weather_phases,
+    wet_dry_classifier,
 )
 
 __version__ = "0.1.0"
@@ -90,5 +99,7 @@ __all__ = [
     "position_progression", "overtakes_matrix", "start_performance",
     "close_following", "dirty_air_effect", "mini_sectors", "teammate_duels",
     "corner_labels", "corner_speeds", "not_deleted_mask",
-    "marshal_sector_labels",
+    "marshal_sector_labels", "weather_join", "temperature_effect",
+    "weather_phases", "wet_dry_classifier", "field_spread", "sc_compaction",
+    "parse_penalties", "parse_track_limits", "track_limit_crosscheck",
 ]
