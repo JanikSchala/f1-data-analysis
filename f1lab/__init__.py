@@ -57,6 +57,7 @@ from .session import (
     event_dimension,
     find_cache,
     load,
+    marshal_sector_labels,
     mini_sectors,
     not_deleted_mask,
     overtakes_matrix,
@@ -89,4 +90,5 @@ __all__ = [
     "position_progression", "overtakes_matrix", "start_performance",
     "close_following", "dirty_air_effect", "mini_sectors", "teammate_duels",
     "corner_labels", "corner_speeds", "not_deleted_mask",
+    "marshal_sector_labels",
 ]
