@@ -18,7 +18,10 @@ import pandas as pd
 
 from .core import (
     FUEL_KG_PER_LAP,
+    FUEL_S_PER_KG,
     Interval,
+    RaceConfig,
+    TyreModel,
     active_distance_zones,
     bootstrap_median,
     braking_zones,
@@ -344,12 +347,69 @@ def degradation_by_compound(session, **kwargs) -> pd.DataFrame:
             .round(4).sort_values("mean"))
 
 
+def race_config_from_session(session, fit_min_laps: int = 6,
+                             optimizer_min_stint: int = 4,
+                             require_two_compounds: bool = True) -> RaceConfig:
+    """RaceConfig fuer den Strategie-Optimierer (P35) aus echter Degradation
+    (P13) und echtem Pitloss dieser Session, statt Parameter von Hand zu
+    setzen.
+
+    Je Mischung: Median von Steigung und Achsenabschnitt ueber alle
+    belastbaren Stint-Fits (``DegradationFit.is_reliable``), ``max_age`` aus
+    der laengsten tatsaechlich gefahrenen Stint-Laenge dieser Mischung - eine
+    vorsichtige Untergrenze, kein gemessenes Limit: niemand testet in einem
+    echten Rennen, wie lange ein Reifen wirklich haelt.
+
+    ``base_time`` ergibt sich aus ``fit.intercept + fit.slope``: der Fit
+    extrapoliert auf Reifenalter 0 (``intercept``), TyreLife ist bei FastF1
+    aber einsbasiert - die erste echte Runde auf dem Satz hat TyreLife 1,
+    also ``intercept + 1 * slope``.
+
+    Raises:
+        ValueError: keine belastbaren Fits, oder (mit
+            ``require_two_compounds``) nur eine Mischung belastbar.
+    """
+    deg = degradation(session, min_laps=fit_min_laps)
+    ok = deg[deg["reliable"]] if not deg.empty else deg
+    if ok.empty:
+        raise ValueError("keine belastbaren Degradations-Fits fuer diese Session")
+    if require_two_compounds and ok["compound"].nunique() < 2:
+        raise ValueError(
+            "nur eine Mischung mit belastbaren Fits - "
+            "require_two_compounds=False setzen oder andere Session waehlen")
+
+    tyres = []
+    for compound, g in ok.groupby("compound"):
+        slope = float(g["deg_s_per_lap"].median())
+        intercept = float(g["base_s"].median())
+        tyres.append(TyreModel(
+            compound=str(compound), base_time=intercept + slope,
+            deg_linear=slope, max_age=int(g["laps"].max())))
+    tyres.sort(key=lambda t: t.base_time)
+
+    return RaceConfig(
+        n_laps=int(session.total_laps), pit_loss=pit_loss(session),
+        tyres=tuple(tyres), min_stint=optimizer_min_stint,
+        require_two_compounds=require_two_compounds,
+        fuel_effect=FUEL_KG_PER_LAP * FUEL_S_PER_KG)
+
+
 # --------------------------------------------------------------- Boxenstopps
 def pit_loss(session) -> float:
     """Zeitverlust eines Boxenstopps auf dieser Strecke, in Sekunden.
 
     Vergleicht In- und Out-Laps mit der normalen Rundenzeit desselben
     Fahrers. Enthaelt damit Anfahrt, Standzeit und Ausfahrt.
+
+    Runden unter rotem Flag ausgeschlossen: ``PitInTime``/``PitOutTime``
+    stehen dann oft auf Runden, in denen Autos waehrend der
+    Session-Unterbrechung geparkt bzw. wieder losgeschickt werden - keine
+    echten Boxenstopps, aber mit Rundenzeiten von zig Minuten (Monaco 2024 R,
+    roter Start nach der Startunfall-Massenkarambolage: ein einzelner
+    solcher Fall zog den Median auf ueber 2400 Sekunden). ``TrackStatus``
+    traegt bei FastF1 alle waehrend der Runde durchlaufenen Zustaende als
+    Zeichenkette (z.B. "1254") - "5" irgendwo darin heisst rotes Flag zu
+    irgendeinem Zeitpunkt in dieser Runde.
     """
     laps = session.laps.copy()
     laps["sec"] = laps["LapTime"].dt.total_seconds()
@@ -357,8 +417,9 @@ def pit_loss(session) -> float:
     baseline = (clean_laps(session)
                 .groupby("Driver")["LapTime"].median().dt.total_seconds())
 
-    in_laps = laps[laps["PitInTime"].notna()]
-    out_laps = laps[laps["PitOutTime"].notna()]
+    nicht_rot = ~laps["TrackStatus"].astype(str).str.contains("5", na=False)
+    in_laps = laps[laps["PitInTime"].notna() & nicht_rot]
+    out_laps = laps[laps["PitOutTime"].notna() & nicht_rot]
 
     return estimate_pit_loss(
         (in_laps["sec"] - in_laps["Driver"].map(baseline)).dropna(),

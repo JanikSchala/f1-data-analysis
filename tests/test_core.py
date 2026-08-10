@@ -12,7 +12,13 @@ import numpy as np
 import pytest
 
 from f1lab.core import (
+    GRUEN,
+    SC,
+    InfeasibleRace,
     Interval,
+    RaceConfig,
+    SafetyCarProcess,
+    TyreModel,
     active_distance_zones,
     bootstrap_median,
     braking_zones,
@@ -21,13 +27,20 @@ from f1lab.core import (
     elo_expected,
     elo_update,
     estimate_pit_loss,
+    expected_cost_of_plan,
     find_cliff,
     fit_degradation,
+    frontier_by_stops,
     fuel_correct,
+    hindsight_value,
     mad_outlier_mask,
     match_by_distance,
+    optimal_strategy,
     optimal_undercut_window,
     path_length,
+    pit_loss_crossovers,
+    roll_out,
+    solve_policy,
     status_intervals,
     undercut_gain,
 )
@@ -607,3 +620,255 @@ class TestStatusIntervals:
         s, start, ende = status_intervals(["1"], [0.0])
         assert list(s) == ["1"]
         assert np.isnan(ende[0])
+
+
+# --------------------------------------------------------------- Rennstrategie
+class TestTyreModel:
+    def test_lap_time_at_age_one_is_base_time(self):
+        t = TyreModel("SOFT", 90.0, 0.05)
+        assert t.lap_time(1) == pytest.approx(90.0)
+
+    def test_lap_time_includes_linear_and_quad_terms(self):
+        t = TyreModel("SOFT", 90.0, 0.05, 0.01)
+        # a = age - 1 = 4
+        assert t.lap_time(5) == pytest.approx(90.0 + 0.05 * 4 + 0.01 * 16)
+
+    def test_age_below_one_raises(self):
+        t = TyreModel("SOFT", 90.0, 0.05)
+        with pytest.raises(ValueError, match="einsbasiert"):
+            t.lap_time(0)
+
+    def test_stint_time_sums_each_lap(self):
+        t = TyreModel("SOFT", 90.0, 1.0)
+        # Runden 1..3: 90, 91, 92
+        assert t.stint_time(3) == pytest.approx(90 + 91 + 92)
+
+    def test_stint_time_below_one_raises(self):
+        with pytest.raises(ValueError, match="mindestens 1"):
+            TyreModel("SOFT", 90.0, 0.05).stint_time(0)
+
+
+class TestRaceConfig:
+    def _tyres(self):
+        return (TyreModel("SOFT", 90.0, 0.05), TyreModel("HARD", 91.0, 0.02))
+
+    def test_duplicate_compounds_raise(self):
+        with pytest.raises(ValueError, match="doppelte Mischungen"):
+            RaceConfig(n_laps=10, pit_loss=20.0,
+                      tyres=(TyreModel("SOFT", 90.0, 0.05),
+                             TyreModel("SOFT", 91.0, 0.02)))
+
+    def test_no_tyres_raises(self):
+        with pytest.raises(ValueError, match="mindestens eine Mischung"):
+            RaceConfig(n_laps=10, pit_loss=20.0, tyres=())
+
+    def test_single_compound_needs_flag_disabled(self):
+        with pytest.raises(ValueError, match="Zweimischungs-Regel"):
+            RaceConfig(n_laps=10, pit_loss=20.0,
+                      tyres=(TyreModel("SOFT", 90.0, 0.05),))
+        # mit ausgeschalteter Regel geht es
+        RaceConfig(n_laps=10, pit_loss=20.0,
+                  tyres=(TyreModel("SOFT", 90.0, 0.05),),
+                  require_two_compounds=False)
+
+    def test_unknown_start_compound_raises(self):
+        with pytest.raises(ValueError, match="unbekannte Startmischung"):
+            RaceConfig(n_laps=10, pit_loss=20.0, tyres=self._tyres(),
+                      start_compound="MEDIUM")
+
+    def test_fuel_offset_is_zero_without_fuel_effect(self):
+        cfg = RaceConfig(n_laps=20, pit_loss=20.0, tyres=self._tyres())
+        assert cfg.fuel_offset == pytest.approx(0.0)
+
+    def test_fuel_offset_scales_with_laps_squared(self):
+        cfg = RaceConfig(n_laps=10, pit_loss=20.0, tyres=self._tyres(),
+                         fuel_effect=0.1)
+        # 0.1 * 10 * 9 / 2 = 4.5
+        assert cfg.fuel_offset == pytest.approx(4.5)
+
+
+class TestOptimalStrategy:
+    """Kleine, von Hand nachrechenbare Rennen."""
+
+    def _cfg(self, **kw):
+        defaults = dict(
+            n_laps=10, pit_loss=20.0, min_stint=1,
+            tyres=(TyreModel("SOFT", 90.0, 1.0), TyreModel("HARD", 91.0, 0.1)))
+        defaults.update(kw)
+        return RaceConfig(**defaults)
+
+    def test_prefers_flatter_degrading_tyre_for_long_stint(self):
+        """SOFT baut zehnmal so schnell ab wie HARD - bei freier Stintlaenge
+        gewinnt ein frueher Wechsel auf HARD."""
+        cfg = self._cfg()
+        best = optimal_strategy(cfg)
+        # das laengste Stueck des Rennens sollte auf HARD liegen
+        laengster = max(best.stints, key=lambda s: s.length)
+        assert laengster.compound == "HARD"
+
+    def test_respects_two_compound_rule(self):
+        best = optimal_strategy(self._cfg())
+        assert len(set(best.compounds)) >= 2
+
+    def test_respects_min_stint(self):
+        cfg = self._cfg(min_stint=4)
+        best = optimal_strategy(cfg)
+        assert all(s.length >= 4 for s in best.stints)
+
+    def test_total_laps_covers_race_exactly(self):
+        best = optimal_strategy(self._cfg())
+        assert sum(s.length for s in best.stints) == 10
+        assert best.stints[0].start_lap == 1
+        assert best.stints[-1].end_lap == 10
+
+    def test_infeasible_min_stint_raises(self):
+        """min_stint*2 > n_laps mit Zweimischungs-Pflicht: kein Plan passt."""
+        cfg = self._cfg(n_laps=5, min_stint=4)
+        with pytest.raises(InfeasibleRace):
+            optimal_strategy(cfg)
+
+    def test_more_pit_stops_never_beats_pit_loss_savings(self):
+        """Ein Vergleichsplan mit einem zusaetzlichen, unnoetigen Stopp kann
+        nie besser sein als das Optimum."""
+        cfg = self._cfg()
+        best = optimal_strategy(cfg)
+        frontier = frontier_by_stops(cfg, up_to=4)
+        best_by_stops = min(s.green_time for s in frontier.values()
+                            if s is not None)
+        assert best_by_stops == pytest.approx(best.green_time)
+
+
+class TestFrontierByStops:
+    def test_each_entry_has_requested_stop_count(self):
+        cfg = RaceConfig(n_laps=20, pit_loss=20.0, min_stint=2,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)))
+        frontier = frontier_by_stops(cfg, up_to=3)
+        for n, strat in frontier.items():
+            if strat is not None:
+                assert strat.n_stops == n
+
+    def test_zero_stops_infeasible_with_two_compound_rule(self):
+        cfg = RaceConfig(n_laps=20, pit_loss=20.0,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)))
+        frontier = frontier_by_stops(cfg, up_to=1)
+        assert frontier[0] is None
+
+
+class TestPitLossCrossovers:
+    def test_lower_pit_loss_favours_more_stops(self):
+        """Ein guenstigerer Boxenstopp macht zusaetzliche Stopps attraktiver -
+        die Stoppzahl bei niedrigem Pitloss ist mindestens so hoch wie bei
+        hohem."""
+        cfg = RaceConfig(n_laps=40, pit_loss=20.0, min_stint=3,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)))
+        from dataclasses import replace
+        n_billig = optimal_strategy(replace(cfg, pit_loss=1.0)).n_stops
+        n_teuer = optimal_strategy(replace(cfg, pit_loss=100.0)).n_stops
+        assert n_billig >= n_teuer
+
+    def test_crossovers_lie_within_range(self):
+        cfg = RaceConfig(n_laps=40, pit_loss=20.0, min_stint=3,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)))
+        grenzen = pit_loss_crossovers(cfg, 5.0, 60.0)
+        assert all(5.0 <= g <= 60.0 for g in grenzen)
+
+
+class TestSafetyCarProcess:
+    def test_marginals_are_probabilities(self):
+        prozess = SafetyCarProcess(p_deploy=0.05, p_end=0.3)
+        q = prozess.marginals(50)
+        assert all(0.0 <= v <= 1.0 for v in q[1:51])
+
+    def test_marginals_start_at_zero(self):
+        """Runde 1 startet immer gruen."""
+        prozess = SafetyCarProcess()
+        q = prozess.marginals(10)
+        assert q[1] == pytest.approx(0.0)
+
+    def test_no_deploy_process_never_shows_sc(self):
+        prozess = SafetyCarProcess(p_deploy=0.0, p_end=0.5)
+        q = prozess.marginals(20)
+        assert all(v == pytest.approx(0.0) for v in q[1:21])
+
+    def test_sample_only_produces_valid_states(self):
+        import random
+        prozess = SafetyCarProcess(p_deploy=0.1, p_end=0.3)
+        folge = prozess.sample(random.Random(1), 30)
+        assert all(s in (GRUEN, SC) for s in folge[1:31])
+
+    def test_sample_length_matches_laps(self):
+        import random
+        prozess = SafetyCarProcess()
+        folge = prozess.sample(random.Random(0), 25)
+        assert len(folge) == 26  # 1-indexed, index 0 ungenutzt
+
+
+class TestSolvePolicyAndRollOut:
+    def _cfg(self):
+        return RaceConfig(n_laps=15, pit_loss=20.0, min_stint=3,
+                          tyres=(TyreModel("SOFT", 90.0, 0.3),
+                                TyreModel("HARD", 91.0, 0.05)))
+
+    def test_solve_policy_returns_finite_value(self):
+        wert, politik = solve_policy(self._cfg(), SafetyCarProcess())
+        assert wert < float("inf")
+        assert ("start",) in politik
+
+    def test_exact_stops_not_supported(self):
+        from dataclasses import replace
+        cfg = replace(self._cfg(), exact_stops=1)
+        with pytest.raises(NotImplementedError):
+            solve_policy(cfg, SafetyCarProcess())
+
+    def test_roll_out_matches_race_distance(self):
+        cfg = self._cfg()
+        _wert, politik = solve_policy(cfg, SafetyCarProcess())
+        folge = [GRUEN] * (cfg.n_laps + 1)
+        strat = roll_out(cfg, politik, folge)
+        assert sum(s.length for s in strat.stints) == cfg.n_laps
+
+    def test_roll_out_respects_two_compound_rule(self):
+        cfg = self._cfg()
+        _wert, politik = solve_policy(cfg, SafetyCarProcess())
+        folge = [GRUEN] * (cfg.n_laps + 1)
+        strat = roll_out(cfg, politik, folge)
+        assert len(set(strat.compounds)) >= 2
+
+
+class TestExpectedCostAndHindsight:
+    def _cfg(self):
+        return RaceConfig(n_laps=20, pit_loss=20.0, min_stint=3,
+                          tyres=(TyreModel("SOFT", 90.0, 0.3),
+                                TyreModel("HARD", 91.0, 0.05)))
+
+    def test_expected_cost_without_sc_equals_green_time(self):
+        """Ohne jede Safety-Car-Wahrscheinlichkeit gibt es keinen Rabatt -
+        die erwarteten Kosten sind genau die Fahrzeit des festen Plans."""
+        cfg = self._cfg()
+        plan = optimal_strategy(cfg)
+        prozess = SafetyCarProcess(p_deploy=0.0, p_end=0.5)
+        kosten = expected_cost_of_plan(cfg, plan, prozess)
+        assert kosten == pytest.approx(plan.green_time)
+
+    def test_hindsight_never_worse_than_expected_cost_of_fixed_plan(self):
+        """Das Optimum bei bekanntem Verlauf ist eine untere Schranke - im
+        Mittel nie schlechter als ein fester Plan, der stur durchgezogen
+        wird."""
+        cfg = self._cfg()
+        plan = optimal_strategy(cfg)
+        prozess = SafetyCarProcess(p_deploy=0.05, p_end=0.3)
+        naiv = expected_cost_of_plan(cfg, plan, prozess)
+        blind, _se = hindsight_value(cfg, prozess, n=200, seed=3)
+        assert blind <= naiv + 1e-6
+
+    def test_hindsight_without_sc_matches_deterministic_optimum(self):
+        cfg = self._cfg()
+        prozess = SafetyCarProcess(p_deploy=0.0, p_end=0.5)
+        blind, se = hindsight_value(cfg, prozess, n=50, seed=1)
+        deterministic = optimal_strategy(cfg).green_time
+        assert blind == pytest.approx(deterministic)
+        assert se == pytest.approx(0.0, abs=1e-9)
