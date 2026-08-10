@@ -58,6 +58,7 @@ from .session import (
     find_cache,
     load,
     mini_sectors,
+    not_deleted_mask,
     overtakes_matrix,
     pace_table,
     pit_loss,
@@ -87,5 +88,5 @@ __all__ = [
     "driver_braking_zones", "compare_braking_zones", "drs_zones", "drs_usage",
     "position_progression", "overtakes_matrix", "start_performance",
     "close_following", "dirty_air_effect", "mini_sectors", "teammate_duels",
-    "corner_labels", "corner_speeds",
+    "corner_labels", "corner_speeds", "not_deleted_mask",
 ]
