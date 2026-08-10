@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import torch
 from common import (
     achse,
     hinweis,
@@ -25,14 +26,19 @@ from common import (
     tabelle,
     zeige,
 )
+from scipy.stats import spearmanr
 from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.decomposition import PCA
 from sklearn.ensemble import HistGradientBoostingRegressor, IsolationForest
+from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
 from sklearn.manifold import MDS
 from sklearn.metrics import adjusted_rand_score, mean_absolute_error, silhouette_score
 from sklearn.model_selection import TimeSeriesSplit
+from sklearn.neural_network import MLPRegressor
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from torch import nn
 
 import f1lab
 from f1lab import design as d
@@ -130,6 +136,15 @@ def _positions_mae_aus_zeit(data: pd.DataFrame, pred_zeit: np.ndarray) -> float:
     return mean_absolute_error(tmp["position"], tmp["pred_rang"])
 
 
+def _mlp_pipeline():
+    """Imputation (Median) + Skalierung + kleines Netz - anders als der
+    Baum kann ein MLP weder NaN noch unskalierte Features nativ (siehe P23)."""
+    return make_pipeline(
+        SimpleImputer(strategy="median"), StandardScaler(),
+        MLPRegressor(hidden_layer_sizes=(32, 16), max_iter=2000,
+                    early_stopping=True, random_state=7))
+
+
 @st.cache_data(persist="disk", show_spinner=False)
 def _quali_datensatz(jahre: tuple[int, ...]) -> pd.DataFrame:
     quali = _sammle_quali(range(jahre[0] - 1, jahre[-1] + 1))
@@ -176,9 +191,9 @@ with tab_quali:
         k[2].metric("Mit Vorjahreswert",
                    f"{data['vorjahr_position'].notna().mean():.0%}")
 
-        with st.spinner("TimeSeriesSplit-Validierung (5 Folds) ..."):
+        with st.spinner("TimeSeriesSplit-Validierung (5 Folds, inkl. MLP) ..."):
             cv = TimeSeriesSplit(n_splits=5)
-            mae_pos, mae_zeit = [], []
+            mae_pos, mae_zeit, mae_mlp = [], [], []
             letzter_test_idx = None
             for tr, te in cv.split(X):
                 m_pos = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
@@ -191,6 +206,12 @@ with tab_quali:
                 m_zeit.fit(X.iloc[tr][gueltig], y_zeit.iloc[tr][gueltig])
                 mae_zeit.append(_positions_mae_aus_zeit(
                     data.iloc[te], m_zeit.predict(X.iloc[te])))
+
+                m_mlp = _mlp_pipeline()
+                m_mlp.fit(X.iloc[tr], y_pos.iloc[tr])
+                mae_mlp.append(mean_absolute_error(
+                    y_pos.iloc[te], m_mlp.predict(X.iloc[te])))
+
                 letzter_test_idx = te
             baseline = mean_absolute_error(y_pos, np.full(len(y_pos), y_pos.median()))
 
@@ -204,19 +225,22 @@ with tab_quali:
 
         links, rechts = st.columns([1, 1.3])
         with links:
-            st.markdown("##### Zielgroesse: Position direkt vs. Zeit->Rang")
-            labels = ["Position\n(direkt)", "Zeit->Rang", "Baseline\n(Median)"]
-            werte = [np.mean(mae_pos), np.mean(mae_zeit), baseline]
-            farben = [d.SERIEN[0], d.SERIEN[1], d.MUTED]
+            st.markdown("##### Zielgroesse und Modell im Vergleich")
+            labels = ["Position\n(Baum)", "Zeit->Rang\n(Baum)",
+                     "Position\n(MLP)", "Baseline\n(Median)"]
+            werte = [np.mean(mae_pos), np.mean(mae_zeit), np.mean(mae_mlp), baseline]
+            farben = [d.SERIEN[0], d.SERIEN[1], d.SERIEN[2], d.MUTED]
             fig = go.Figure(go.Bar(x=labels, y=werte, marker={"color": farben},
                                    text=[f"{v:.2f}" for v in werte],
                                    textposition="outside"))
             zeige(fig, hoehe=380, showlegend=False, xaxis=namensachse(),
                  yaxis=achse("MAE [Positionen]"))
-            hinweis("Das direkte Positions-Modell schlaegt den Umweg ueber "
-                    "die Zeit-Vorhersage: kleine Zeitfehler kippen bei eng "
-                    "beieinanderliegenden Fahrern leicht die Reihenfolge "
-                    "(siehe P23).")
+            hinweis("Das direkte Positions-Modell (Baum) schlaegt den Umweg "
+                    "ueber die Zeit-Vorhersage deutlich. Das neuronale Netz "
+                    "(MLP, Median-Imputation + Skalierung noetig, der Baum "
+                    "braucht beides nicht) liegt nur knapp dahinter - kein "
+                    "klarer Sieg fuer eine Seite, beide weit vor der "
+                    "Baseline (siehe P23).")
 
         with rechts:
             st.markdown("##### Feature Importance (Permutation, letzter Fold)")
@@ -407,6 +431,96 @@ ANOM_SEASON, ANOM_EVENT, ANOM_IDENT = 2024, "Baku", "R"
 CONTAMINATION = 0.04
 FEAT_ANOM = ["lap_time", "vmax", "vmean", "rpm_max", "rpm_mean", "throttle_mean",
             "brake_pct", "gear_mean"]
+TRACE_KANAELE = ["Speed", "RPM", "Throttle", "Brake"]
+TRACE_PUNKTE = 96
+AE_BOTTLENECK = 8
+AE_EPOCHS = 80
+
+
+class LapAutoencoder(nn.Module):
+    """1D-Conv-Autoencoder fuer Telemetriespuren (siehe P25 ZWEITE
+    AUSBAUSTUFE) - schmaler Flaschenhals, damit das Netz eine "normale"
+    Rundenform komprimiert statt sie auswendig zu lernen."""
+
+    def __init__(self, n_channels=None, n_points=TRACE_PUNKTE,
+                bottleneck=AE_BOTTLENECK):
+        n_channels = len(TRACE_KANAELE) if n_channels is None else n_channels
+        super().__init__()
+        halb = n_points // 4
+        self.halb, self.kanaele_innen = halb, 32
+        self.encoder = nn.Sequential(
+            nn.Conv1d(n_channels, 16, kernel_size=4, stride=2, padding=1), nn.ReLU(),
+            nn.Conv1d(16, 32, kernel_size=4, stride=2, padding=1), nn.ReLU())
+        self.zu_bottleneck = nn.Linear(32 * halb, bottleneck)
+        self.von_bottleneck = nn.Linear(bottleneck, 32 * halb)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose1d(32, 16, kernel_size=4, stride=2, padding=1), nn.ReLU(),
+            nn.ConvTranspose1d(16, n_channels, kernel_size=4, stride=2, padding=1))
+
+    def forward(self, x):
+        z = self.encoder(x)
+        b = self.zu_bottleneck(z.flatten(1))
+        z2 = self.von_bottleneck(b).view(-1, self.kanaele_innen, self.halb)
+        return self.decoder(z2)
+
+
+def _lap_traces(ses, laps_index):
+    spuren, index = [], []
+    for idx in laps_index:
+        try:
+            tel = ses.laps.loc[[idx]].get_car_data().add_distance()
+        except Exception:
+            continue
+        if tel is None or len(tel) < 50 or tel["Distance"].max() <= 0:
+            continue
+        grid = np.linspace(0, tel["Distance"].max(), TRACE_PUNKTE)
+        kanaele = [np.interp(grid, tel["Distance"], tel[k].astype(float))
+                  for k in TRACE_KANAELE]
+        spuren.append(np.stack(kanaele))
+        index.append(idx)
+    return np.stack(spuren), index
+
+
+def _autoencoder_scores(spuren, seed: int = 0):
+    torch.manual_seed(seed)
+    mean = spuren.mean(axis=(0, 2), keepdims=True)
+    std = spuren.std(axis=(0, 2), keepdims=True) + 1e-6
+    x = torch.tensor((spuren - mean) / std, dtype=torch.float32)
+
+    modell = LapAutoencoder(n_channels=spuren.shape[1], n_points=spuren.shape[2])
+    opt = torch.optim.Adam(modell.parameters(), lr=1e-3, weight_decay=1e-5)
+    verlust_fn = nn.MSELoss()
+    modell.train()
+    for _epoch in range(AE_EPOCHS):
+        opt.zero_grad()
+        verlust = verlust_fn(modell(x), x)
+        verlust.backward()
+        opt.step()
+    modell.eval()
+    with torch.no_grad():
+        fehler = ((modell(x) - x) ** 2).mean(dim=(1, 2)).numpy()
+    return fehler
+
+
+def _ausfall_analyse(df: pd.DataFrame, anomalien: pd.DataFrame, ses) -> pd.DataFrame:
+    ausfaelle = ses.results[ses.results["Status"].isin(["Retired"])]
+    zeilen = []
+    for r in ausfaelle.itertuples():
+        drv = r.Abbreviation
+        letzte_runde = df.loc[df["driver"] == drv, "lap"].max()
+        eigene = anomalien[anomalien["driver"] == drv].sort_values("lap")
+        vor_ausfall = eigene[(eigene["anomalie"] == -1)
+                             & (eigene["lap"] < letzte_runde)]
+        auf_strecke = vor_ausfall[~vor_ausfall["boxenrunde"]]
+        vorlauf = (letzte_runde - auf_strecke["lap"].max()
+                  if not auf_strecke.empty else np.nan)
+        zeilen.append({
+            "driver": drv, "status": r.Status, "letzte_runde": letzte_runde,
+            "anomalien_boxenrunden": len(vor_ausfall) - len(auf_strecke),
+            "anomalien_auf_strecke": len(auf_strecke),
+            "runden_vorlauf_auf_strecke": vorlauf,
+        })
+    return pd.DataFrame(zeilen)
 
 
 def _rundenprofile(ses) -> pd.DataFrame:
@@ -446,7 +560,8 @@ def _anomalie_daten():
                      messages=True)
     df = _rundenprofile(ses)
     if df.empty:
-        return df, pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        leer = pd.DataFrame()
+        return df, leer, leer, leer, leer, leer, float("nan"), []
 
     sauber = df[~df["neutralisiert"] & ~df["erste_runde"]].copy()
     z = sauber.groupby("driver")[FEAT_ANOM].transform(
@@ -456,31 +571,31 @@ def _anomalie_daten():
     sauber["score"] = -iso.score_samples(z)
 
     phasen = f1lab.track_status_phases(ses)
+    ausfall_tab = _ausfall_analyse(df, sauber, ses)
 
-    ausfaelle = ses.results[ses.results["Status"].isin(["Retired"])]
-    zeilen = []
-    for r in ausfaelle.itertuples():
-        drv = r.Abbreviation
-        letzte_runde = df.loc[df["driver"] == drv, "lap"].max()
-        eigene = sauber[sauber["driver"] == drv].sort_values("lap")
-        vor_ausfall = eigene[(eigene["anomalie"] == -1)
-                             & (eigene["lap"] < letzte_runde)]
-        auf_strecke = vor_ausfall[~vor_ausfall["boxenrunde"]]
-        vorlauf = (letzte_runde - auf_strecke["lap"].max()
-                  if not auf_strecke.empty else np.nan)
-        zeilen.append({
-            "driver": drv, "status": r.Status, "letzte_runde": letzte_runde,
-            "anomalien_boxenrunden": len(vor_ausfall) - len(auf_strecke),
-            "anomalien_auf_strecke": len(auf_strecke),
-            "runden_vorlauf_auf_strecke": vorlauf,
-        })
-    return df, sauber, phasen, pd.DataFrame(zeilen)
+    # ZWEITE AUSBAUSTUFE: derselbe Vergleich wie im P25-Skript
+    spuren, index = _lap_traces(ses, sauber.index)
+    fehler = _autoencoder_scores(spuren)
+    sauber_ae = sauber.loc[index].copy()
+    sauber_ae["score"] = fehler
+    schwelle = np.quantile(fehler, 1 - CONTAMINATION)
+    sauber_ae["anomalie"] = np.where(fehler >= schwelle, -1, 1)
+    ausfall_tab_ae = _ausfall_analyse(df, sauber_ae, ses)
+
+    gemeinsam = sauber.index.intersection(sauber_ae.index)
+    korr, _p = spearmanr(sauber.loc[gemeinsam, "score"],
+                         sauber_ae.loc[gemeinsam, "score"])
+
+    return (df, sauber, phasen, ausfall_tab, sauber_ae, ausfall_tab_ae, korr,
+           list(gemeinsam))
 
 
 with tab_anom:
-    with st.spinner(f"{ANOM_EVENT} {ANOM_SEASON} {ANOM_IDENT} wird analysiert "
-                   "(nur beim ersten Aufruf) ..."):
-        df, anomalien, phasen, ausfall_tab = _anomalie_daten()
+    with st.spinner(f"{ANOM_EVENT} {ANOM_SEASON} {ANOM_IDENT} wird analysiert, "
+                   "inklusive Autoencoder auf rohen Telemetriespuren (nur beim "
+                   "ersten Aufruf) ..."):
+        (df, anomalien, phasen, ausfall_tab, anomalien_ae, ausfall_tab_ae,
+         ae_korr, ae_gemeinsam) = _anomalie_daten()
 
     if df.empty:
         st.info(f"Fuer {ANOM_EVENT} {ANOM_SEASON} liegt keine auswertbare "
@@ -536,3 +651,54 @@ with tab_anom:
                     "Vorlauf - die auffaelligen Werte erscheinen oft erst in "
                     "der Runde, in der ohnehin schon in die Box gefahren "
                     "wird.")
+
+        st.markdown("##### ZWEITE AUSBAUSTUFE: Autoencoder auf rohen "
+                   "Telemetriespuren statt aggregierten Rundenkennzahlen")
+        hinweis("1D-Conv-Autoencoder (PyTorch) auf Speed/RPM/Throttle/Brake, "
+                "auf 96 Distanzpunkte interpoliert - Rekonstruktionsfehler "
+                "als Anomalie-Score, trainiert auf derselben sauberen "
+                "Grundgesamtheit wie der IsolationForest oben (siehe P25).")
+
+        k2 = st.columns(2)
+        k2[0].metric("Spearman-Korrelation der beiden Scores", f"{ae_korr:.3f}",
+                    help="Nahe 0 heisst: die beiden Verfahren flaggen "
+                         "weitgehend unterschiedliche Runden.")
+        geflaggt_ae = int((anomalien_ae["anomalie"] == -1).sum())
+        k2[1].metric("Autoencoder geflaggt", f"{geflaggt_ae} ({CONTAMINATION:.0%})")
+
+        iso_s = anomalien.loc[ae_gemeinsam, "score"]
+        ae_s = anomalien_ae.loc[ae_gemeinsam, "score"]
+        iso_flag = anomalien.loc[ae_gemeinsam, "anomalie"] == -1
+        ae_flag = anomalien_ae.loc[ae_gemeinsam, "anomalie"] == -1
+        gruppen = [("keins", ~iso_flag & ~ae_flag, d.MUTED, 5),
+                  ("nur IsolationForest", iso_flag & ~ae_flag, d.SERIEN[0], 8),
+                  ("nur Autoencoder", ~iso_flag & ae_flag, d.SERIEN[1], 8),
+                  ("beide", iso_flag & ae_flag, d.SERIEN[2], 11)]
+        fig_ae = go.Figure()
+        for label, maske, farbe, groesse in gruppen:
+            fig_ae.add_trace(go.Scatter(
+                x=iso_s[maske], y=ae_s[maske], mode="markers",
+                marker={"color": farbe, "size": groesse}, name=label,
+                hovertemplate=f"{label}<br>IsolationForest %{{x:.2f}}<br>"
+                              "Autoencoder %{y:.2f}<extra></extra>"))
+        zeige(fig_ae, hoehe=420, xaxis=achse("IsolationForest-Score"),
+             yaxis=achse("Autoencoder-Rekonstruktionsfehler"))
+
+        st.markdown("###### Ausfallanalyse mit Autoencoder-Flags")
+        tabelle(ausfall_tab_ae.rename(columns={
+            "driver": "Fahrer", "status": "Status",
+            "letzte_runde": "Letzte Runde",
+            "anomalien_boxenrunden": "Anomalien (Box)",
+            "anomalien_auf_strecke": "Anomalien (Strecke)",
+            "runden_vorlauf_auf_strecke": "Runden Vorlauf (Strecke)"}))
+        hinweis("Der Autoencoder zeigt hier fuer alle vier Ausfaelle mehr "
+                "Vorlauf als der IsolationForest oben - aber Vorsicht mit "
+                "dem Schluss \"also besser\": PER und SAI schieden durch "
+                "eine Kollision aus, die sich mechanisch nicht ueber Dutzende "
+                "Runden ankuendigen kann. Dass ausgerechnet dort die groessten "
+                "Vorlaufzeiten stehen, ist eher ein Hinweis, dass die globale "
+                "(nicht fahrerweise) Normalisierung des Autoencoders "
+                "Strecken-/Verkehrsmuster statt individueller "
+                "Fahrzeugabweichungen lernt - eine Lektion ueber "
+                "Normalisierung, kein bestaetigter Fund ueber die Autos "
+                "(siehe P25).")

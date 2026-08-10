@@ -61,6 +61,45 @@ was Team und Fahrer in dem Moment bereits wissen, als dass es fruehzeitig
 warnt. Fuer eine echte Fruehwarnung braeuchte es Signale INNERHALB einer
 Runde (z. B. einen drifenden Sensorwert mitten auf der Geraden), nicht
 Rundenaggregate.
+
+ZWEITE AUSBAUSTUFE: ein kleiner 1D-Conv-Autoencoder (PyTorch) auf den rohen
+Telemetriespuren (Speed/RPM/Throttle/Brake, auf 96 Distanzpunkte
+interpoliert) statt auf den acht aggregierten Rundenkennzahlen oben -
+Rekonstruktionsfehler als Anomalie-Score. Die Frage: erfasst ein Modell, das
+den ganzen Rundenverlauf sieht statt nur Mittelwert/Maximum, etwas, das der
+IsolationForest auf den Aggregaten verpasst? Trainiert auf derselben
+"sauberen" Grundgesamtheit (keine Neutralisation, keine erste Runde,
+Boxenrunden bleiben drin - siehe oben), damit beide Verfahren auf denselben
+Runden verglichen werden.
+
+Ergebnis ueberrascht staerker als erwartet: die beiden Anomalie-Scores
+korrelieren praktisch nicht (Spearman r=0.061, 3 von 71 Top-Flags in der
+Vereinigung stimmen ueberein) - ein Rekonstruktionsfehler auf der ganzen
+Kurvenform misst etwas ganz anderes als ein Ausreisser in
+Rundenmittelwerten. Anders als IsolationForest (0 Vorwarnungen auf der
+Strecke fuer alle vier Ausfaelle) flaggt der Autoencoder bei allen vieren
+saubere Runden VOR dem finalen Stopp - PER 45, SAI 33, STR 17, TSU 8 Runden
+Vorlauf. Das liest sich zunaechst nach einem klaren Sieg fuer die rohe
+Telemetriespur.
+
+Ist es nicht, und das ist der eigentliche Befund: PER und SAI schieden
+durch eine Kollision aus (siehe oben, "keine Vorwarnung erwartungsgemaess"),
+ein Unfall kuendigt sich mechanisch nicht 45 Runden vorher an. Dass der
+Autoencoder ausgerechnet dort die groessten "Vorlaufzeiten" zeigt, ist ein
+Warnsignal ueber die Methode, kein Fund ueber die Fahrzeuge. Der
+wahrscheinlichste Grund steht schon oben in der Docstring des Modells
+selbst: die globale Kanal-Normalisierung (nicht je Fahrer wie beim
+IsolationForest) laesst das Netz eher Strecken-/Verkehrsmuster lernen als
+individuelle Fahrzeugabweichungen - ein Fahrer im dichten Feld oder in einer
+bestimmten Streckenzone sieht anders aus als einer frei fahrend, unabhaengig
+vom Auto-Zustand. Fuer STR/TSU (echte technische Probleme) sind 17 bzw. 8
+Runden Vorlauf immerhin plausibler, aber angesichts des PER/SAI-Befunds
+nicht als verlaessliche Fruehwarnung zu werten, ohne es gegenzupruefen -
+wofuer in dieser einen Session schlicht keine zweite unabhaengige
+Bestaetigung existiert. Die Lehre ist damit weniger "Autoencoder findet mehr"
+als "ein Modell, das mehr sieht, braucht eine Normalisierung, die zur
+Fragestellung passt (individuelle Abweichung, nicht Streckenmuster) - sonst
+misst es die falsche Sache mit ueberzeugend aussehenden Zahlen."
 """
 from __future__ import annotations
 
@@ -77,7 +116,10 @@ matplotlib.use("Agg")                      # kein Fenster, nur Dateien
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
+from scipy.stats import spearmanr
 from sklearn.ensemble import IsolationForest
+from torch import nn
 
 import f1lab
 from f1lab.design import FG, GRID, MUTED, PHASE, SERIEN, matplotlib_stil
@@ -91,6 +133,12 @@ SEASON, EVENT, IDENT = 2024, "Baku", "R"
 CONTAMINATION = 0.04
 FEAT = ["lap_time", "vmax", "vmean", "rpm_max", "rpm_mean", "throttle_mean",
        "brake_pct", "gear_mean"]
+
+# ZWEITE AUSBAUSTUFE: Autoencoder auf rohen Telemetriespuren
+TRACE_KANAELE = ["Speed", "RPM", "Throttle", "Brake"]
+TRACE_PUNKTE = 96      # durch 4 teilbar: zwei Halbierungen im Encoder passen exakt
+AE_BOTTLENECK = 8
+AE_EPOCHS = 80
 
 plt.rcParams.update(matplotlib_stil())
 
@@ -129,6 +177,111 @@ def rundenprofile(ses) -> pd.DataFrame:
             "erste_runde": lap.LapNumber == 1,
         })
     return pd.DataFrame(rows).dropna()
+
+
+class LapAutoencoder(nn.Module):
+    """1D-Conv-Autoencoder fuer Telemetriespuren (ZWEITE AUSBAUSTUFE).
+
+    Zwei Halbierungen im Encoder (96 -> 48 -> 24 Punkte), symmetrisch
+    rueckgaengig gemacht im Decoder. Der schmale Flaschenhals (8 Zahlen fuer
+    4x96=384 Eingabewerte) zwingt das Netz, eine "normale" Rundenform zu
+    komprimieren statt sie auswendig zu lernen - bei nur einigen hundert
+    Trainingsrunden waere ein groesseres Netz reine Speicherung, kein
+    gelerntes Muster.
+    """
+
+    def __init__(self, n_channels: int = len(TRACE_KANAELE),
+                n_points: int = TRACE_PUNKTE, bottleneck: int = AE_BOTTLENECK):
+        super().__init__()
+        halb = n_points // 4
+        self.halb, self.kanaele_innen = halb, 32
+        self.encoder = nn.Sequential(
+            nn.Conv1d(n_channels, 16, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(16, 32, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+        )
+        self.zu_bottleneck = nn.Linear(32 * halb, bottleneck)
+        self.von_bottleneck = nn.Linear(bottleneck, 32 * halb)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose1d(32, 16, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose1d(16, n_channels, kernel_size=4, stride=2, padding=1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        z = self.encoder(x)
+        b = self.zu_bottleneck(z.flatten(1))
+        z2 = self.von_bottleneck(b).view(-1, self.kanaele_innen, self.halb)
+        return self.decoder(z2)
+
+
+def lap_traces(ses, laps_index) -> tuple[np.ndarray, list]:
+    """Rohe Telemetriespuren je Runde, auf TRACE_PUNKTE gleich verteilte
+    Distanzpunkte interpoliert - Input fuer den Autoencoder, im Gegensatz zu
+    rundenprofile()s aggregierten Rundenkennzahlen. Gibt (Spuren, Index)
+    zurueck; Index nennt die Runden, fuer die Telemetrie verfuegbar war -
+    kann kuerzer sein als ``laps_index``."""
+    spuren, index = [], []
+    for idx in laps_index:
+        try:
+            tel = ses.laps.loc[[idx]].get_car_data().add_distance()
+        except Exception:
+            continue
+        if tel is None or len(tel) < 50 or tel["Distance"].max() <= 0:
+            continue
+        grid = np.linspace(0, tel["Distance"].max(), TRACE_PUNKTE)
+        kanaele = [np.interp(grid, tel["Distance"], tel[k].astype(float))
+                  for k in TRACE_KANAELE]
+        spuren.append(np.stack(kanaele))
+        index.append(idx)
+    return np.stack(spuren), index
+
+
+def autoencoder_scores(spuren: np.ndarray, seed: int = 0) -> np.ndarray:
+    """ZWEITE AUSBAUSTUFE: Autoencoder auf allen ``spuren`` trainieren,
+    Rekonstruktionsfehler je Runde als Anomalie-Score zurueckgeben.
+
+    Global je Kanal z-normalisiert (nicht je Fahrer wie bei den Pedal-
+    Features oben) - eine bewusste Vereinfachung: das Netz soll lernen, wie
+    eine normale Runde auf dieser Strecke ueberhaupt aussieht, nicht nur
+    individuelle Abweichungen vom eigenen Mittel.
+    """
+    torch.manual_seed(seed)
+    mean = spuren.mean(axis=(0, 2), keepdims=True)
+    std = spuren.std(axis=(0, 2), keepdims=True) + 1e-6
+    x = torch.tensor((spuren - mean) / std, dtype=torch.float32)
+
+    modell = LapAutoencoder(n_channels=spuren.shape[1], n_points=spuren.shape[2])
+    opt = torch.optim.Adam(modell.parameters(), lr=1e-3, weight_decay=1e-5)
+    verlust_fn = nn.MSELoss()
+
+    modell.train()
+    for _epoch in range(AE_EPOCHS):
+        opt.zero_grad()
+        verlust = verlust_fn(modell(x), x)
+        verlust.backward()
+        opt.step()
+
+    modell.eval()
+    with torch.no_grad():
+        fehler = ((modell(x) - x) ** 2).mean(dim=(1, 2)).numpy()
+    return fehler
+
+
+def anomalien_autoencoder(sauber: pd.DataFrame, ses,
+                          contamination: float = CONTAMINATION) -> pd.DataFrame:
+    """Dieselbe 'sauber'-Grundgesamtheit wie ``anomalien_finden()``, aber mit
+    dem Autoencoder-Score statt IsolationForest - liefert dieselben Spalten
+    (u.a. 'anomalie', 'score'), damit ``ausfall_analyse()`` unveraendert auf
+    beide Ergebnisse anwendbar ist."""
+    spuren, index = lap_traces(ses, sauber.index)
+    fehler = autoencoder_scores(spuren)
+    out = sauber.loc[index].copy()
+    out["score"] = fehler
+    schwelle = np.quantile(fehler, 1 - contamination)
+    out["anomalie"] = np.where(fehler >= schwelle, -1, 1)
+    return out
 
 
 def anomalien_finden(df: pd.DataFrame) -> pd.DataFrame:
@@ -237,6 +390,38 @@ def zeichne_ausfaelle(ax, df: pd.DataFrame, ausfaelle: list[str]) -> None:
     ax.set_axisbelow(True)
 
 
+def zeichne_score_vergleich(ax, anomalien: pd.DataFrame, anomalien_ae: pd.DataFrame,
+                            gemeinsam, korr: float) -> None:
+    """ZWEITE AUSBAUSTUFE: IsolationForest- gegen Autoencoder-Score, je
+    Runde ein Punkt. Farbe zeigt, welches Verfahren (keins/eins/beide)
+    diese Runde geflaggt hat."""
+    iso = anomalien.loc[gemeinsam, "score"]
+    ae = anomalien_ae.loc[gemeinsam, "score"]
+    iso_flag = anomalien.loc[gemeinsam, "anomalie"] == -1
+    ae_flag = anomalien_ae.loc[gemeinsam, "anomalie"] == -1
+
+    gruppen = [
+        ("keins", ~iso_flag & ~ae_flag, MUTED, 14),
+        ("nur IsolationForest", iso_flag & ~ae_flag, SERIEN[0], 50),
+        ("nur Autoencoder", ~iso_flag & ae_flag, SERIEN[1], 50),
+        ("beide", iso_flag & ae_flag, SERIEN[2], 90),
+    ]
+    for label, maske, farbe, groesse in gruppen:
+        ax.scatter(iso[maske], ae[maske], s=groesse, color=farbe, alpha=0.75,
+                  edgecolors="none", label=f"{label} (n={int(maske.sum())})")
+    ax.set_xlabel("IsolationForest-Score (aggregierte Rundenkennzahlen)")
+    ax.set_ylabel("Autoencoder-Rekonstruktionsfehler (rohe Telemetriespur)")
+    staerke = ("schwacher" if abs(korr) < 0.3 else
+              "maessiger" if abs(korr) < 0.6 else "starker")
+    ax.set_title(f"ZWEITE AUSBAUSTUFE: Spearman r={korr:.2f} - {staerke} "
+                f"Zusammenhang", loc="left", color=FG, fontsize=12, pad=10)
+    ax.legend(loc="upper left", frameon=False, labelcolor=FG, fontsize=8)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
 def main():
     f1lab.enable_cache()
 
@@ -260,9 +445,30 @@ def main():
     print(top[["driver", "lap", "lap_time", "boxenrunde", "score",
               "race_control"]].round(2).to_string(index=False))
 
-    print("\n[4/4] AUSBAUSTUFE: Ausfallanalyse ...")
+    print("\n[4/5] AUSBAUSTUFE: Ausfallanalyse (IsolationForest) ...")
     ausfall_tab = ausfall_analyse(df, anomalien, ses)
     print(ausfall_tab.to_string(index=False))
+
+    print("\n[5/5] ZWEITE AUSBAUSTUFE: Autoencoder auf rohen Telemetriespuren ...")
+    anomalien_ae = anomalien_autoencoder(df[~df["neutralisiert"]
+                                            & ~df["erste_runde"]], ses)
+    print(f"      {len(anomalien_ae)} Runden mit Telemetriespur, "
+         f"{(anomalien_ae['anomalie'] == -1).sum()} geflaggt")
+
+    gemeinsam = anomalien.index.intersection(anomalien_ae.index)
+    korr, _p = spearmanr(anomalien.loc[gemeinsam, "score"],
+                         anomalien_ae.loc[gemeinsam, "score"])
+    iso_flags = set(anomalien.index[anomalien["anomalie"] == -1]) & set(gemeinsam)
+    ae_flags = set(anomalien_ae.index[anomalien_ae["anomalie"] == -1]) & set(gemeinsam)
+    ueberlappung = len(iso_flags & ae_flags)
+    print(f"      Spearman-Korrelation IsolationForest- vs. Autoencoder-Score: "
+         f"{korr:.3f}")
+    print(f"      Uebereinstimmende Top-Flags: {ueberlappung} von "
+         f"{len(iso_flags | ae_flags)} (Vereinigung)")
+
+    ausfall_tab_ae = ausfall_analyse(df, anomalien_ae, ses)
+    print("\n      Ausfallanalyse mit Autoencoder-Flags:")
+    print(ausfall_tab_ae.to_string(index=False))
 
     print("\nGrafik ...")
     phasen = f1lab.track_status_phases(ses)
@@ -276,6 +482,15 @@ def main():
     fig.savefig(path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     print(f"\n      -> {path}")
+
+    print("\nGrafik ZWEITE AUSBAUSTUFE ...")
+    fig2, ax2 = plt.subplots(figsize=(8, 7))
+    zeichne_score_vergleich(ax2, anomalien, anomalien_ae, gemeinsam, korr)
+    plt.tight_layout()
+    path2 = OUT / "anomalie_autoencoder_vergleich.png"
+    fig2.savefig(path2, dpi=130, bbox_inches="tight")
+    plt.close(fig2)
+    print(f"      -> {path2}")
 
 
 if __name__ == "__main__":

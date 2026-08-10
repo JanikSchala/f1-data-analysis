@@ -7,6 +7,11 @@ matplotlib>=3.7
 # Machine Learning (Projekte 23, 24, 25)
 scikit-learn>=1.3
 
+# Deep Learning: kleines NN als Modellvergleich (P23), Autoencoder auf
+# rohen Telemetriespuren statt aggregierter Features (P25-Erweiterung)
+torch>=2.0
+scipy>=1.10
+
 # Data Engineering (Projekte 02, 26)
 duckdb>=0.10
 pyarrow>=14.0
