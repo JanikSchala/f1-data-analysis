@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - "10_data_engineering/f1analyze/**"
+  pull_request:
+    paths:
+      - "10_data_engineering/f1analyze/**"
+
+defaults:
+  run:
+    working-directory: 10_data_engineering/f1analyze
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]" mypy
+      - run: ruff check .
+      - run: mypy f1analyze --ignore-missing-imports
+      - run: pytest -q
