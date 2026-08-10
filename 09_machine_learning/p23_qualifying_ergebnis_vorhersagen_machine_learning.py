@@ -74,6 +74,29 @@ Permutation Importance (ebenfalls neu berechnet, ohne Leak): team_form ist
 das mit Abstand wichtigste Feature (0.33), vor der besten FP2-Runde (0.07) -
 die aktuelle Team-Form draengt die einzelne Trainingsrunde deutlich in den
 Hintergrund.
+
+ZWEITE AUSBAUSTUFE: schlaegt ein kleines neuronales Netz (sklearn
+MLPRegressor, kein zusaetzlicher Dependency) das Gradient-Boosting-Modell?
+Erwartung vorab: nein - bei ~1300 Zeilen und 6-8 Features ist das klassische
+Terrain fuer baumbasierte Modelle, nicht fuer ein Netz. Zwei methodische
+Unterschiede muessen dafuer fair gemacht werden, sonst waere der Vergleich
+unehrlich zugunsten des Baums: HistGradientBoostingRegressor behandelt NaN
+nativ als eigenen Split (fehlender Vorjahreswert ist selbst ein Signal -
+Rookie oder neue Strecke), ein MLP kann das nicht und braucht eine explizite
+Imputation (Median), die dieses Signal wegglaettet. Und Baeume sind
+skaleninvariant, ein MLP nicht - StandardScaler vor dem Netz, nicht vor dem
+Baum. Beides steckt in ``mlp_pipeline()``.
+
+Ergebnis bestaetigt die Erwartung nur mit Einschraenkung: MLP MAE 3.66 gegen
+Baum-MAE 3.52 - das Netz liegt tatsaechlich dahinter, aber nur knapp
+(+0.14 Positionen), nicht abgeschlagen, und weit vor der Zeit->Rang-Variante
+oben (5.20) sowie der Baseline (4.98). Mit derselben Datenmenge und
+denselben Features holt ein kleines, sorgfaeltig regularisiertes Netz
+(early_stopping, zwei kleine Hidden-Layer) fast an den baumbasierten
+Vorsprung heran, den Feature-Filter und NaN-Handling dem Baum eigentlich
+verschaffen sollten - ein differenzierterer Befund als "NN verliert klar
+gegen Baum auf kleinen Tabellendaten", eher "beide sind in derselben
+Groessenordnung, der Baum gewinnt knapp".
 """
 from __future__ import annotations
 
@@ -92,9 +115,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import TimeSeriesSplit
+from sklearn.neural_network import MLPRegressor
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 import f1lab
 from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
@@ -218,6 +245,23 @@ def positions_mae_aus_zeit(data: pd.DataFrame, pred_zeit: np.ndarray) -> float:
     return mean_absolute_error(tmp["position"], tmp["pred_rang"])
 
 
+def mlp_pipeline(seed: int = 7) -> Pipeline:
+    """ZWEITE AUSBAUSTUFE: Imputation (Median) + Skalierung + kleines Netz.
+
+    Anders als HistGradientBoostingRegressor braucht ein MLP beides: NaN
+    muessen weg (der Baum haette sie nativ als Split genutzt), und die
+    Features muessen skaliert sein (der Baum ist skaleninvariant, ein
+    Gradientenverfahren nicht). Zwei kleine Hidden-Layer, weil bei ~1300
+    Zeilen und 6-8 Features ein groesseres Netz nur auswendig lernt.
+    """
+    return make_pipeline(
+        SimpleImputer(strategy="median"),
+        StandardScaler(),
+        MLPRegressor(hidden_layer_sizes=(32, 16), max_iter=2000,
+                     early_stopping=True, random_state=seed),
+    )
+
+
 def main():
     f1lab.enable_cache()
 
@@ -249,7 +293,7 @@ def main():
 
     print("\n[3/4] TimeSeriesSplit-Validierung (VORGEHEN 3-4, AUSBAUSTUFE) ...")
     cv = TimeSeriesSplit(n_splits=5)
-    mae_pos, mae_zeit_als_position = [], []
+    mae_pos, mae_zeit_als_position, mae_mlp = [], [], []
     letzter_test_idx = None
     for tr, te in cv.split(X):
         m_pos = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
@@ -262,12 +306,20 @@ def main():
         pred_zeit = m_zeit.predict(X.iloc[te])
         mae_zeit_als_position.append(
             positions_mae_aus_zeit(data.iloc[te], pred_zeit))
+
+        m_mlp = mlp_pipeline()
+        m_mlp.fit(X.iloc[tr], y_pos.iloc[tr])
+        mae_mlp.append(mean_absolute_error(y_pos.iloc[te], m_mlp.predict(X.iloc[te])))
+
         letzter_test_idx = te
 
-    print(f"      Target=Position:  MAE = {np.mean(mae_pos):.2f} Positionen "
-         f"(je Fold: {[round(v, 2) for v in mae_pos]})")
-    print(f"      Target=Zeit->Rang: MAE = {np.mean(mae_zeit_als_position):.2f} "
-         f"Positionen (je Fold: {[round(v, 2) for v in mae_zeit_als_position]})")
+    print(f"      Target=Position (Baum):  MAE = {np.mean(mae_pos):.2f} "
+         f"Positionen (je Fold: {[round(v, 2) for v in mae_pos]})")
+    print(f"      Target=Zeit->Rang (Baum): MAE = "
+         f"{np.mean(mae_zeit_als_position):.2f} Positionen (je Fold: "
+         f"{[round(v, 2) for v in mae_zeit_als_position]})")
+    print(f"      Target=Position (MLP):   MAE = {np.mean(mae_mlp):.2f} "
+         f"Positionen (je Fold: {[round(v, 2) for v in mae_mlp]})")
     baseline = mean_absolute_error(y_pos, np.full(len(y_pos), y_pos.median()))
     print(f"      Baseline (immer Median-Position {y_pos.median():.0f}): "
          f"{baseline:.2f}")
@@ -284,14 +336,14 @@ def main():
 
     print("\nGrafik ...")
     fig, ax = plt.subplots(1, 2, figsize=(15, 6), gridspec_kw={"width_ratios": [1, 1.2]})
-    ax[0].bar(["Position\n(direkt)", "Zeit->Rang"],
-             [np.mean(mae_pos), np.mean(mae_zeit_als_position)],
-             color=[SERIEN[0], SERIEN[1]], width=0.5)
+    ax[0].bar(["Position\n(Baum)", "Zeit->Rang\n(Baum)", "Position\n(MLP)"],
+             [np.mean(mae_pos), np.mean(mae_zeit_als_position), np.mean(mae_mlp)],
+             color=[SERIEN[0], SERIEN[1], SERIEN[2]], width=0.5)
     ax[0].axhline(baseline, color=MUTED, lw=1, ls="--")
-    ax[0].text(1.4, baseline, f" Baseline {baseline:.1f}", color=MUTED, fontsize=9,
+    ax[0].text(2.4, baseline, f" Baseline {baseline:.1f}", color=MUTED, fontsize=9,
               va="center")
     ax[0].set_ylabel("MAE [Positionen]")
-    ax[0].set_title("AUSBAUSTUFE: Zielgroesse Position vs. Zeit", loc="left",
+    ax[0].set_title("AUSBAUSTUFE: Zielgroesse und Modell im Vergleich", loc="left",
                    color=FG, fontsize=12, pad=10)
     for side in ("top", "right"):
         ax[0].spines[side].set_visible(False)
