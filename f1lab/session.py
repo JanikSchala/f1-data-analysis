@@ -552,6 +552,23 @@ def corner_labels(session) -> pd.DataFrame:
     return out.sort_values("Distance", ignore_index=True)
 
 
+def marshal_sector_labels(session) -> pd.DataFrame:
+    """Marshal-Sektorgrenzen, auf dieselbe Referenzrunde projiziert wie
+    :func:`corner_labels` - dieselbe Idee, andere Punktliste (siehe P11).
+    """
+    ci = session.get_circuit_info()
+    ref = session.laps.pick_fastest().get_telemetry().add_distance()
+    ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
+    ref_dist = ref["Distance"].to_numpy()
+
+    zeilen = []
+    for m in ci.marshal_sectors.itertuples():
+        d = np.hypot(ref_xy[:, 0] - m.X, ref_xy[:, 1] - m.Y)
+        zeilen.append({"number": int(m.Number),
+                       "distance": float(ref_dist[np.argmin(d)])})
+    return pd.DataFrame(zeilen).sort_values("distance", ignore_index=True)
+
+
 def corner_speeds(session, window_m: float = 60.0) -> pd.DataFrame:
     """Minimalgeschwindigkeit je Kurve und Fahrer (siehe P11/P12).
 

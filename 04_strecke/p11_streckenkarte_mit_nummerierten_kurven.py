@@ -41,6 +41,9 @@ Zweite Ergaenzung, die im urspruenglichen VORGEHEN schon Punkt 4 war, aber
 im Code fehlte: Marshal-Sektoren sind jetzt als abwechselnd eingefaerbte
 Streckenabschnitte sichtbar, mit Nummern an den Sektorgrenzen - dieselbe
 Projektions-Idee wie bei den Kurven, nur auf die Sektorgrenzen angewendet.
+Die Projektion selbst steckt seit der App-Integration in
+f1lab.marshal_sector_labels() statt hier lokal (zweiter Konsument: die
+Strecke-Seite im Dashboard braucht dieselbe Funktion).
 
 Session auf Bahrain 2024 Q gewechselt (Zandvoort hat rotation=0 - VORGEHEN
 Punkt 2 waere unsichtbar geblieben, die Drehung haette nichts zu tun gehabt).
@@ -81,19 +84,6 @@ def rotate(xy: np.ndarray, angle_deg: float) -> np.ndarray:
     a = np.deg2rad(angle_deg)
     rot = np.array([[np.cos(a), np.sin(a)], [-np.sin(a), np.cos(a)]])
     return xy @ rot
-
-
-def marshal_sector_distances(ses, ref: pd.DataFrame) -> pd.DataFrame:
-    """Marshal-Sektorgrenzen auf dieselbe Referenzrunde projiziert wie
-    f1lab.corner_labels() - dieselbe Idee, andere Punktliste."""
-    ci = ses.get_circuit_info()
-    ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
-    ref_dist = ref["Distance"].to_numpy()
-    zeilen = []
-    for m in ci.marshal_sectors.itertuples():
-        d = np.hypot(ref_xy[:, 0] - m.X, ref_xy[:, 1] - m.Y)
-        zeilen.append({"number": int(m.Number), "distance": float(ref_dist[np.argmin(d)])})
-    return pd.DataFrame(zeilen).sort_values("distance", ignore_index=True)
 
 
 def zeichne_karte(ax, ref: pd.DataFrame, ci_rotation: float,
@@ -149,7 +139,7 @@ def main():
 
     print("[2/4] Kurven und Marshal-Sektoren projizieren ...")
     corners = f1lab.corner_labels(ses)
-    sektoren = marshal_sector_distances(ses, ref)
+    sektoren = f1lab.marshal_sector_labels(ses)
 
     print("\n[3/4] Minimalgeschwindigkeit je Kurve (AUSBAUSTUFE) ...")
     speeds = f1lab.corner_speeds(ses)
