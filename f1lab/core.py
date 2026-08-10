@@ -5,7 +5,8 @@ Die FastF1-Anbindung liegt in :mod:`f1lab.session`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import random
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -289,6 +290,475 @@ def optimal_undercut_window(deg_old: float, deg_new: float,
     gains = [(n, undercut_gain(deg_old, deg_new, n, out_lap_penalty))
              for n in range(1, max_laps + 1)]
     return max(gains, key=lambda t: t[1])
+
+
+# --------------------------------------------------------- Rennstrategie (P35)
+# Exakter Boxenstopp-Plan als kuerzester Pfad in einem DAG, plus eine
+# Safety-Car-Politik per Rueckwaertsinduktion. Siehe P35 fuer die Herleitung
+# (die Stintkosten haengen nur von Mischung und Laenge ab, nicht von der
+# Position im Rennen - das macht das Problem zu einem kuerzesten Pfad).
+#
+# GRUEN/SC sind die zwei Flaggenzustaende, ueber die SafetyCarProcess/
+# solve_policy/roll_out sich verstaendigen (0/1 statt Strings - beide Module
+# vergleichen sie oft in engen Schleifen).
+GRUEN, SC = 0, 1
+UNENDLICH = float("inf")
+
+
+@dataclass(frozen=True)
+class TyreModel:
+    """Rundenzeitmodell einer Mischung, treibstoffkorrigiert.
+
+    lap_time(alter) = basis + linear * (alter - 1) + quadratisch * (alter - 1)^2
+
+    Das Reifenalter ist einsbasiert: Alter 1 ist die erste Runde auf dem Satz,
+    also ist ``base_time`` die Zeit auf frischem Gummi. Die nullbasierte
+    Variante waere eine hypothetische Runde auf einem null Runden alten Reifen -
+    nicht interpretierbar, und jeder Indexfehler bliebe still.
+
+    Der quadratische Term bildet den Abbau am Stintende ab. Er macht das Modell
+    nicht komplizierter, weil die Stintkosten vorab je (Mischung, Laenge)
+    ausgerechnet werden: die Rundenzeitfunktion darf beliebig krumm sein,
+    solange die Optimierung nur fertige Zahlen sieht.
+    """
+
+    compound: str
+    base_time: float
+    deg_linear: float
+    deg_quad: float = 0.0
+    max_age: int | None = None
+
+    def lap_time(self, age: int) -> float:
+        if age < 1:
+            raise ValueError("Reifenalter ist einsbasiert")
+        a = age - 1
+        return self.base_time + self.deg_linear * a + self.deg_quad * a * a
+
+    def stint_time(self, length: int) -> float:
+        """Reine Fahrzeit eines Stints ueber ``length`` Runden, ohne Pitloss."""
+        if length < 1:
+            raise ValueError("Stintlaenge muss mindestens 1 sein")
+        return sum(self.lap_time(a) for a in range(1, length + 1))
+
+
+@dataclass(frozen=True)
+class RaceConfig:
+    """Alles, was die Aufgabe festlegt.
+
+    ``fuel_effect`` steht bewusst nicht in der Zielfunktion. Jede Strategie
+    faehrt die Runden 1..L genau einmal, also ist der Treibstoffterm fuer alle
+    Plaene identisch - eine additive Konstante, die das Optimum nicht bewegen
+    kann. Sie wird nur fuer die Anzeige wieder addiert, damit die Rennzeit auf
+    einer erkennbaren Skala steht.
+
+    Wichtig: die Basiszeiten muessen treibstoffkorrigiert sein. Der Term
+    ``LapNumber`` gehoert in die Degradationsschaetzung (P13), aber nicht
+    zusaetzlich in ``base_time`` - sonst zaehlt er doppelt.
+    """
+
+    n_laps: int
+    pit_loss: float
+    tyres: tuple[TyreModel, ...]
+    min_stint: int = 1
+    max_stint: int | None = None
+    require_two_compounds: bool = True
+    sc_laps: frozenset[int] = frozenset()
+    sc_pit_loss_factor: float = 0.45
+    start_compound: str | None = None
+    exact_stops: int | None = None
+    fuel_effect: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.n_laps < 1:
+            raise ValueError("n_laps muss mindestens 1 sein")
+        namen = [t.compound for t in self.tyres]
+        if not namen:
+            raise ValueError("mindestens eine Mischung noetig")
+        if len(set(namen)) != len(namen):
+            raise ValueError(f"doppelte Mischungen: {namen}")
+        if self.require_two_compounds and len(namen) < 2:
+            raise ValueError("Zweimischungs-Regel braucht zwei Mischungen")
+        if self.start_compound is not None and self.start_compound not in namen:
+            raise ValueError(f"unbekannte Startmischung {self.start_compound!r}")
+        if self.min_stint < 1:
+            raise ValueError("min_stint muss mindestens 1 sein")
+
+    @property
+    def fuel_offset(self) -> float:
+        """Treibstoffzeit ueber das ganze Rennen. Fuer jede Strategie gleich."""
+        return self.fuel_effect * self.n_laps * (self.n_laps - 1) / 2.0
+
+
+@dataclass(frozen=True)
+class Stint:
+    compound: str
+    start_lap: int
+    end_lap: int
+
+    @property
+    def length(self) -> int:
+        return self.end_lap - self.start_lap + 1
+
+    def __str__(self) -> str:
+        return f"{self.compound}[{self.start_lap}-{self.end_lap}]"
+
+
+@dataclass(frozen=True)
+class Strategy:
+    stints: tuple[Stint, ...]
+    green_time: float
+    fuel_offset: float = 0.0
+
+    @property
+    def total_time(self) -> float:
+        return self.green_time + self.fuel_offset
+
+    @property
+    def pit_laps(self) -> tuple[int, ...]:
+        """Runden, an deren Ende an die Box gefahren wird."""
+        return tuple(s.start_lap - 1 for s in self.stints[1:])
+
+    @property
+    def n_stops(self) -> int:
+        return len(self.stints) - 1
+
+    @property
+    def compounds(self) -> tuple[str, ...]:
+        return tuple(s.compound for s in self.stints)
+
+    def describe(self) -> str:
+        folge = " -> ".join(str(s) for s in self.stints)
+        stopps = ", ".join(str(p) for p in self.pit_laps) or "keine"
+        return (f"{self.n_stops}-Stopp  {folge}\n"
+                f"  Box am Ende von Runde: {stopps}\n"
+                f"  Fahrzeit {self.green_time:9.3f} s | gesamt {self.total_time:9.3f} s")
+
+
+class InfeasibleRace(RuntimeError):
+    """Keine Strategie erfuellt die gesetzten Bedingungen."""
+
+
+def pit_loss_at(cfg: RaceConfig, lap: int) -> float:
+    """Zeitverlust eines Stopps am Ende von ``lap``.
+
+    Unter Safety Car ist das Feld langsam, der relative Preis der Boxengasse
+    bricht ein. ``sc_pit_loss_factor`` ist der Anteil, der uebrig bleibt.
+    """
+    if lap in cfg.sc_laps:
+        return cfg.pit_loss * cfg.sc_pit_loss_factor
+    return cfg.pit_loss
+
+
+def stint_arcs(cfg: RaceConfig) -> list[tuple[int, int, int, float]]:
+    """Alle legalen Stints als (Mischungsindex, Startrunde, Endrunde, Kosten)."""
+    arcs = []
+    for ci, tyre in enumerate(cfg.tyres):
+        cap = cfg.n_laps if cfg.max_stint is None else min(cfg.max_stint, cfg.n_laps)
+        if tyre.max_age is not None:
+            cap = min(cap, tyre.max_age)
+        for start in range(1, cfg.n_laps + 1):
+            if start == 1 and cfg.start_compound not in (None, tyre.compound):
+                continue
+            for length in range(cfg.min_stint, min(cap, cfg.n_laps - start + 1) + 1):
+                end = start + length - 1
+                # ein Stint, der vor der Flagge endet, braucht einen Nachfolger,
+                # der selbst wieder lang genug ist
+                if end < cfg.n_laps and (cfg.n_laps - end) < cfg.min_stint:
+                    continue
+                eintritt = 0.0 if start == 1 else pit_loss_at(cfg, start - 1)
+                arcs.append((ci, start, end, tyre.stint_time(length) + eintritt))
+    return arcs
+
+
+def optimal_strategy(cfg: RaceConfig) -> Strategy:
+    """Exaktes Optimum per dynamischer Programmierung ueber den Stint-DAG.
+
+    Der Zustand traegt neben dem Knoten eine Bitmaske der bisher benutzten
+    Mischungen. Ohne die waere die Zweimischungs-Regel nicht durchsetzbar: ein
+    reiner kuerzester Pfad hat kein Gedaechtnis, und am Ende zu filtern verliert
+    die Exaktheit. Bei drei Mischungen kostet die Maske einen Faktor 8.
+
+    Die Stoppzahl steht nur dann im Zustand, wenn sie eingeschraenkt ist. Sie
+    immer mitzufuehren vervielfacht den Zustandsraum um die Rundenzahl - fuer
+    eine Bedingung, die meistens gar nicht gesetzt ist.
+    """
+    arcs = stint_arcs(cfg)
+    if not arcs:
+        raise InfeasibleRace("keine legalen Stints unter diesen Bedingungen")
+    aus: dict[int, list] = {}
+    for arc in arcs:
+        aus.setdefault(arc[1], []).append(arc)
+
+    zaehle = cfg.exact_stops is not None
+    L = cfg.n_laps
+    # zustand[(maske, stopps)] = (kosten, vorgaenger)
+    ebenen: list[dict] = [{} for _ in range(L + 2)]
+    ebenen[1][(0, 0)] = (0.0, None)
+
+    for knoten in range(1, L + 1):
+        for (maske, stopps), (kosten, _) in ebenen[knoten].items():
+            for arc in aus.get(knoten, ()):
+                ci, _start, end, preis = arc
+                n_stopps = (stopps + (0 if knoten == 1 else 1)) if zaehle else 0
+                if cfg.exact_stops is not None and n_stopps > cfg.exact_stops:
+                    continue
+                schluessel = (maske | (1 << ci), n_stopps)
+                ziel = ebenen[end + 1]
+                neu = kosten + preis
+                alt = ziel.get(schluessel)
+                if alt is None or neu < alt[0]:
+                    ziel[schluessel] = (neu, (knoten, (maske, stopps), arc))
+    besser = None
+    for (maske, stopps), eintrag in ebenen[L + 1].items():
+        if cfg.require_two_compounds and bin(maske).count("1") < 2:
+            continue
+        if cfg.exact_stops is not None and stopps != cfg.exact_stops:
+            continue
+        if besser is None or eintrag[0] < besser[0]:
+            besser = eintrag
+    if besser is None:
+        raise InfeasibleRace(
+            "keine Strategie erfuellt die Bedingungen "
+            "(min_stint / max_stint / max_age / Zweimischungs-Regel pruefen)")
+
+    gewaehlt = []
+    knoten, schluessel, arc = besser[1]
+    while True:
+        gewaehlt.append(arc)
+        vor = ebenen[knoten][schluessel][1]
+        if vor is None:
+            break
+        knoten, schluessel, arc = vor
+    stints = tuple(Stint(cfg.tyres[a[0]].compound, a[1], a[2])
+                   for a in sorted(gewaehlt, key=lambda a: a[1]))
+    return Strategy(stints, sum(a[3] for a in gewaehlt), cfg.fuel_offset)
+
+
+def frontier_by_stops(cfg: RaceConfig, up_to: int = 4) -> dict[int, Strategy | None]:
+    """Bester Plan je exakter Stoppzahl.
+
+    So ist die Frage im Rennen gestellt. "Die fuenf besten Strategien" liefert
+    fuenfmal dieselbe Idee mit der Boxenrunde um eins verschoben; "bester
+    Einstopper gegen besten Zweistopper und der Abstand dazwischen" ist die
+    Entscheidung. Der Abstand misst auch, wie viel Risiko man kauft: drei
+    Sekunden sind ein Muenzwurf, fuenfundzwanzig nicht.
+    """
+    ergebnis: dict[int, Strategy | None] = {}
+    for n in range(up_to + 1):
+        try:
+            ergebnis[n] = optimal_strategy(replace(cfg, exact_stops=n))
+        except InfeasibleRace:
+            ergebnis[n] = None
+    return ergebnis
+
+
+def pit_loss_crossovers(cfg: RaceConfig, lo: float, hi: float,
+                        tol: float = 0.05) -> list[float]:
+    """Pitloss-Werte, an denen die optimale Stoppzahl kippt.
+
+    Der Pitloss ist die unsicherste Eingabe - er haengt an Strecke, Verkehr und
+    daran, ob der Stopp sauber laeuft. Das Optimum ist stueckweise konstant in
+    ihm, interessant ist also nicht der Wert, sondern wo er springt.
+    """
+    def stopps(v: float) -> int:
+        return optimal_strategy(replace(cfg, pit_loss=float(v))).n_stops
+
+    grenzen: list[float] = []
+    gitter = [lo + (hi - lo) * i / 20 for i in range(21)]
+    v_alt, s_alt = gitter[0], stopps(gitter[0])
+    for v in gitter[1:]:
+        s = stopps(v)
+        if s != s_alt:
+            a, b = v_alt, v
+            while b - a > tol:
+                m = (a + b) / 2
+                if stopps(m) == s_alt:
+                    a = m
+                else:
+                    b = m
+            grenzen.append(round((a + b) / 2, 2))
+        v_alt, s_alt = v, s
+    return grenzen
+
+
+@dataclass(frozen=True)
+class SafetyCarProcess:
+    """Zweizustands-Markow-Kette auf dem Entscheidungspunkt jeder Runde.
+
+    Grob, aber mit genau zwei Parametern, die sich beide aus FastF1
+    ``TrackStatus`` auszaehlen lassen (siehe P18) - und sie erzeugt die zwei
+    Eigenschaften, auf die es ankommt: Safety Cars sind selten, und wenn sie
+    kommen, bleiben sie ein paar Runden.
+
+    ``sc[l]`` gilt fuer die Entscheidung zu Beginn von Runde l. Der kuerzeste
+    Pfad indiziert Safety-Car-Runden dagegen nach der Runde, an deren *Ende*
+    gestoppt wird - die beiden passen ueber ``l - 1`` zusammen. Ein Fehler an
+    dieser Stelle verschiebt jeden Vergleich um eine Runde und sieht trotzdem
+    plausibel aus.
+    """
+
+    p_deploy: float = 0.025
+    p_end: float = 0.25
+
+    def next_probs(self, state: int) -> tuple[float, float]:
+        if state == GRUEN:
+            return 1.0 - self.p_deploy, self.p_deploy
+        return self.p_end, 1.0 - self.p_end
+
+    def marginals(self, n_laps: int) -> list[float]:
+        """q[l] = P(Safety Car am Entscheidungspunkt von Runde l), 1-basiert."""
+        q = [0.0] * (n_laps + 2)
+        p_gruen = 1.0
+        for lap in range(1, n_laps + 1):
+            q[lap] = 1.0 - p_gruen
+            p_gruen = (p_gruen * self.next_probs(GRUEN)[0]
+                       + (1.0 - p_gruen) * self.next_probs(SC)[0])
+        return q
+
+    def sample(self, rng: random.Random, n_laps: int) -> list[int]:
+        folge = [GRUEN] * (n_laps + 1)
+        zustand = GRUEN
+        for lap in range(1, n_laps + 1):
+            folge[lap] = zustand
+            zustand = SC if rng.random() < self.next_probs(zustand)[1] else GRUEN
+        return folge
+
+
+def solve_policy(cfg: RaceConfig, prozess: SafetyCarProcess) -> tuple[float, dict]:
+    """Optimale Politik per Rueckwaertsinduktion. Gibt (Erwartungswert, Politik).
+
+    Zustand ist (Runde, Mischung, Reifenalter, benutzte Mischungen, Flagge),
+    Aktion ist ausbleiben oder auf Mischung c' wechseln.
+
+    Warum nicht einfach jede Runde neu planen: der kuerzeste Pfad kann
+    "vielleicht kommt gleich ein Safety Car" gar nicht ausdruecken. Neuplanen
+    mit Punktschaetzung ignoriert deshalb den Optionswert des Wartens - die
+    Politik hier dehnt einen Stint manchmal ueber das deterministische Optimum
+    hinaus, nur um die Option offenzuhalten.
+    """
+    if cfg.exact_stops is not None:
+        raise NotImplementedError(
+            "Stoppzahl-Bedingungen braeuchten einen Zaehler im Zustand")
+    n_c = len(cfg.tyres)
+    caps = []
+    for t in cfg.tyres:
+        cap = cfg.n_laps if cfg.max_stint is None else min(cfg.max_stint, cfg.n_laps)
+        caps.append(cap if t.max_age is None else min(cap, t.max_age))
+    zeiten = [[0.0] + [t.lap_time(a) for a in range(1, caps[i] + 1)]
+              for i, t in enumerate(cfg.tyres)]
+    stopp = {GRUEN: cfg.pit_loss, SC: cfg.pit_loss * cfg.sc_pit_loss_factor}
+    uebergang = {s: prozess.next_probs(s) for s in (GRUEN, SC)}
+
+    def masken(ci: int) -> list[int]:
+        bit = 1 << ci
+        return [m | bit for m in range(1 << n_c) if not m & bit]
+
+    # Endebene: das Rennen ist vorbei. Zulaessig nur, wenn der letzte Stint lang
+    # genug war und die Zweimischungs-Regel erfuellt ist.
+    naechste = {}
+    for ci in range(n_c):
+        for maske in masken(ci):
+            ok_maske = (not cfg.require_two_compounds
+                        or bin(maske).count("1") >= 2)
+            for alter in range(1, caps[ci] + 1):
+                gut = ok_maske and alter >= cfg.min_stint
+                for s in (GRUEN, SC):
+                    naechste[(ci, alter, maske, s)] = 0.0 if gut else UNENDLICH
+
+    politik: dict = {}
+    for lap in range(cfg.n_laps, 0, -1):
+        aktuell = {}
+        for ci in range(n_c):
+            alter_liste = (range(1, min(caps[ci], lap - 1) + 1) if lap > 1
+                           else range(1))
+            for maske in masken(ci):
+                for alter in alter_liste:
+                    for s in (GRUEN, SC):
+                        pg, ps = uebergang[s]
+                        best, aktion = UNENDLICH, None
+                        neu = alter + 1
+                        if neu <= caps[ci]:
+                            g = naechste.get((ci, neu, maske, GRUEN), UNENDLICH)
+                            h = naechste.get((ci, neu, maske, SC), UNENDLICH)
+                            if g < UNENDLICH or h < UNENDLICH:
+                                best = zeiten[ci][neu] + pg * g + ps * h
+                        if alter >= max(cfg.min_stint, 1):
+                            for cj in range(n_c):
+                                m2 = maske | (1 << cj)
+                                g = naechste.get((cj, 1, m2, GRUEN), UNENDLICH)
+                                h = naechste.get((cj, 1, m2, SC), UNENDLICH)
+                                if g == UNENDLICH and h == UNENDLICH:
+                                    continue
+                                wert = stopp[s] + zeiten[cj][1] + pg * g + ps * h
+                                if wert < best:
+                                    best, aktion = wert, cj
+                        aktuell[(ci, alter, maske, s)] = best
+                        politik[(lap, ci, alter, maske, s)] = aktion
+        naechste = aktuell
+
+    erlaubt = range(n_c)
+    if cfg.start_compound is not None:
+        erlaubt = [i for i, t in enumerate(cfg.tyres)
+                   if t.compound == cfg.start_compound]
+    wert, ci_stern = min((naechste.get((ci, 0, 1 << ci, GRUEN), UNENDLICH), ci)
+                         for ci in erlaubt)
+    if wert == UNENDLICH:
+        raise InfeasibleRace("keine Politik erfuellt die Bedingungen")
+    politik[("start",)] = ci_stern
+    return wert, politik
+
+
+def roll_out(cfg: RaceConfig, politik: dict, folge: list[int]) -> Strategy:
+    """Politik gegen einen konkreten Rennverlauf ausfahren."""
+    namen = [t.compound for t in cfg.tyres]
+    ci = politik[("start",)]
+    maske, alter, start, gesamt = 1 << ci, 0, 1, 0.0
+    stints: list[Stint] = []
+    for lap in range(1, cfg.n_laps + 1):
+        s = folge[lap]
+        aktion = politik.get((lap, ci, alter, maske, s))
+        if aktion is not None:
+            gesamt += cfg.pit_loss * (cfg.sc_pit_loss_factor if s == SC else 1.0)
+            stints.append(Stint(namen[ci], start, lap - 1))
+            ci, alter, start = aktion, 0, lap
+            maske |= 1 << ci
+        alter += 1
+        gesamt += cfg.tyres[ci].lap_time(alter)
+    stints.append(Stint(namen[ci], start, cfg.n_laps))
+    return Strategy(tuple(stints), gesamt, cfg.fuel_offset)
+
+
+def expected_cost_of_plan(cfg: RaceConfig, plan: Strategy,
+                          prozess: SafetyCarProcess) -> float:
+    """Erwartete Kosten, wenn ein fester Plan stur durchgezogen wird.
+
+    Geschlossene Form, keine Simulation: der einzige zufaellige Anteil ist der
+    Pitloss je (fester) Boxenrunde.
+    """
+    q = prozess.marginals(cfg.n_laps)
+    gesamt = sum(next(t for t in cfg.tyres if t.compound == st.compound)
+                 .stint_time(st.length) for st in plan.stints)
+    for st in plan.stints[1:]:
+        p = q[st.start_lap]
+        gesamt += cfg.pit_loss * ((1.0 - p) + p * cfg.sc_pit_loss_factor)
+    return gesamt
+
+
+def hindsight_value(cfg: RaceConfig, prozess: SafetyCarProcess,
+                    n: int = 200, seed: int = 0) -> tuple[float, float]:
+    """Erwartetes Optimum bei *bekanntem* Rennverlauf. Untere Schranke, Mittel und SE."""
+    rng = random.Random(seed)
+    summe = quadrat = 0.0
+    for _ in range(n):
+        folge = prozess.sample(rng, cfg.n_laps)
+        bekannt = frozenset(lap - 1 for lap in range(1, cfg.n_laps + 1)
+                            if folge[lap] == SC)
+        wert = optimal_strategy(replace(cfg, sc_laps=bekannt)).green_time
+        summe += wert
+        quadrat += wert * wert
+    mittel = summe / n
+    varianz = max(0.0, quadrat / n - mittel * mittel)
+    return mittel, (varianz / n) ** 0.5
 
 
 # --------------------------------------------------------------- Telemetrie

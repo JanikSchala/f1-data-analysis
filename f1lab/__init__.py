@@ -16,9 +16,17 @@ Beispiel::
     print(f"Pitloss: {f1lab.pit_loss(ses):.2f} s")
 """
 from .core import (
+    GRUEN,
+    SC,
     DegradationFit,
     Elevation,
+    InfeasibleRace,
     Interval,
+    RaceConfig,
+    SafetyCarProcess,
+    Stint,
+    Strategy,
+    TyreModel,
     active_distance_zones,
     bootstrap_median,
     braking_zones,
@@ -27,14 +35,22 @@ from .core import (
     elo_expected,
     elo_update,
     estimate_pit_loss,
+    expected_cost_of_plan,
     find_cliff,
     fit_degradation,
+    frontier_by_stops,
     fuel_correct,
+    hindsight_value,
     mad_outlier_mask,
     match_by_distance,
+    optimal_strategy,
     optimal_undercut_window,
     path_length,
+    pit_loss_crossovers,
+    roll_out,
+    solve_policy,
     status_intervals,
+    stint_arcs,
     undercut_gain,
 )
 from .session import (
@@ -67,6 +83,7 @@ from .session import (
     parse_track_limits,
     pit_loss,
     position_progression,
+    race_config_from_session,
     race_pace,
     sc_compaction,
     start_performance,
@@ -102,4 +119,9 @@ __all__ = [
     "marshal_sector_labels", "weather_join", "temperature_effect",
     "weather_phases", "wet_dry_classifier", "field_spread", "sc_compaction",
     "parse_penalties", "parse_track_limits", "track_limit_crosscheck",
+    # Rennstrategie (P35)
+    "TyreModel", "RaceConfig", "Stint", "Strategy", "InfeasibleRace",
+    "GRUEN", "SC", "stint_arcs", "optimal_strategy", "frontier_by_stops",
+    "pit_loss_crossovers", "SafetyCarProcess", "solve_policy", "roll_out",
+    "expected_cost_of_plan", "hindsight_value", "race_config_from_session",
 ]
