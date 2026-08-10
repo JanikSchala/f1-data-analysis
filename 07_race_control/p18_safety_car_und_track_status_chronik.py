@@ -64,6 +64,12 @@ moderater Vorteil dafuer, das SC-Fenster abzuwarten statt kurz davor zu
 stoppen, aber kein Freifahrtschein: auch der guenstige Zeitpunkt kostet im
 Schnitt noch fast eine Position, weil oft ein grosser Teil des Feldes
 gleichzeitig stoppt und sich die Reihenfolge in der Box neu mischt.
+
+VORGEHEN 4s Kernrechnung (Feldstreckung, Baseline-vs-Minimum-Kompaktierung)
+steckt seit der App-Integration in f1lab.session.field_spread()/
+sc_compaction() statt hier lokal (zweiter Konsument: die Race-Control-Seite
+im Dashboard). Der Saison-Scan selbst bleibt skriptlokal, wie in P05/P16/
+P31 begruendet.
 """
 from __future__ import annotations
 
@@ -101,32 +107,6 @@ SAISON_RENNEN = [
 FENSTER_DAVOR = 3     # Runden vor SC-Beginn, die noch als "kurz davor" zaehlen
 
 plt.rcParams.update(matplotlib_stil())
-
-
-def feldstreckung(ses) -> pd.Series:
-    """Sekunden zwischen erstem und letztem Fahrer je Runde."""
-    laps = ses.laps
-    return (laps.dropna(subset=["Position"])
-            .groupby("LapNumber")["Time"]
-            .agg(lambda s: (s.max() - s.min()).total_seconds()))
-
-
-def kompaktierung(neutral: pd.DataFrame, spread: pd.Series) -> pd.DataFrame:
-    """VORGEHEN 4: Baseline (letzte 3 gruene Runden davor) gegen die
-    staerkste Kompaktierung waehrend der Phase (nicht den Mittelwert - der
-    ist vom Ausloese-Zwischenfall verzerrt, siehe Docstring)."""
-    zeilen = []
-    for p in neutral.itertuples():
-        vorher = spread.reindex(range(p.lap_start - 3, p.lap_start)).dropna()
-        waehrend = spread.reindex(range(p.lap_start, p.lap_end + 1)).dropna()
-        if vorher.empty or waehrend.empty:
-            continue
-        zeilen.append({
-            "start": p.lap_start, "ende": p.lap_end,
-            "baseline_s": vorher.median(), "minimum_s": waehrend.min(),
-            "kompaktierung_pct": 100 * (1 - waehrend.min() / vorher.median()),
-        })
-    return pd.DataFrame(zeilen)
 
 
 def _position_bei(pos: pd.Series, drv: str, lap: float) -> float:
@@ -256,8 +236,8 @@ def main():
          .round(1).to_string(index=False))
 
     print("\n[2/3] Feldstreckung: Baseline gegen Kompaktierungs-Minimum ...")
-    spread = feldstreckung(ses)
-    komp = kompaktierung(neutral, spread)
+    spread = f1lab.field_spread(ses)
+    komp = f1lab.sc_compaction(neutral, spread)
     print(komp.round(1).to_string(index=False))
     gruene_runden = phasen.loc[phasen["label"] == "gruen", "lap_start"]
     referenz = spread.reindex(gruene_runden).dropna().median()

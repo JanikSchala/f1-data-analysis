@@ -942,3 +942,205 @@ def _duelle(tab: pd.DataFrame, team_col: str, driver_col: str,
             "delta_pct": float((langsam[wert_col] / schnell[wert_col] - 1) * 100),
         })
     return out
+
+
+# ------------------------------------------------------------------- Wetter
+def weather_join(session) -> pd.DataFrame:
+    """Gruene, gewertete, boxenlose Runden mit dem naechstgelegenen
+    Wettermesspunkt verknuepft, plus treibstoffkorrigierte Rundenzeit
+    (siehe P17)."""
+    laps = (session.laps.pick_wo_box().pick_accurate()
+           .pick_track_status("1")).copy()
+    wl = laps.get_weather_data().reset_index(drop=True)
+    laps = laps.reset_index(drop=True)
+    merged = pd.concat([laps, wl.loc[:, ~wl.columns.isin(laps.columns)]], axis=1)
+    merged["sec"] = merged["LapTime"].dt.total_seconds()
+    merged["corr"] = fuel_correct(
+        merged["sec"], merged["LapNumber"], session.total_laps)
+    return merged
+
+
+def temperature_effect(merged: pd.DataFrame) -> dict:
+    """Streckentemperatur-Effekt auf trockenen Runden: erst die naive
+    gepoolte Regression, dann kontrolliert um Fahrer-Niveau und Reifenalter
+    (siehe P17 - der Effekt geht in der gepoolten Fassung fast immer in der
+    Streuung durch Fahrer/Reifenalter unter).
+
+    Gibt ein leeres Ergebnis (``n=0``) zurueck, wenn zu wenige trockene
+    Runden mit vollstaendigen Werten vorliegen.
+    """
+    dry = merged[~merged["Rainfall"]].dropna(
+        subset=["TrackTemp", "corr", "TyreLife"]).copy()
+    if len(dry) < 20:
+        return {"n": 0}
+
+    naiv_slope, naiv_inter = np.polyfit(dry["TrackTemp"], dry["corr"], 1)
+    naiv_pred = naiv_slope * dry["TrackTemp"] + naiv_inter
+    naiv_r2 = 1 - ((dry["corr"] - naiv_pred) ** 2).sum() / \
+        ((dry["corr"] - dry["corr"].mean()) ** 2).sum()
+
+    dry["rel"] = dry["corr"] - dry.groupby("Driver")["corr"].transform("median")
+    dry = dry[dry["rel"].abs() < 3].copy()
+    y = dry["rel"].to_numpy()
+    if len(dry) < 20:
+        return {"n": 0}
+
+    x_tyre = np.column_stack([dry["TyreLife"], np.ones(len(dry))])
+    c_tyre, *_ = np.linalg.lstsq(x_tyre, y, rcond=None)
+    r2_tyre = 1 - ((y - x_tyre @ c_tyre) ** 2).sum() / ((y - y.mean()) ** 2).sum()
+
+    x_voll = np.column_stack([dry["TrackTemp"], dry["TyreLife"], np.ones(len(dry))])
+    c_voll, *_ = np.linalg.lstsq(x_voll, y, rcond=None)
+    pred_voll = x_voll @ c_voll
+    r2_voll = 1 - ((y - pred_voll) ** 2).sum() / ((y - y.mean()) ** 2).sum()
+    resid = y - pred_voll
+    sigma2 = (resid ** 2).sum() / (len(y) - 3)
+    se = np.sqrt(np.diag(np.linalg.inv(x_voll.T @ x_voll)) * sigma2)
+
+    # Partial-Residual-Plot: TyreLife-Anteil herausgerechnet, damit die
+    # TrackTemp-Wirkung isoliert sichtbar wird.
+    dry["partial"] = y - c_voll[1] * dry["TyreLife"]
+
+    return {
+        "naiv_slope": naiv_slope, "naiv_r2": naiv_r2,
+        "r2_tyre_only": r2_tyre, "r2_voll": r2_voll,
+        "coef_temp": c_voll[0], "intercept": c_voll[2],
+        "se_temp": se[0], "n": len(y), "dry": dry,
+    }
+
+
+def weather_phases(session) -> pd.DataFrame:
+    """Wetter-Phasen ueber das Rainfall-Flag segmentiert (siehe P17)."""
+    w = session.weather_data
+    gruppe = (w["Rainfall"] != w["Rainfall"].shift()).cumsum()
+    return (w.groupby(gruppe)
+            .agg(nass=("Rainfall", "first"), start=("Time", "min"),
+                end=("Time", "max"))
+            .reset_index(drop=True))
+
+
+def wet_dry_classifier(session) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    """Logistische Regression auf Feld-Aggregaten je Runde (Rundenzeit-
+    Streuung, mittlere Speed-Trap-Geschwindigkeit), Leave-one-out-
+    kreuzvalidiert gegen die tatsaechlich mehrheitlich gefahrene Mischung
+    (siehe P17 AUSBAUSTUFE). Keine Compound-Spalte als Feature - nur was
+    auch ohne Boxenfunk beobachtbar waere.
+
+    Braucht mindestens eine Runde je Klasse (nass/trocken), sonst wirft
+    ``LeaveOneOut`` einen Fehler - das prueft der Aufrufer.
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import LeaveOneOut, cross_val_predict
+
+    laps = session.laps.pick_accurate().copy()
+    laps["sec"] = laps["LapTime"].dt.total_seconds()
+    je_runde = laps.groupby("LapNumber").agg(
+        std_sec=("sec", "std"), mean_speedFL=("SpeedFL", "mean"),
+        n=("sec", "count")).dropna()
+    je_runde = je_runde[je_runde["n"] >= 10]
+
+    mehrheit = laps.groupby("LapNumber")["Compound"].agg(
+        lambda s: s.value_counts().idxmax())
+    je_runde["compound"] = mehrheit.reindex(je_runde.index)
+    je_runde["nass"] = je_runde["compound"].isin(
+        ["INTERMEDIATE", "WET"]).astype(int)
+
+    X = je_runde[["std_sec", "mean_speedFL"]].to_numpy()
+    y = je_runde["nass"].to_numpy()
+    pred = cross_val_predict(LogisticRegression(), X, y, cv=LeaveOneOut())
+    return je_runde, y, pred
+
+
+# ------------------------------------------------------------- Race Control
+def field_spread(session) -> pd.Series:
+    """Sekunden zwischen erstem und letztem Fahrer je Runde (siehe P18)."""
+    laps = session.laps
+    return (laps.dropna(subset=["Position"])
+            .groupby("LapNumber")["Time"]
+            .agg(lambda s: (s.max() - s.min()).total_seconds()))
+
+
+def sc_compaction(neutral: pd.DataFrame, spread: pd.Series) -> pd.DataFrame:
+    """Baseline (letzte 3 gruene Runden vor der Phase) gegen die staerkste
+    Kompaktierung waehrend Safety-Car-/VSC-Phasen (siehe P18 - der Mittelwert
+    waere vom Ausloese-Zwischenfall verzerrt, deshalb das Minimum statt dem
+    Durchschnitt waehrend der Phase)."""
+    zeilen = []
+    for p in neutral.itertuples():
+        vorher = spread.reindex(range(p.lap_start - 3, p.lap_start)).dropna()
+        waehrend = spread.reindex(range(p.lap_start, p.lap_end + 1)).dropna()
+        if vorher.empty or waehrend.empty:
+            continue
+        zeilen.append({
+            "start": p.lap_start, "ende": p.lap_end,
+            "baseline_s": vorher.median(), "minimum_s": waehrend.min(),
+            "kompaktierung_pct": 100 * (1 - waehrend.min() / vorher.median()),
+        })
+    return pd.DataFrame(zeilen)
+
+
+# VORGEHEN 2 (P19): reale FIA-Meldungen nennen Strafmass und Fahrer in
+# umgekehrter Reihenfolge zur naheliegenden Annahme ("10 SECOND ... FOR CAR
+# 14 (ALO)", nicht "CAR 14 (ALO) ... 10 SECOND") - 49/49 Treffer Saison 2024.
+PENALTY = re.compile(
+    r"(\d+ SECOND (?:TIME|STOP/GO) PENALTY|DRIVE.?THROUGH PENALTY|REPRIMAND)"
+    r" FOR CAR (\d+) \(([A-Z]{3})\)(?: - (.*))?", re.I)
+TRACKLIM = re.compile(r"CAR (\d+) \(([A-Z]{3})\).*TRACK LIMITS AT TURN (\d+)", re.I)
+# Fuer die Gegenpruefung zusaetzlich die im Text genannte betroffene Runde -
+# NICHT dieselbe Runde, in der die Meldung gepostet wurde (die Loeschung
+# wird oft erst 1-2 Runden spaeter verbucht). Nicht jede Meldung nennt sie
+# explizit: "(NEXT LAP)"-Faelle bleiben aussen vor.
+TRACKLIM_RUNDE = re.compile(
+    r"CAR (\d+) \(([A-Z]{3})\).*TRACK LIMITS AT TURN (\d+) LAP (\d+)", re.I)
+
+
+def parse_penalties(rcm: pd.DataFrame) -> pd.DataFrame:
+    """Strafmeldungen der Rennleitung parsen (siehe P19)."""
+    zeilen = []
+    for m in rcm.itertuples():
+        treffer = PENALTY.search(str(m.Message))
+        if treffer:
+            zeilen.append({"lap": m.Lap, "strafmass": treffer.group(1).upper(),
+                           "nr": treffer.group(2), "driver": treffer.group(3),
+                           "grund": treffer.group(4)})
+    return pd.DataFrame(zeilen)
+
+
+def parse_track_limits(rcm: pd.DataFrame) -> pd.DataFrame:
+    """Track-Limit-Meldungen je Fahrer und Kurve parsen (siehe P19)."""
+    zeilen = []
+    for m in rcm.itertuples():
+        treffer = TRACKLIM.search(str(m.Message))
+        if treffer:
+            zeilen.append({"lap": m.Lap, "nr": treffer.group(1),
+                           "driver": treffer.group(2),
+                           "turn": int(treffer.group(3))})
+    return pd.DataFrame(zeilen)
+
+
+def track_limit_crosscheck(
+        session, rcm: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    """Track-Limit-Meldungen gegen Laps.Deleted gegenpruefen (siehe P19).
+
+    Nutzt die im Text genannte betroffene Runde, nicht die Runde, in der
+    die Meldung gepostet wurde. Gibt (fehlend, deleted, n_mit_runde) zurueck:
+    ``fehlend`` sind Meldungen, die im Text stehen, aber zu keiner
+    Deleted=True-Runde passen - FastF1s Deleted-Spalte ist fuer
+    Track-Limit-Auswertungen leicht unvollstaendig (siehe Docstring P19).
+    """
+    treffer = []
+    for m in rcm.itertuples():
+        t = TRACKLIM_RUNDE.search(str(m.Message))
+        if t:
+            treffer.append({"driver": t.group(2), "turn": int(t.group(3)),
+                           "runde": int(t.group(4))})
+    mit_runde = pd.DataFrame(treffer)
+
+    deleted = session.laps[session.laps["Deleted"]]
+    im_text_nicht_in_laps = []
+    for r in mit_runde.itertuples():
+        passt = ((deleted["Driver"] == r.driver)
+                & (deleted["LapNumber"] == r.runde)).any()
+        if not passt:
+            im_text_nicht_in_laps.append({"driver": r.driver, "runde": r.runde})
+    return pd.DataFrame(im_text_nicht_in_laps), deleted, len(mit_runde)

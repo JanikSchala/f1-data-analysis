@@ -161,3 +161,71 @@ with st.expander("Warum die Treibstoffkorrektur noetig ist"):
         "die Steigung geschaetzt wird. Die verwendeten Faustwerte "
         "(1,8 kg pro Runde, 0,03 s pro kg) sind Literaturwerte - die "
         "Groessenordnung stimmt, exakte Messwerte sind es nicht.")
+
+# --- Cliff-Erkennung (P13 AUSBAUSTUFE) -------------------------------------
+st.markdown("##### Bricht der Reifen irgendwo ein? (Cliff-Erkennung)")
+hinweis("Reifen degradieren nicht immer linear - ab einem Knickpunkt kann der "
+        "Abbau ploetzlich steiler werden. f1lab.find_cliff() probiert jeden "
+        "moeglichen Bruchpunkt durch und akzeptiert ihn nur, wenn die zweite "
+        "Steigung die erste deutlich uebertrifft (siehe P13).")
+
+MIN_RUNDEN_CLIFF = 10
+laps_sauber = f1lab.clean_laps(ses, threshold=schwelle).copy()
+laps_sauber["sec"] = laps_sauber["LapTime"].dt.total_seconds()
+laps_sauber["corrected"] = f1lab.fuel_correct(
+    laps_sauber["sec"], laps_sauber["LapNumber"], ses.total_laps)
+
+cliffs = []
+kandidaten = []
+for (drv, stint), g in laps_sauber.groupby(["Driver", "Stint"]):
+    g = g.sort_values("TyreLife")
+    if len(g) < MIN_RUNDEN_CLIFF:
+        continue
+    kandidaten.append((drv, stint))
+    knick, links, rechts = f1lab.find_cliff(g["TyreLife"], g["corrected"])
+    if knick is not None:
+        cliffs.append({"driver": drv, "stint": int(stint), "laps": g,
+                       "knick": knick, "vor": links.slope, "nach": rechts.slope})
+
+if not kandidaten:
+    st.info(f"Kein Stint mit mindestens {MIN_RUNDEN_CLIFF} sauberen Runden in "
+           "dieser Session.")
+elif not cliffs:
+    st.success(f"Kein Cliff erkannt: alle {len(kandidaten)} langen Stints "
+              "(>= 10 Runden) sind linear genug fuer einen einfachen Fit.",
+              icon="\N{WHITE HEAVY CHECK MARK}")
+else:
+    k = st.columns(2)
+    k[0].metric("Stints mit erkanntem Cliff", f"{len(cliffs)}/{len(kandidaten)}")
+    staerkster = max(cliffs, key=lambda c: c["nach"] - c["vor"])
+    k[1].metric("Deutlichster Fall",
+               f"{staerkster['driver']} Stint {staerkster['stint']}",
+               f"{staerkster['vor']:+.2f} -> {staerkster['nach']:+.2f} s/Runde")
+
+    wahl = st.selectbox(
+        "Stint anzeigen", cliffs,
+        format_func=lambda c: f"{c['driver']} Stint {c['stint']} "
+                              f"(Knick bei Reifenalter {c['knick']})",
+        index=cliffs.index(staerkster))
+
+    g = wahl["laps"]
+    vor = g[g["TyreLife"] <= wahl["knick"]]
+    nach = g[g["TyreLife"] >= wahl["knick"]]
+    b_vor = vor["corrected"].mean() - wahl["vor"] * vor["TyreLife"].mean()
+    b_nach = nach["corrected"].mean() - wahl["nach"] * nach["TyreLife"].mean()
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=g["TyreLife"], y=g["corrected"], mode="markers",
+                             marker={"color": d.MUTED, "size": 8},
+                             name="Runden"))
+    xv = [vor["TyreLife"].min(), wahl["knick"]]
+    xn = [wahl["knick"], nach["TyreLife"].max()]
+    fig.add_trace(go.Scatter(x=xv, y=[wahl["vor"] * x + b_vor for x in xv],
+                             line={"color": d.SERIEN[0], "width": 3},
+                             name=f"vor Knick: {wahl['vor']:+.2f} s/Runde"))
+    fig.add_trace(go.Scatter(x=xn, y=[wahl["nach"] * x + b_nach for x in xn],
+                             line={"color": d.SERIEN[1], "width": 3},
+                             name=f"nach Knick: {wahl['nach']:+.2f} s/Runde"))
+    fig.add_vline(x=wahl["knick"], line_color=d.MUTED, line_dash="dot")
+    zeige(fig, hoehe=380, xaxis=achse("Reifenalter [Runden]"),
+         yaxis=achse("Fuel-korrigierte Rundenzeit [s]"))
