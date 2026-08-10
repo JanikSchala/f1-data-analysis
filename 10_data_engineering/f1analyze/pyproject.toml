@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "f1analyze"
+version = "0.1.0"
+description = "Wochenend-Analyzer fuer Formel-1-Renndaten, gebaut auf f1lab und FastF1."
+requires-python = ">=3.10"
+dependencies = [
+    "fastf1>=3.4",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff>=0.5"]
+
+[project.scripts]
+f1analyze = "f1analyze.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["f1analyze*"]
