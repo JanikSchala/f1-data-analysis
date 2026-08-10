@@ -1,0 +1,29 @@
+name: Weekly Race Report
+
+# AUSBAUSTUFE zu P29: jeden Montag automatisch den PDF-Report des
+# juengsten abgeschlossenen Rennens der laufenden Saison erzeugen und als
+# Build-Artefakt anhaengen (kein Deploy, keine Veroeffentlichung - nur im
+# "Actions"-Tab des Repos abrufbar, 90 Tage Aufbewahrung per Default).
+on:
+  schedule:
+    - cron: "0 6 * * 1"     # jeden Montag, 06:00 UTC
+  workflow_dispatch: {}      # manuell ausloesbar zum Testen
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Report fuer das juengste abgeschlossene Rennen erzeugen
+        run: |
+          python 11_visualisierung/p29_automatischer_rennbericht_als_pdf.py \
+            --year "$(date +%Y)" \
+            --out out/race_report.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: race-report
+          path: out/race_report.pdf
