@@ -28,14 +28,82 @@ from f1lab import design as d  # noqa: E402
 # Reihenfolge eines Rennwochenendes, nicht alphabetisch.
 IDENT_ORDER = ["R", "S", "Q", "SQ", "FP3", "FP2", "FP1"]
 
+# Futuristische Telemetrie-Optik: Farben ausschliesslich aus f1lab.design
+# (ACCENT/TELEMETRY sind reine Chrome-Deko, siehe dort - Diagrammfarben
+# bleiben unberuehrt). Fonts kommen primaer aus .streamlit/config.toml
+# (Orbitron/Rajdhani/Share Tech Mono); das @import hier sichert nur die
+# Verfuegbarkeit fuer Selektoren, die Streamlits eigene Font-Zuweisung nicht
+# erreicht (z.B. ::before-Pseudoelemente).
 _CSS = f"""<style>
-  .block-container {{padding-top: 2.2rem; padding-bottom: 3rem;}}
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Share+Tech+Mono&display=swap');
+
+  .block-container {{padding-top: 2.4rem; padding-bottom: 3rem;}}
+
+  /* Scanline oben - eine schmale, leicht pulsierende Akzentleiste als
+     wiederkehrendes Motiv, kein Dekor pro Seite von Hand gepflegt. */
+  [data-testid="stAppViewContainer"]::before {{
+      content: ""; position: fixed; top: 0; left: 0; right: 0; height: 2px;
+      z-index: 999; background: linear-gradient(90deg,
+          transparent 0%, {d.ACCENT} 20%, {d.TELEMETRY} 50%,
+          {d.ACCENT} 80%, transparent 100%);
+      background-size: 200% 100%; opacity: 0.85;
+      animation: f1-scan 7s linear infinite;}}
+  @keyframes f1-scan {{
+      0% {{background-position: 200% 0;}}
+      100% {{background-position: -200% 0;}}}}
+
+  /* Sehr feine Diagonalstreifen im Hintergrund - Andeutung von Speedlines,
+     niedrige Opazitaet, damit Text/Diagramme nicht darunter leiden. */
+  [data-testid="stAppViewContainer"] {{
+      background-image: repeating-linear-gradient(-45deg,
+          rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px,
+          transparent 1px, transparent 42px);}}
+
+  h1, h2, h3 {{letter-spacing: 0.01em;}}
+  h1 {{text-transform: uppercase; letter-spacing: 0.03em;}}
+
+  /* ##### -Zwischenueberschriften (h5, die de-facto-Sektionsmarke dieser
+     App) bekommen einen HUD-Tag: Akzentstrich plus Uppercase-Tracking. */
+  h5 {{
+      text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.95rem !important;
+      color: {d.FG}; border-left: 3px solid {d.ACCENT};
+      padding-left: 10px; margin-top: 1.4rem !important;}}
+
   [data-testid="stMetric"] {{
-      background: {d.BG_HELL}; border: 1px solid {d.GRID};
-      border-radius: 12px; padding: 14px 16px;}}
-  [data-testid="stMetricLabel"] p {{color: {d.MUTED}; font-size: 0.82rem;}}
-  h1, h2, h3 {{letter-spacing: -0.01em;}}
-  .hinweis {{color: {d.MUTED}; font-size: 0.88rem; margin: -6px 0 14px 0;}}
+      background: linear-gradient(160deg, {d.BG_HELL} 0%, {d.BG} 100%);
+      border: 1px solid {d.GRID}; border-top: 2px solid {d.ACCENT};
+      border-radius: 4px; padding: 14px 16px;
+      box-shadow: 0 0 18px -6px {d.ACCENT_GLOW};
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 12px 100%, 0 calc(100% - 12px));}}
+  [data-testid="stMetricLabel"] p {{
+      color: {d.MUTED}; font-size: 0.76rem; text-transform: uppercase;
+      letter-spacing: 0.06em;}}
+  [data-testid="stMetricValue"] {{
+      font-family: 'Share Tech Mono', monospace; color: {d.TELEMETRY};}}
+
+  /* Sidebar: eigener, noch dunklerer Ton mit gluehender Trennkante. */
+  [data-testid="stSidebar"] {{
+      border-right: 1px solid {d.GRID};
+      box-shadow: 4px 0 24px -12px {d.ACCENT_GLOW};}}
+  [data-testid="stSidebar"] h1 {{font-size: 1.1rem !important;}}
+
+  /* Tabs: aktiver Reiter mit Akzentlinie statt der Standardfarbe. */
+  button[data-baseweb="tab"][aria-selected="true"] {{
+      color: {d.ACCENT} !important;}}
+  div[data-baseweb="tab-highlight"] {{
+      background-color: {d.ACCENT} !important;
+      box-shadow: 0 0 8px 0 {d.ACCENT_GLOW};}}
+
+  /* Duenner, dunkler Scrollbalken statt der Browser-Voreinstellung. */
+  ::-webkit-scrollbar {{width: 10px; height: 10px;}}
+  ::-webkit-scrollbar-track {{background: {d.BG};}}
+  ::-webkit-scrollbar-thumb {{
+      background: {d.GRID}; border-radius: 5px;}}
+  ::-webkit-scrollbar-thumb:hover {{background: {d.ACCENT};}}
+
+  .hinweis {{
+      color: {d.MUTED}; font-size: 0.88rem; margin: -6px 0 14px 0;
+      border-left: 2px solid {d.GRID}; padding-left: 10px;}}
 </style>"""
 
 
