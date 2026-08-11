@@ -1,10 +1,40 @@
-# Farben aus f1lab/design.py - dort steht auch, wogegen sie geprueft wurden.
+# Flaechenfarben und Kategoriepalette aus f1lab/design.py (dort steht auch,
+# wogegen sie geprueft wurden). primaryColor/Fonts/Radius sind reine
+# Chrome-Deko (f1lab.design.ACCENT) - beruehren nie die Diagrammfarben.
 [theme]
 base = "dark"
-primaryColor = "#3987e5"
-backgroundColor = "#15151e"
+primaryColor = "#ff2e44"
+backgroundColor = "#0c0c12"
 secondaryBackgroundColor = "#1e1e2a"
 textColor = "#f0f0f0"
+borderColor = "#2a2a38"
+linkColor = "#2dd4ff"
+codeBackgroundColor = "#15151e"
+codeTextColor = "#2dd4ff"
+
+font = "Rajdhani:https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap"
+headingFont = "Orbitron:https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&display=swap"
+codeFont = "'Share Tech Mono':https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap"
+
+baseFontSize = 16
+baseFontWeight = 500
+headingFontSizes = ["30px", "24px", "19px", "16px", "14px", "13px"]
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+linkUnderline = false
+
+baseRadius = "small"
+buttonRadius = "small"
+showWidgetBorder = true
+showSidebarBorder = true
+
+chartCategoricalColors = ["#3987e5", "#d95926", "#199e70", "#ff2e44", "#2dd4ff"]
+
+[theme.sidebar]
+backgroundColor = "#08080c"
+secondaryBackgroundColor = "#15151e"
+textColor = "#f0f0f0"
+borderColor = "#2a2a38"
+primaryColor = "#ff2e44"
 
 [browser]
 gatherUsageStats = false

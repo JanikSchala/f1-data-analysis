@@ -28,6 +28,16 @@ FG = "#f0f0f0"          # Haupttext
 MUTED = "#8a8a99"       # Achsen, Nebentext
 GRID = "#2a2a38"        # Gitter, Rahmen
 
+# --- Chrome-Akzente (Oberflaeche, keine Daten) -----------------------------
+# Nur fuer Rahmen/Glow/Ueberschriften in app/common.py - NICHT fuer Diagramme.
+# Anders als SERIEN/COMPOUND/PHASE unten sind das keine Kategoriefarben und
+# nicht gegen Farbsehschwaeche geprueft, weil sie nie zwei Dinge voneinander
+# unterscheiden muessen - sie sind Dekoration derselben Oberflaeche, nicht
+# Traeger einer Bedeutung.
+ACCENT = "#ff2e44"       # Racing-Rot: primaryColor, Glow-Rahmen, Akzentlinien
+ACCENT_GLOW = "rgba(255, 46, 68, 0.35)"
+TELEMETRY = "#2dd4ff"    # Elektrisches Cyan: HUD-Zahlen, zweiter Akzent
+
 # --- Kategoriefarben, feste Reihenfolge ----------------------------------
 # Nie zyklisch weiterdrehen: Farbe haengt am Ding, nicht an seinem Rang.
 SERIEN = ["#3987e5", "#d95926", "#199e70"]
