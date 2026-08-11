@@ -70,6 +70,19 @@ steckt seit der App-Integration in f1lab.session.field_spread()/
 sc_compaction() statt hier lokal (zweiter Konsument: die Race-Control-Seite
 im Dashboard). Der Saison-Scan selbst bleibt skriptlokal, wie in P05/P16/
 P31 begruendet.
+
+ZWEITE AUSBAUSTUFE: ``Laps.Sector1/2/3SessionTime`` waren im ganzen
+Repository ungenutzt - Sektorzeiten kamen nur als relative Dauer vor
+(``Sector1Time`` etc.), nie als absoluter Zeitpunkt innerhalb der Session.
+``f1lab.sc_deployment_sectors()`` nutzt sie, um fuer jede SC-Deployment-
+Meldung zu bestimmen, in welchem der drei Timing-Sektoren jeder Fahrer in
+genau diesem Moment unterwegs war - direkt gegen ``track_status['Time']``
+(ebenfalls session-relativ), ohne den Umweg ueber ``t0_date`` und damit ohne
+Telemetrie laden zu muessen. Kanada 2024 R, beide SC-Phasen: das Feld
+verteilt sich uneinheitlich (10/2/7 bzw. 5/4/9 auf Sektor 1/2/3) - kein
+Hinweis darauf, dass eine SC-Ausloesung das Feld an einer bestimmten
+Streckenstelle "einfriert", eher Zufall der Ueberrundungssituation im
+jeweiligen Moment.
 """
 from __future__ import annotations
 
@@ -204,6 +217,30 @@ def zeichne_kompaktierung(ax, komp: pd.DataFrame) -> None:
     ax.set_axisbelow(True)
 
 
+def zeichne_deployment_sektoren(ax, sek: pd.DataFrame) -> None:
+    """ZWEITE AUSBAUSTUFE: Feldverteilung ueber die drei Timing-Sektoren im
+    Moment jeder SC-Deployment-Meldung."""
+    tab = (sek.dropna(subset=["sector"])
+          .groupby(["time", "sector"]).size().unstack(fill_value=0))
+    tab.columns = [f"Sektor {int(c)}" for c in tab.columns]
+    x = np.arange(len(tab))
+    w = 0.25
+    farben = [SERIEN[0], SERIEN[1], SERIEN[2]]
+    for i, col in enumerate(tab.columns):
+        ax.bar(x + (i - 1) * w, tab[col], width=w, color=farben[i % 3],
+              label=col)
+    ax.set_xticks(x, [f"Deployment {i + 1}\n({str(t).split('days ')[-1][:8]})"
+                      for i, t in enumerate(tab.index)])
+    ax.set_ylabel("Fahrer")
+    ax.set_title("ZWEITE AUSBAUSTUFE: Feld-Sektorverteilung bei SC-Deployment",
+                loc="left", color=FG, fontsize=12, pad=10)
+    ax.legend(loc="upper right", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(axis="y", alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
 def zeichne_ausbaustufe(ax, scan: pd.DataFrame) -> None:
     """AUSBAUSTUFE."""
     g = scan.groupby("klasse")["delta_pos"].agg(["mean", "count"])
@@ -227,7 +264,7 @@ def zeichne_ausbaustufe(ax, scan: pd.DataFrame) -> None:
 def main():
     f1lab.enable_cache()
 
-    print(f"[1/3] {EVENT} {SEASON} {IDENT} laden (VORGEHEN 1-4) ...")
+    print(f"[1/4] {EVENT} {SEASON} {IDENT} laden (VORGEHEN 1-4) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=False)
     phasen = f1lab.track_status_phases(ses)
     neutral = phasen[phasen["label"].isin(["safety car", "vsc"])]
@@ -235,7 +272,7 @@ def main():
          [["label", "lap_start", "lap_end", "duration_s"]]
          .round(1).to_string(index=False))
 
-    print("\n[2/3] Feldstreckung: Baseline gegen Kompaktierungs-Minimum ...")
+    print("\n[2/4] Feldstreckung: Baseline gegen Kompaktierungs-Minimum ...")
     spread = f1lab.field_spread(ses)
     komp = f1lab.sc_compaction(neutral, spread)
     print(komp.round(1).to_string(index=False))
@@ -244,7 +281,15 @@ def main():
     print(f"      Gruenphasen-Referenz (Median ueber Runden am Beginn "
          f"jeder gruenen Phase): {referenz:.1f} s")
 
-    print(f"\n[3/3] AUSBAUSTUFE: Saison-Scan {SEASON} ({len(SAISON_RENNEN)} "
+    print("\n[3/4] ZWEITE AUSBAUSTUFE: Sector*SessionTime bei SC-Deployment ...")
+    sek = f1lab.sc_deployment_sectors(ses)
+    if sek.empty:
+        print("      keine Safety-Car-Deployment-Meldungen in dieser Session")
+    else:
+        print(sek.groupby(["time", "sector"]).size().unstack(fill_value=0)
+             .rename(columns=lambda c: f"Sektor {int(c)}").to_string())
+
+    print(f"\n[4/4] AUSBAUSTUFE: Saison-Scan {SEASON} ({len(SAISON_RENNEN)} "
          f"Rennen) ...")
     scan = saison_scan()
     print(f"      {scan['gp'].nunique()} Rennen mit SC/VSC, "
@@ -264,6 +309,16 @@ def main():
     fig.savefig(path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     print(f"\n      -> {path}")
+
+    if not sek.empty:
+        print("\nGrafik ZWEITE AUSBAUSTUFE ...")
+        fig2, ax2 = plt.subplots(figsize=(9, 6))
+        zeichne_deployment_sektoren(ax2, sek)
+        plt.tight_layout()
+        path2 = OUT / "safety_car_deployment_sektoren.png"
+        fig2.savefig(path2, dpi=130, bbox_inches="tight")
+        plt.close(fig2)
+        print(f"      -> {path2}")
 
 
 if __name__ == "__main__":

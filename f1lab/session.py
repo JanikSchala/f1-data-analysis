@@ -327,6 +327,11 @@ def degradation(session, threshold: float = 1.10,
             "team": str(g["Team"].iloc[0]),
             "stint": int(stint),
             "compound": str(g["Compound"].iloc[0]),
+            # FreshTyre (siehe P13-Erweiterung, bislang nirgends gelesen):
+            # ein wiederverwendeter Satz hat Vorverschleiss, den TyreLife
+            # allein nicht abbildet - konstant innerhalb eines Stints,
+            # deshalb der Wert der ersten Runde.
+            "fresh": bool(g["FreshTyre"].iloc[0]),
             "laps": fit.n,
             "deg_s_per_lap": round(fit.slope, 4),
             "base_s": round(fit.intercept, 3),
@@ -624,6 +629,25 @@ def marshal_sector_labels(session) -> pd.DataFrame:
 
     zeilen = []
     for m in ci.marshal_sectors.itertuples():
+        d = np.hypot(ref_xy[:, 0] - m.X, ref_xy[:, 1] - m.Y)
+        zeilen.append({"number": int(m.Number),
+                       "distance": float(ref_dist[np.argmin(d)])})
+    return pd.DataFrame(zeilen).sort_values("distance", ignore_index=True)
+
+
+def marshal_light_labels(session) -> pd.DataFrame:
+    """Positionen der Gelbflaggen-Lichttafeln, auf dieselbe Referenzrunde
+    projiziert wie :func:`corner_labels`/:func:`marshal_sector_labels` -
+    dieselbe Idee, dritte Punktliste. ``CircuitInfo.marshal_lights`` liefert
+    kein ``Distance`` (anders als ``corners``), deshalb dieselbe
+    naechste-Nachbar-Projektion wie bei den anderen beiden."""
+    ci = session.get_circuit_info()
+    ref = session.laps.pick_fastest().get_telemetry().add_distance()
+    ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
+    ref_dist = ref["Distance"].to_numpy()
+
+    zeilen = []
+    for m in ci.marshal_lights.itertuples():
         d = np.hypot(ref_xy[:, 0] - m.X, ref_xy[:, 1] - m.Y)
         zeilen.append({"number": int(m.Number),
                        "distance": float(ref_dist[np.argmin(d)])})
@@ -1140,6 +1164,43 @@ def sc_compaction(neutral: pd.DataFrame, spread: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(zeilen)
 
 
+def sc_deployment_sectors(session) -> pd.DataFrame:
+    """In welchem Timing-Sektor stand jeder Fahrer im Moment einer Safety-
+    Car-Deployment-Meldung (siehe P18-Erweiterung)? Nutzt
+    ``Sector1/2/3SessionTime`` (session-relativ, bislang ungenutzt) direkt
+    gegen ``track_status['Time']`` (ebenfalls session-relativ) - kein
+    ``t0_date``/Telemetrie noetig, anders als ein Abgleich gegen die
+    Race-Control-Meldungszeit (die ist absolut datiert).
+
+    Fuer jeden Fahrer wird die zum Deployment-Zeitpunkt laufende Runde ueber
+    das juengste ``LapStartTime`` vor dem Zeitpunkt bestimmt, dann der
+    Zeitpunkt gegen die drei Sektor-Enden dieser Runde eingeordnet.
+    """
+    ts = session.track_status
+    deploy = ts.loc[ts["Status"] == "4", "Time"]
+    if deploy.empty:
+        return pd.DataFrame(columns=["time", "driver", "sector"])
+
+    laps = session.laps.dropna(subset=["LapStartTime"]).sort_values("LapStartTime")
+    zeilen = []
+    for t in deploy:
+        for drv, g in laps.groupby("Driver"):
+            vor = g[g["LapStartTime"] <= t]
+            if vor.empty:
+                continue
+            lap = vor.iloc[-1]
+            if pd.isna(lap["Sector1SessionTime"]) or pd.isna(lap["Sector2SessionTime"]):
+                sektor = None
+            elif t <= lap["Sector1SessionTime"]:
+                sektor = 1
+            elif t <= lap["Sector2SessionTime"]:
+                sektor = 2
+            else:
+                sektor = 3
+            zeilen.append({"time": t, "driver": str(drv), "sector": sektor})
+    return pd.DataFrame(zeilen)
+
+
 # VORGEHEN 2 (P19): reale FIA-Meldungen nennen Strafmass und Fahrer in
 # umgekehrter Reihenfolge zur naheliegenden Annahme ("10 SECOND ... FOR CAR
 # 14 (ALO)", nicht "CAR 14 (ALO) ... 10 SECOND") - 49/49 Treffer Saison 2024.
@@ -1165,6 +1226,60 @@ def parse_penalties(rcm: pd.DataFrame) -> pd.DataFrame:
                            "nr": treffer.group(2), "driver": treffer.group(3),
                            "grund": treffer.group(4)})
     return pd.DataFrame(zeilen)
+
+
+def blue_flags(session, rcm: pd.DataFrame) -> pd.DataFrame:
+    """Blaue Flaggen je Fahrer, direkt aus den strukturierten Spalten
+    ``Category``/``Flag``/``RacingNumber`` statt aus Freitext geparst -
+    robuster als eine Regex auf ``Message``, weil FastF1 Fahrzeugnummer und
+    Flaggenfarbe hier schon getrennt mitliefert (siehe P19-Erweiterung).
+    Eine blaue Flagge ist kein Vergehen, sondern die Aufforderung, einen
+    schnelleren (meist ueberrundenden) Fahrer durchzulassen - viele blaue
+    Flaggen fuer denselben Fahrer heissen deshalb "wurde oft ueberrundet",
+    nicht "hat oft gestoert".
+    """
+    blau = rcm[(rcm["Category"] == "Flag") & (rcm["Flag"] == "BLUE")].copy()
+    if blau.empty:
+        return pd.DataFrame(columns=["time", "lap", "driver", "nr"])
+    blau["driver"] = blau["RacingNumber"].map(
+        lambda nr: session.get_driver(str(nr))["Abbreviation"])
+    return (blau.rename(columns={"Time": "time", "Lap": "lap",
+                                 "RacingNumber": "nr"})
+            [["time", "lap", "driver", "nr"]].reset_index(drop=True))
+
+
+def deleted_reason_crosscheck(session, rcm: pd.DataFrame) -> pd.DataFrame:
+    """Umgekehrte Richtung zu :func:`track_limit_crosscheck` (siehe P19-
+    Erweiterung): Laps mit ``Deleted=True`` und einem Track-Limits-Grund in
+    ``DeletedReason`` (bislang nirgends gelesen, nur in Docstrings erwaehnt),
+    die zu KEINER per Regex geparsten Race-Control-Meldung passen. Deckt
+    damit Faelle auf, in denen der Meldungs-Regex etwas verpasst - die
+    andere Richtung als ``track_limit_crosscheck``, die FastF1s
+    Deleted-Spalte als unvollstaendig entlarvt.
+
+    ``DeletedReason`` traegt dasselbe Textformat wie die Meldung selbst
+    ("TRACK LIMITS AT TURN <n> LAP <m>") und wird hier direkt geparst,
+    unabhaengig vom Meldungstext.
+    """
+    laps = session.laps
+    grund = laps["DeletedReason"].astype(str)
+    treffer = grund.str.extract(r"TRACK LIMITS AT TURN (\d+) LAP (\d+)")
+    maske = laps["Deleted"].astype(bool).to_numpy() & treffer[0].notna().to_numpy()
+    if not maske.any():
+        return pd.DataFrame(columns=["driver", "turn", "runde"])
+
+    aus_laps = {(str(drv), int(turn), int(runde))
+               for drv, turn, runde in zip(
+                   laps.loc[maske, "Driver"], treffer.loc[maske, 0],
+                   treffer.loc[maske, 1], strict=True)}
+    aus_text = set()
+    for m in rcm.itertuples():
+        t = TRACKLIM_RUNDE.search(str(m.Message))
+        if t:
+            aus_text.add((t.group(2), int(t.group(3)), int(t.group(4))))
+
+    fehlend = sorted(aus_laps - aus_text)
+    return pd.DataFrame(fehlend, columns=["driver", "turn", "runde"])
 
 
 def parse_track_limits(rcm: pd.DataFrame) -> pd.DataFrame:

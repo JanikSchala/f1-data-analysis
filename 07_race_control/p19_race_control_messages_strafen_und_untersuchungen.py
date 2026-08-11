@@ -71,6 +71,30 @@ App-Integration in f1lab.session (parse_penalties()/parse_track_limits()/
 track_limit_crosscheck()) statt hier lokal (zweiter Konsument: die
 Race-Control-Seite im Dashboard, auf einer beliebigen vom Nutzer gewaehlten
 Session statt fest auf Oesterreich). Der Saison-Scan bleibt skriptlokal.
+
+ZWEITE AUSBAUSTUFE: zwei bislang ungenutzte FastF1-Felder ergaenzt.
+
+``race_control_messages["Flag"]``/``["RacingNumber"]`` waren im ganzen
+Repository nie gelesen - VORGEHEN 2/3 parsen Flaggen-Ereignisse komplett per
+Regex auf den Freitext, obwohl FastF1 Flaggenfarbe und Fahrzeugnummer schon
+getrennt mitliefert. `f1lab.blue_flags()` nutzt das direkt: in Oesterreich
+2024 R wurden 62 blaue Flaggen gezeigt, angefuehrt von Sargeant (15) -
+blaue Flaggen sind aber kein Vergehen, sondern die Aufforderung, einen
+Ueberrunder durchzulassen. Viele blaue Flaggen heissen "wurde oft
+ueberrundet", nicht "hat oft gestoert".
+
+``Laps.DeletedReason`` stand im urspruenglichen Docstring bereits als
+"genutzter Baustein", wurde aber nie tatsaechlich gelesen - nur das
+boolesche ``Deleted`` floss in VORGEHEN 4 ein. `f1lab.
+deleted_reason_crosscheck()` dreht die bestehende Gegenpruefung um: statt
+zu pruefen, ob jede Text-Meldung eine Deleted=True-Runde findet (das deckte
+FastF1s unvollstaendige Deleted-Spalte auf, siehe oben), prueft sie, ob
+jede Deleted=True-Runde mit Track-Limits-Grund auch eine passende
+Race-Control-Meldung im Regex-Treffer findet - die andere Fehlerrichtung.
+Fuer Oesterreich 2024 R: 0 fehlend, die Regex-Abdeckung war hier bereits
+vollstaendig (49/49 bzw. 16/16 waren schon dokumentiert) - eine
+Bestaetigung, kein neuer Fund, aber jetzt tatsaechlich in beide Richtungen
+geprueft statt nur einer.
 """
 from __future__ import annotations
 
@@ -168,6 +192,25 @@ def zeichne_saison_ranking(ax, scan: pd.DataFrame) -> None:
     ax.set_axisbelow(True)
 
 
+def zeichne_blaue_flaggen(ax, bf: pd.DataFrame) -> None:
+    """ZWEITE AUSBAUSTUFE: blaue Flaggen je Fahrer, aus Flag/RacingNumber."""
+    if bf.empty:
+        ax.text(0.5, 0.5, "keine blauen Flaggen", ha="center", va="center",
+               color=MUTED)
+        ax.axis("off")
+        return
+    je_fahrer = bf.groupby("driver").size().sort_values()
+    ax.barh(je_fahrer.index, je_fahrer.to_numpy(), color=SERIEN[2], height=0.6)
+    ax.set_xlabel("Blaue Flaggen")
+    ax.set_title(f"{EVENT} {SEASON} - Blaue Flaggen je Fahrer ({len(bf)} "
+                f"gesamt, aus Flag/RacingNumber statt Regex)", loc="left",
+                color=FG, fontsize=12, pad=10)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(axis="x", alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
 def zeichne_top_strecke(ax, scan: pd.DataFrame, top_gp: str) -> None:
     """AUSBAUSTUFE, Teil 2: Kurven-Aufschluesselung der schlimmsten Strecke."""
     je_kurve = (scan[scan["gp"] == top_gp].groupby("turn").size()
@@ -189,12 +232,12 @@ def zeichne_top_strecke(ax, scan: pd.DataFrame, top_gp: str) -> None:
 def main():
     f1lab.enable_cache()
 
-    print(f"[1/3] {EVENT} {SEASON} {IDENT} laden (VORGEHEN 1) ...")
+    print(f"[1/5] {EVENT} {SEASON} {IDENT} laden (VORGEHEN 1) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=False, messages=True)
     rcm = ses.race_control_messages
     print(rcm["Category"].value_counts().to_string())
 
-    print("\n[2/3] Strafen und Track Limits parsen (VORGEHEN 2-3) ...")
+    print("\n[2/5] Strafen und Track Limits parsen (VORGEHEN 2-3) ...")
     pen = f1lab.parse_penalties(rcm)
     lim = f1lab.parse_track_limits(rcm)
     print(f"      {len(pen)} Strafen erkannt:")
@@ -204,7 +247,7 @@ def main():
     print("\n      je Kurve:")
     print(lim["turn"].value_counts().sort_index().to_string())
 
-    print("\n      Gegenpruefung mit Laps.Deleted (VORGEHEN 4) ...")
+    print("\n[3/5] Gegenpruefung mit Laps.Deleted (VORGEHEN 4) ...")
     fehlend, deleted, n_mit_runde = f1lab.track_limit_crosscheck(ses, rcm)
     print(f"      {len(deleted)} Runden mit Deleted=True in den Lap-Daten "
          f"gegen {n_mit_runde} Text-Meldungen mit eindeutiger Rundennummer "
@@ -215,7 +258,18 @@ def main():
              f"Laps zu finden ({len(fehlend)}):")
         print(fehlend.to_string(index=False))
 
-    print(f"\n[3/3] AUSBAUSTUFE: Saison-Scan {SEASON} ({len(SAISON_RENNEN)} "
+    print("\n[4/5] ZWEITE AUSBAUSTUFE: Flag/RacingNumber und DeletedReason ...")
+    bf = f1lab.blue_flags(ses, rcm)
+    print(f"      {len(bf)} blaue Flaggen, je Fahrer:")
+    print(bf.groupby("driver").size().sort_values(ascending=False).to_string())
+
+    umgekehrt_fehlend = f1lab.deleted_reason_crosscheck(ses, rcm)
+    print(f"\n      Umgekehrte Gegenpruefung (DeletedReason -> Text-Meldung "
+         f"vorhanden?): {len(umgekehrt_fehlend)} fehlend")
+    if not umgekehrt_fehlend.empty:
+        print(umgekehrt_fehlend.to_string(index=False))
+
+    print(f"\n[5/5] AUSBAUSTUFE: Saison-Scan {SEASON} ({len(SAISON_RENNEN)} "
          f"Rennen) ...")
     scan = saison_scan()
     je_strecke = scan.groupby("gp").size().sort_values(ascending=False)
@@ -237,6 +291,15 @@ def main():
     fig.savefig(path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     print(f"\n      -> {path}")
+
+    print("\nGrafik ZWEITE AUSBAUSTUFE ...")
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
+    zeichne_blaue_flaggen(ax2, bf)
+    plt.tight_layout()
+    path2 = OUT / "race_control_blaue_flaggen.png"
+    fig2.savefig(path2, dpi=130, bbox_inches="tight")
+    plt.close(fig2)
+    print(f"      -> {path2}")
 
 
 if __name__ == "__main__":

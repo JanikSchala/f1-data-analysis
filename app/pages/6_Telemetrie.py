@@ -312,6 +312,19 @@ with tab_vergleich:
                     "Streckenverlauf trotzdem die richtige Wahl, da drei "
                     "Sektorzeiten keinen Verlauf zeigen koennen (siehe P07).")
 
+            q1 = f1lab.telemetry_source_quality(lap1.get_telemetry()["Source"])
+            q2 = f1lab.telemetry_source_quality(lap2.get_telemetry()["Source"])
+            with st.expander("Telemetrie-Datenqualitaet (ZWEITE AUSBAUSTUFE)"):
+                st.caption("`Telemetry['Source']` (bislang ungenutzt) zeigt, "
+                          "welcher Anteil der Punkte echte Messwerte statt "
+                          "synthetischer Fuellstellen beim Zusammenfuehren von "
+                          "car_data/pos_data ist (siehe P07).")
+                kq = st.columns(2)
+                kq[0].metric(f"{v1}: interpoliert", f"{q1['interpolation']:.1%}",
+                           help=f"n={q1['n']} Punkte")
+                kq[1].metric(f"{v2}: interpoliert", f"{q2['interpolation']:.1%}",
+                           help=f"n={q2['n']} Punkte")
+
             zonen1 = f1lab.driver_braking_zones(ses, v1)
             zonen2 = f1lab.driver_braking_zones(ses, v2)
             vgl = f1lab.compare_braking_zones(zonen1, zonen2)

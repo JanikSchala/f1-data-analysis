@@ -147,9 +147,49 @@ with rechts:
     st.markdown("##### Alle Fits")
     tabelle(deg.rename(columns={
         "driver": "Fahrer", "team": "Team", "stint": "Stint",
-        "compound": "Mischung", "laps": "Runden",
+        "compound": "Mischung", "fresh": "frischer Reifen", "laps": "Runden",
         "deg_s_per_lap": "Abbau [s/Runde]", "base_s": "Basiszeit [s]",
         "r2": "R2", "reliable": "belastbar"}), height=380)
+
+# --- Frisch vs. wiederverwendet (P13 ZWEITE AUSBAUSTUFE) ------------------
+st.markdown("##### Frischer gegen wiederverwendeter Reifen")
+hinweis("`FreshTyre` stand lange nur als Docstring-Behauptung, nie als "
+        "gelesene Spalte - jetzt Teil von `f1lab.degradation()`. Nur "
+        "belastbare Fits, nur Mischungen mit Faellen in beiden Gruppen "
+        "(siehe P13).")
+
+rel = belastbar
+tab_frisch = rel.groupby(["compound", "fresh"])["deg_s_per_lap"].agg(
+    ["mean", "count"])
+mischungen = [c for c in tab_frisch.index.get_level_values(0).unique()
+             if {True, False} <= set(tab_frisch.loc[c].index)]
+if not mischungen:
+    st.info("Keine Mischung mit belastbaren Fits in beiden Gruppen in "
+           "dieser Session.")
+else:
+    fig = go.Figure()
+    for fresh, label, farbe in ((False, "wiederverwendet", d.MUTED),
+                                (True, "frisch", d.SERIEN[0])):
+        werte, ns = [], []
+        for c in mischungen:
+            if (c, fresh) in tab_frisch.index:
+                werte.append(tab_frisch.loc[(c, fresh), "mean"])
+                ns.append(int(tab_frisch.loc[(c, fresh), "count"]))
+            else:
+                werte.append(None)
+                ns.append(0)
+        fig.add_trace(go.Bar(
+            x=[m.title() for m in mischungen], y=werte, name=label,
+            marker={"color": farbe},
+            customdata=ns, hovertemplate=f"{label}<br>" + "%{x}: %{y:.3f} "
+                          "s/Runde<br>n=%{customdata}<extra></extra>"))
+    zeige(fig, hoehe=360, barmode="group", xaxis=namensachse(),
+         yaxis=achse("Mittlere Degradation [s/Runde]"))
+    hinweis("Ein wiederverwendeter Satz hat Vorverschleiss aus einer "
+            "frueheren Session - dass er hier trotzdem nicht automatisch "
+            "staerker abbaut, ist eher ein Strategie-Auswahleffekt "
+            "(wiederverwendete Saetze werden oft konservativer gefahren) "
+            "als ein Reifeneffekt (siehe P13).")
 
 with st.expander("Warum die Treibstoffkorrektur noetig ist"):
     st.markdown(
@@ -218,6 +258,13 @@ else:
     fig.add_trace(go.Scatter(x=g["TyreLife"], y=g["corrected"], mode="markers",
                              marker={"color": d.MUTED, "size": 8},
                              name="Runden"))
+    pb = g[g["IsPersonalBest"]]
+    if not pb.empty:
+        fig.add_trace(go.Scatter(
+            x=pb["TyreLife"], y=pb["corrected"], mode="markers",
+            marker={"symbol": "star", "size": 14, "color": "rgba(0,0,0,0)",
+                   "line": {"color": d.FG, "width": 1.5}},
+            name="Personal Best"))
     xv = [vor["TyreLife"].min(), wahl["knick"]]
     xn = [wahl["knick"], nach["TyreLife"].max()]
     fig.add_trace(go.Scatter(x=xv, y=[wahl["vor"] * x + b_vor for x in xv],

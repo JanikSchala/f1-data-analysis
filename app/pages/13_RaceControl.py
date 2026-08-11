@@ -109,6 +109,24 @@ with tab_sc:
                        "label": "Phase", "lap_start": "Start-Runde",
                        "lap_end": "End-Runde", "duration_s": "Dauer [s]"}))
 
+            sek = f1lab.sc_deployment_sectors(ses)
+            if not sek.empty:
+                st.markdown("##### ZWEITE AUSBAUSTUFE: Feld-Sektorverteilung "
+                           "bei SC-Deployment")
+                hinweis("`Sector1/2/3SessionTime` (bislang ungenutzt) direkt "
+                        "gegen `track_status['Time']` - beide session-relativ, "
+                        "kein Telemetrie-Laden noetig (siehe P18).")
+                tab_sek = (sek.dropna(subset=["sector"])
+                          .groupby(["time", "sector"]).size().unstack(fill_value=0))
+                fig3 = go.Figure()
+                for i, col in enumerate(tab_sek.columns):
+                    fig3.add_trace(go.Bar(
+                        x=[f"Deployment {j + 1}" for j in range(len(tab_sek))],
+                        y=tab_sek[col], name=f"Sektor {int(col)}",
+                        marker={"color": d.SERIEN[i % len(d.SERIEN)]}))
+                zeige(fig3, hoehe=340, barmode="group", xaxis=namensachse(),
+                     yaxis=achse("Fahrer"))
+
 # ==================================================================== RCM
 with tab_rcm:
     rcm = ses.race_control_messages
@@ -172,3 +190,37 @@ with tab_rcm:
                         "die Meldung existiert (siehe P19).")
                 tabelle(fehlend.rename(columns={"driver": "Fahrer",
                                                 "runde": "Runde"}))
+
+            st.markdown("##### ZWEITE AUSBAUSTUFE: umgekehrte Gegenpruefung "
+                       "(DeletedReason)")
+            hinweis("`Laps.DeletedReason` stand lange nur als "
+                    "Docstring-Behauptung, nie gelesen. Umgekehrte Richtung: "
+                    "findet jede per DeletedReason als Track-Limits erkannte "
+                    "Runde auch eine passende Text-Meldung? (siehe P19).")
+            umgekehrt = f1lab.deleted_reason_crosscheck(ses, rcm)
+            if umgekehrt.empty:
+                st.success("Alle DeletedReason-Faelle finden eine passende "
+                         "Meldung - keine Regex-Luecke in diese Richtung.",
+                         icon="\N{WHITE HEAVY CHECK MARK}")
+            else:
+                st.warning(f"{len(umgekehrt)} DeletedReason-Faelle ohne "
+                         "passende Text-Meldung:")
+                tabelle(umgekehrt.rename(columns={"driver": "Fahrer",
+                                                  "turn": "Kurve",
+                                                  "runde": "Runde"}))
+
+        st.markdown("##### ZWEITE AUSBAUSTUFE: Blaue Flaggen")
+        hinweis("`Flag`/`RacingNumber` (bislang ungenutzt) direkt statt "
+                "Regex auf den Meldungstext - eine blaue Flagge ist kein "
+                "Vergehen, sondern die Aufforderung, einen Ueberrunder "
+                "durchzulassen (siehe P19).")
+        bf = f1lab.blue_flags(ses, rcm)
+        if bf.empty:
+            st.info("Keine blauen Flaggen in dieser Session.")
+        else:
+            je_fahrer = bf.groupby("driver").size().sort_values()
+            fig4 = go.Figure(go.Bar(
+                x=je_fahrer.to_numpy(), y=je_fahrer.index, orientation="h",
+                marker={"color": d.SERIEN[2]}))
+            zeige(fig4, hoehe=max(220, 24 * len(je_fahrer)), showlegend=False,
+                 xaxis=achse("Blaue Flaggen"), yaxis=namensachse())

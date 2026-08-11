@@ -48,6 +48,14 @@ Strecke-Seite im Dashboard braucht dieselbe Funktion).
 Session auf Bahrain 2024 Q gewechselt (Zandvoort hat rotation=0 - VORGEHEN
 Punkt 2 waere unsichtbar geblieben, die Drehung haette nichts zu tun gehabt).
 Bahrain dreht die Karte um 92 Grad.
+
+ZWEITE AUSBAUSTUFE: ``CircuitInfo.marshal_lights`` (Positionen der
+Gelbflaggen-Lichttafeln) war im ganzen Repository bislang ungenutzt, obwohl
+FastF1 sie liefert. Als vierte Punktliste ergaenzt, dieselbe Projektions-
+Idee wie Kurven/Marshal-Sektoren - anders als die Sektorgrenzen (kein
+eigenes ``Distance``-Feld) auf dieselbe Weise wie diese ueber die naechste
+Referenzrunden-Position bestimmt. `f1lab.marshal_light_labels()`, zweiter
+Konsument die Strecke-Seite im Dashboard.
 """
 from __future__ import annotations
 
@@ -67,7 +75,7 @@ import pandas as pd
 from matplotlib.collections import LineCollection
 
 import f1lab
-from f1lab.design import BG_HELL, FG, MUTED, SERIEN, matplotlib_stil
+from f1lab.design import BG_HELL, FG, MUTED, PHASE, SERIEN, matplotlib_stil
 
 warnings.filterwarnings("ignore")
 
@@ -87,7 +95,8 @@ def rotate(xy: np.ndarray, angle_deg: float) -> np.ndarray:
 
 
 def zeichne_karte(ax, ref: pd.DataFrame, ci_rotation: float,
-                  corners: pd.DataFrame, sektoren: pd.DataFrame) -> None:
+                  corners: pd.DataFrame, sektoren: pd.DataFrame,
+                  lichter: pd.DataFrame) -> None:
     xy = rotate(ref[["X", "Y"]].to_numpy(dtype=float), ci_rotation)
     dist = ref["Distance"].to_numpy()
 
@@ -107,6 +116,15 @@ def zeichne_karte(ax, ref: pd.DataFrame, ci_rotation: float,
     for s in sektoren.itertuples():
         idx = np.argmin(np.abs(dist - s.distance))
         ax.scatter(*xy[idx], s=40, color=FG, zorder=3, marker="|")
+
+    # ZWEITE AUSBAUSTUFE: Gelbflaggen-Lichttafeln - eine vierte Punktliste
+    # (siehe f1lab.marshal_light_labels), dieselbe Projektions-Idee wie
+    # Kurven/Marshal-Sektoren, aber eine eigene Bedeutung: hier haengt eine
+    # Lichttafel, keine Streckenmarkierung.
+    for lp in lichter.itertuples():
+        idx = np.argmin(np.abs(dist - lp.distance))
+        ax.scatter(*xy[idx], s=90, color=PHASE["gelb"], marker="^",
+                  edgecolors=FG, linewidths=0.8, zorder=4)
 
     # VORGEHEN 3: Kurvennummern mit Versatz ausserhalb der Strecke
     for c in corners.itertuples():
@@ -137,9 +155,11 @@ def main():
          f"{ci.rotation:.0f} Grad, {len(ci.corners)} Kurven, "
          f"{len(ci.marshal_sectors)} Marshal-Sektoren")
 
-    print("[2/4] Kurven und Marshal-Sektoren projizieren ...")
+    print("[2/4] Kurven, Marshal-Sektoren und Lichttafeln projizieren ...")
     corners = f1lab.corner_labels(ses)
     sektoren = f1lab.marshal_sector_labels(ses)
+    lichter = f1lab.marshal_light_labels(ses)
+    print(f"      {len(lichter)} Gelbflaggen-Lichttafeln (ZWEITE AUSBAUSTUFE)")
 
     print("\n[3/4] Minimalgeschwindigkeit je Kurve (AUSBAUSTUFE) ...")
     speeds = f1lab.corner_speeds(ses)
@@ -150,7 +170,7 @@ def main():
 
     print("\n[4/4] Grafik ...")
     fig, ax = plt.subplots(figsize=(11, 11))
-    zeichne_karte(ax, ref, ci.rotation, corners, sektoren)
+    zeichne_karte(ax, ref, ci.rotation, corners, sektoren, lichter)
     ax.set_title(f"{ses.event['EventName']} {SEASON} - Kurvenlayout "
                 f"({len(sektoren)} Marshal-Sektoren)", loc="left", color=FG,
                 fontsize=15, pad=14)

@@ -762,6 +762,28 @@ def hindsight_value(cfg: RaceConfig, prozess: SafetyCarProcess,
 
 
 # --------------------------------------------------------------- Telemetrie
+def telemetry_source_quality(source) -> dict:
+    """Anteil real gemessener gegen interpolierter Telemetriepunkte
+    (siehe P07-Erweiterung, ``Telemetry.Source`` - bislang ungenutzt).
+
+    ``get_telemetry()`` fuehrt zwei unterschiedlich getaktete Stroeme
+    zusammen (``car_data``: Motor/Pedale, ``pos_data``: Position, groebere
+    Taktung). "car"/"pos" sind echte Messpunkte aus dem jeweiligen Strom,
+    "interpolation" sind synthetische Fuellpunkte, die FastF1 beim
+    Zusammenfuehren auf ein gemeinsames Zeitraster einfuegt, wo keiner der
+    beiden Stroeme einen eigenen Messpunkt hat.
+    """
+    s = np.asarray(source)
+    if s.size == 0:
+        return {"n": 0, "car": 0.0, "pos": 0.0, "interpolation": 0.0}
+    return {
+        "n": int(s.size),
+        "car": float(np.mean(s == "car")),
+        "pos": float(np.mean(s == "pos")),
+        "interpolation": float(np.mean(s == "interpolation")),
+    }
+
+
 def braking_zones(brake, distance, speed, time, min_length_m: float = 20.0
                   ) -> list[dict]:
     """Zerlegt den Bremskanal in einzelne Bremszonen.
