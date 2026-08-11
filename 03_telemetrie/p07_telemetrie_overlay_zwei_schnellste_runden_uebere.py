@@ -49,6 +49,20 @@ Unsicherheitsangabe, die FastF1 selbst empfiehlt.
 Bremszonen-Erkennung und -Paarung sitzen seit der App-Integration komplett in
 f1lab (driver_braking_zones, compare_braking_zones) - dieselben Funktionen
 wie in P08 und im Bremszonen-Reiter des Dashboards.
+
+ZWEITE AUSBAUSTUFE: ``Telemetry["Source"]`` (bislang im ganzen Repository
+ungenutzt) markiert je Punkt, ob er aus dem echten car_data-/pos_data-Strom
+stammt oder eine synthetische Fuellstelle ist, die FastF1 beim
+Zusammenfuehren der beiden unterschiedlich getakteten Stroeme einfuegt
+(``get_telemetry()``, nicht das hier fuer den eigentlichen Overlay
+verwendete ``get_car_data()`` - Source ist dort trivial konstant "car", die
+Interpolation entsteht erst beim Mergen mit den Positionsdaten).
+`f1lab.telemetry_source_quality()` quantifiziert das: Japan 2024 Q, VER/NOR
+schnellste Runde, unter 1% der Punkte sind interpoliert - ein einfacher
+Datenqualitaets-Check, der bestaetigt, dass das Overlay auf echten statt
+erfundenen Messwerten beruht, aber nicht in jeder Session selbstverstaendlich
+ist (car_data und pos_data koennen bei Empfangsluecken deutlich staerker
+auseinanderlaufen).
 """
 from __future__ import annotations
 
@@ -112,7 +126,7 @@ def sektor_check(lap1, lap2, ref: pd.DataFrame, delta: np.ndarray) -> pd.DataFra
 def main():
     f1lab.enable_cache()
 
-    print(f"[1/3] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
+    print(f"[1/4] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
     lap1 = ses.laps.pick_drivers(D1).pick_fastest()
     lap2 = ses.laps.pick_drivers(D2).pick_fastest()
@@ -124,7 +138,7 @@ def main():
         warnings.simplefilter("ignore", FutureWarning)
         delta, ref, _cmp = delta_time(lap1, lap2)
 
-    print("[2/3] Bremszonen und Sektor-Gegenprobe ...")
+    print("[2/4] Bremszonen und Sektor-Gegenprobe ...")
     z1 = f1lab.driver_braking_zones(ses, D1)
     z2 = f1lab.driver_braking_zones(ses, D2)
     zonen = f1lab.compare_braking_zones(z1, z2, tolerance_m=ZONEN_TOLERANZ_M)
@@ -137,7 +151,13 @@ def main():
     print("\nGegenprobe delta_time() vs. Sektorzeiten:")
     print(check.to_string(index=False))
 
-    print("\n[3/3] Grafik ...")
+    print("\n[3/4] ZWEITE AUSBAUSTUFE: Telemetry-Source-Qualitaet ...")
+    for drv, lap in ((D1, lap1), (D2, lap2)):
+        q = f1lab.telemetry_source_quality(lap.get_telemetry()["Source"])
+        print(f"      {drv}: n={q['n']}  car={q['car']:.1%}  "
+             f"pos={q['pos']:.1%}  interpolation={q['interpolation']:.1%}")
+
+    print("\n[4/4] Grafik ...")
     s1 = f1plt.get_driver_style(D1, ["color", "linestyle"], session=ses)
     s2 = f1plt.get_driver_style(D2, ["color", "linestyle"], session=ses)
 

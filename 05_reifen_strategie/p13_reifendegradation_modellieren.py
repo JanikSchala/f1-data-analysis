@@ -44,6 +44,30 @@ linear genug, dass ein einfacher Fit ausreicht. Deutlichstes Beispiel:
 Alonsos zweiter Stint (Hard, 24 Runden) laeuft bis Reifenalter 22 mit
 0.07 s/Runde, danach mit 0.50 s/Runde - der Reifen bricht in den letzten
 drei Runden sichtbar ein.
+
+ZWEITE AUSBAUSTUFE: ``Laps.FreshTyre`` stand im urspruenglichen Docstring
+schon als "genutzter Baustein", wurde aber nie tatsaechlich gelesen -
+``f1lab.degradation()`` traegt es jetzt als eigene Spalte (zweiter
+Konsument: dieselbe Tabelle auf der Reifen-Seite im Dashboard). Bahrain
+2024 R, nur belastbare Fits: frische Hard-Reifen degradieren mit 0.097
+s/Runde (n=36, keine wiederverwendeten Hard-Stints in den belastbaren
+Fits), bei Soft dagegen degradieren wiederverwendete Saetze LANGSAMER
+(0.111 s/Runde, n=10) als frische (0.150 s/Runde, n=13) - das Gegenteil der
+naheliegenden Erwartung "abgefahrener Reifen baut schneller ab". Plausibler Grund ist kein Reifeneffekt, sondern ein
+Auswahleffekt: wiederverwendete Saetze sind meist die zweitbesten aus dem
+Training, gezielt fuer kuerzere, konservativer gefahrene Stints eingesetzt
+(oft ein Boxenfenster unter Safety Car) statt gepusht - der Vergleich misst
+also eher Einsatzmuster als Gummizustand. Ohne eine zweite, unabhaengige
+Session waere dieser Unterschied zwischen echtem Reifeneffekt und
+Strategieauswahl nicht aufzuloesen.
+
+``Laps.IsPersonalBest`` (ebenfalls ungenutzt) markiert in der
+Degradationskurve jetzt sichtbar, auf welchem Reifenalter die persoenliche
+Bestzeit eines Fahrers faellt - in Bahrain 2024 R faellt sie fast durchgehend
+frueh im Stint (Median Reifenalter 3, Mittel 4.0 - ein paar spaete
+Ausreisser ziehen den Mittelwert nach oben, siehe Max 22), plausibel:
+frischer Reifen und weniger Sprit sind stark genug, dass eine spaete Runde
+selten die eigene Bestzeit noch schlaegt.
 """
 from __future__ import annotations
 
@@ -107,6 +131,14 @@ def zeichne_kurven(ax, laps: pd.DataFrame) -> None:
     for mischung in ("SOFT", "MEDIUM", "HARD"):
         if mischung in vorhanden:
             ax.plot([], [], color=COMPOUND[mischung], lw=2, label=mischung.title())
+
+    # ZWEITE AUSBAUSTUFE: IsPersonalBest (bislang ungenutzt) - auf welchem
+    # Reifenalter faellt die eigene Bestzeit im Stint?
+    pb = laps[laps["IsPersonalBest"]]
+    ax.scatter(pb["TyreLife"], pb["corrected"], marker="*", s=90,
+              facecolors="none", edgecolors=FG, linewidths=1.1, zorder=3,
+              label="Personal Best")
+
     ax.legend(loc="upper left", frameon=False, labelcolor=FG, fontsize=9)
     ax.set_xlabel("Reifenalter [Runden]")
     ax.set_ylabel("Fuel-korrigierte Rundenzeit [s]")
@@ -164,20 +196,58 @@ def zeichne_cliff(ax, beispiel: dict) -> None:
     ax.set_axisbelow(True)
 
 
+def zeichne_frischevergleich(ax, deg: pd.DataFrame) -> None:
+    """ZWEITE AUSBAUSTUFE: Degradation frischer gegen wiederverwendeter
+    Reifen, je Mischung getrennt (Compound ist ein starker Konfundierer -
+    nur belastbare Fits, nur Mischungen mit Faellen in beiden Gruppen)."""
+    rel = deg[deg["reliable"]]
+    tab = rel.groupby(["compound", "fresh"])["deg_s_per_lap"].agg(
+        ["mean", "count"])
+    mischungen = [c for c in tab.index.get_level_values(0).unique()
+                 if {True, False} <= set(tab.loc[c].index)]
+    if not mischungen:
+        ax.text(0.5, 0.5, "keine Mischung mit beiden Gruppen", ha="center",
+               va="center", color=MUTED)
+        ax.axis("off")
+        return
+    x = np.arange(len(mischungen))
+    w = 0.35
+    for i, (fresh, label, farbe) in enumerate(
+            ((False, "wiederverwendet", MUTED), (True, "frisch", SERIEN[0]))):
+        werte = [tab.loc[(c, fresh), "mean"] if (c, fresh) in tab.index
+                else np.nan for c in mischungen]
+        ns = [tab.loc[(c, fresh), "count"] if (c, fresh) in tab.index
+             else 0 for c in mischungen]
+        ax.bar(x + (i - 0.5) * w, werte, width=w, color=farbe, label=label)
+        for xi, n, v in zip(x + (i - 0.5) * w, ns, werte, strict=True):
+            if n:
+                ax.text(xi, v, f"n={n}", ha="center", va="bottom",
+                       color=MUTED, fontsize=8)
+    ax.set_xticks(x, [m.title() for m in mischungen])
+    ax.set_ylabel("Mittlere Degradation [s/Runde]")
+    ax.set_title("ZWEITE AUSBAUSTUFE: frisch vs. wiederverwendet",
+                loc="left", color=FG, fontsize=13, pad=10)
+    ax.legend(loc="upper left", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(axis="y", alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
 def main():
     f1lab.enable_cache()
 
-    print(f"[1/4] {EVENT} {SEASON} {IDENT} laden ...")
+    print(f"[1/5] {EVENT} {SEASON} {IDENT} laden ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=False)
 
-    print("[2/4] Runden filtern, Fuel-Korrektur (VORGEHEN 1-2) ...")
+    print("[2/5] Runden filtern, Fuel-Korrektur (VORGEHEN 1-2) ...")
     laps = f1lab.clean_laps(ses, threshold=SCHWELLE).copy()
     laps["sec"] = laps["LapTime"].dt.total_seconds()
     laps["corrected"] = f1lab.fuel_correct(
         laps["sec"], laps["LapNumber"], ses.total_laps)
     print(f"      {len(laps)} saubere Runden, {laps.groupby(['Driver', 'Stint']).ngroups} Stints")
 
-    print("\n[3/4] Degradation je Stint (VORGEHEN 3) und Aggregation "
+    print("\n[3/5] Degradation je Stint (VORGEHEN 3) und Aggregation "
          "(VORGEHEN 4) ...")
     deg = f1lab.degradation(ses, threshold=SCHWELLE, min_laps=MIN_RUNDEN)
     print(f"      {len(deg)} Stints mit >= {MIN_RUNDEN} Runden, "
@@ -192,7 +262,7 @@ def main():
     print(deg[deg["reliable"]].groupby("team")["deg_s_per_lap"]
          .mean().round(4).sort_values().to_string())
 
-    print(f"\n[4/4] AUSBAUSTUFE: Cliff-Suche (mind. {MIN_RUNDEN_CLIFF} Runden) ...")
+    print(f"\n[4/5] AUSBAUSTUFE: Cliff-Suche (mind. {MIN_RUNDEN_CLIFF} Runden) ...")
     cliffs = cliffs_suchen(laps)
     kandidaten = [(d, s) for (d, s), g in laps.groupby(["Driver", "Stint"])
                  if len(g) >= MIN_RUNDEN_CLIFF]
@@ -203,6 +273,15 @@ def main():
          f"{beispiel['stint']} ({beispiel['compound']}) - Knick bei "
          f"Reifenalter {beispiel['knick_tyrelife']}, "
          f"{beispiel['slope_vorher']:+.3f} -> {beispiel['slope_danach']:+.3f} s/Runde")
+
+    print("\n[5/5] ZWEITE AUSBAUSTUFE: FreshTyre und IsPersonalBest ...")
+    rel = deg[deg["reliable"]]
+    print(rel.groupby(["compound", "fresh"])["deg_s_per_lap"]
+         .agg(["mean", "count"]).round(4).to_string())
+    pb = laps[laps["IsPersonalBest"]]
+    print(f"\n      {len(pb)} Personal-Best-Runden, Reifenalter dabei: "
+         f"Median {pb['TyreLife'].median():.0f}, Mittel "
+         f"{pb['TyreLife'].mean():.1f}, Max {pb['TyreLife'].max():.0f}")
 
     print("\nGrafik ...")
     fig = plt.figure(figsize=(15, 10))
@@ -216,6 +295,15 @@ def main():
     fig.savefig(path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     print(f"\n      -> {path}")
+
+    print("\nGrafik ZWEITE AUSBAUSTUFE ...")
+    fig2, ax2 = plt.subplots(figsize=(8, 6))
+    zeichne_frischevergleich(ax2, deg)
+    plt.tight_layout()
+    path2 = OUT / "reifendegradation_frische.png"
+    fig2.savefig(path2, dpi=130, bbox_inches="tight")
+    plt.close(fig2)
+    print(f"      -> {path2}")
 
 
 if __name__ == "__main__":

@@ -65,6 +65,7 @@ with tab_karte:
     else:
         corners = f1lab.corner_labels(ses)
         sektoren = f1lab.marshal_sector_labels(ses)
+        lichter = f1lab.marshal_light_labels(ses)
 
         x, y = ref["X"] / 10, ref["Y"] / 10
         dist = ref["Distance"].to_numpy()
@@ -88,12 +89,24 @@ with tab_karte:
                 textfont={"color": d.FG, "size": 10}, hoverinfo="skip",
                 showlegend=False))
 
-        zeige(fig, hoehe=560, xaxis={"visible": False},
+        # ZWEITE AUSBAUSTUFE: Gelbflaggen-Lichttafeln (CircuitInfo.
+        # marshal_lights, bislang im ganzen Repo ungenutzt), siehe P11.
+        licht_idx = [int(np.argmin(np.abs(dist - lp.distance)))
+                    for lp in lichter.itertuples()]
+        fig.add_trace(go.Scatter(
+            x=ref_xy[licht_idx, 0], y=ref_xy[licht_idx, 1], mode="markers",
+            marker={"color": d.PHASE["gelb"], "size": 10, "symbol": "triangle-up",
+                   "line": {"color": d.FG, "width": 1}},
+            name="Lichttafel", hoverinfo="skip"))
+
+        zeige(fig, hoehe=560, showlegend=False, xaxis={"visible": False},
              yaxis={"visible": False, "scaleanchor": "x", "scaleratio": 1})
         hinweis(f"Referenzrunde: {ref_lap['Driver']}. Abwechselnd eingefaerbte "
                f"Abschnitte sind die {len(sektoren)} Marshal-Sektoren, nicht "
                "die Kurven - beides kommt aus get_circuit_info(), aber es "
-               "sind zwei verschiedene Einteilungen (siehe P11).")
+               f"sind zwei verschiedene Einteilungen. Die {len(lichter)} "
+               "gelben Dreiecke sind die Gelbflaggen-Lichttafeln (siehe "
+               "P11).")
 
         st.markdown("##### Minimalgeschwindigkeit je Kurve (Referenzfahrer)")
         speeds = f1lab.corner_speeds(ses)

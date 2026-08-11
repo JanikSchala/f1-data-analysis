@@ -51,10 +51,12 @@ from .core import (
     solve_policy,
     status_intervals,
     stint_arcs,
+    telemetry_source_quality,
     undercut_gain,
 )
 from .session import (
     PaceEntry,
+    blue_flags,
     cached_sessions,
     circuit_dimension,
     circuit_geometry,
@@ -65,6 +67,7 @@ from .session import (
     corner_speeds,
     degradation,
     degradation_by_compound,
+    deleted_reason_crosscheck,
     dirty_air_effect,
     driver_braking_zones,
     drs_usage,
@@ -74,6 +77,7 @@ from .session import (
     field_spread,
     find_cache,
     load,
+    marshal_light_labels,
     marshal_sector_labels,
     mini_sectors,
     not_deleted_mask,
@@ -86,6 +90,7 @@ from .session import (
     race_config_from_session,
     race_pace,
     sc_compaction,
+    sc_deployment_sectors,
     start_performance,
     stints,
     teammate_duels,
@@ -124,4 +129,7 @@ __all__ = [
     "GRUEN", "SC", "stint_arcs", "optimal_strategy", "frontier_by_stops",
     "pit_loss_crossovers", "SafetyCarProcess", "solve_policy", "roll_out",
     "expected_cost_of_plan", "hindsight_value", "race_config_from_session",
+    # Ungenutzte FastF1-Felder nachgezogen
+    "marshal_light_labels", "blue_flags", "deleted_reason_crosscheck",
+    "telemetry_source_quality", "sc_deployment_sectors",
 ]
