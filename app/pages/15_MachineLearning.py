@@ -1,12 +1,12 @@
-"""Drei ML-Bausteine aus P23-P25: Quali-Vorhersage, Fahrstil-Clustering,
-Anomalie-Erkennung.
+"""Vier ML-Bausteine aus P23-P25/P36: Quali-Vorhersage, Fahrstil-Clustering,
+Anomalie-Erkennung, Rennergebnis-/Podium-Vorhersage.
 
-Alle drei sind auf einen festen Datensatz zugeschnitten (mehrere Saisons
+Alle vier sind auf einen festen Datensatz zugeschnitten (mehrere Saisons
 bzw. eine bestimmte Session mit dokumentiertem Befund), nicht auf eine in
 der Seitenleiste waehlbare Session - anders als der Rest der App, aber wie
 11_Boxenstopps.py/14_Historie.py aus demselben Grund: das Training braucht
 entweder mehrere hundert Session-Ladevorgaenge oder eine Session mit einer
-bekannten, interessanten Antwort (Baku 2024 mit vier Ausfaellen). Alle drei
+bekannten, interessanten Antwort (Baku 2024 mit vier Ausfaellen). Alle vier
 Datensaetze liegen dauerhaft im Diskcache - nur der erste Aufruf dauert.
 """
 from __future__ import annotations
@@ -27,13 +27,24 @@ from common import (
     zeige,
 )
 from scipy.stats import spearmanr
+from sklearn.calibration import calibration_curve
 from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.decomposition import PCA
-from sklearn.ensemble import HistGradientBoostingRegressor, IsolationForest
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+    IsolationForest,
+)
 from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
 from sklearn.manifold import MDS
-from sklearn.metrics import adjusted_rand_score, mean_absolute_error, silhouette_score
+from sklearn.metrics import (
+    adjusted_rand_score,
+    brier_score_loss,
+    mean_absolute_error,
+    roc_auc_score,
+    silhouette_score,
+)
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
@@ -43,14 +54,16 @@ from torch import nn
 import f1lab
 from f1lab import design as d
 
-pfad = setup("Machine Learning", "Quali-Vorhersage, Fahrstil-Clustering und "
-                                 "Anomalie-Erkennung - fest zugeschnittene "
+pfad = setup("Machine Learning", "Quali-Vorhersage, Fahrstil-Clustering, "
+                                 "Anomalie-Erkennung und Rennergebnis-"
+                                 "Vorhersage - fest zugeschnittene "
                                  "Datensaetze, dauerhaft im Diskcache.")
 if kein_cache_hinweis(pfad):
     st.stop()
 
-tab_quali, tab_stil, tab_anom = st.tabs(
-    ["Quali-Vorhersage", "Fahrstil-Clustering", "Anomalie-Erkennung"])
+tab_quali, tab_stil, tab_anom, tab_renn = st.tabs(
+    ["Quali-Vorhersage", "Fahrstil-Clustering", "Anomalie-Erkennung",
+     "Renn-/Podium-Vorhersage"])
 
 # ========================================================== Quali-Vorhersage
 JAHRE = (2022, 2023, 2024)
@@ -702,3 +715,174 @@ with tab_anom:
                 "Fahrzeugabweichungen lernt - eine Lektion ueber "
                 "Normalisierung, kein bestaetigter Fund ueber die Autos "
                 "(siehe P25).")
+
+# =================================================== Renn-/Podium-Vorhersage
+RENN_JAHRE = (2022, 2023, 2024)
+RENN_FORM_FENSTER = 5
+
+
+def _sammle_rennen(jahre) -> pd.DataFrame:
+    rows = []
+    for jahr in jahre:
+        sched = fastf1.get_event_schedule(jahr, include_testing=False)
+        for _, event in sched.iterrows():
+            rnd = int(event["RoundNumber"])
+            try:
+                ses = f1lab.load(jahr, rnd, "R", telemetry=False, weather=False,
+                                 messages=False)
+            except Exception:
+                continue
+            res = ses.results
+            if res.empty:
+                continue
+            for _, r in res.iterrows():
+                rows.append({
+                    "season": jahr, "round": rnd, "event": event["EventName"],
+                    "driver": r["Abbreviation"], "team": r["TeamName"],
+                    "grid": r["GridPosition"], "position": r["Position"],
+                    "status": r["Status"], "points": r["Points"],
+                })
+    df = pd.DataFrame(rows)
+    df["dnf"] = ~df["status"].isin(["Finished", "Lapped"])
+    df["podium"] = (df["position"] <= 3) & ~df["dnf"]
+    return df
+
+
+def _renn_form_anhaengen(races: pd.DataFrame, fenster: int = RENN_FORM_FENSTER
+                         ) -> pd.DataFrame:
+    races = races.sort_values(["season", "round"]).copy()
+    races["driver_form"] = (races.groupby(["season", "driver"])["position"]
+                            .transform(lambda s: s.shift(1).rolling(
+                                fenster, min_periods=1).mean()))
+    races["dnf_rate"] = (races.groupby(["season", "driver"])["dnf"]
+                         .transform(lambda s: s.shift(1).rolling(
+                             fenster, min_periods=1).mean().astype(float)))
+    je_team_rennen = (races.groupby(["season", "round", "team"])["position"]
+                      .mean().reset_index())
+    je_team_rennen["team_form"] = (
+        je_team_rennen.groupby(["season", "team"])["position"]
+        .transform(lambda s: s.shift(1).rolling(fenster, min_periods=1).mean()))
+    return races.merge(je_team_rennen[["season", "round", "team", "team_form"]],
+                       on=["season", "round", "team"], how="left")
+
+
+@st.cache_data(persist="disk", show_spinner=False)
+def _renn_datensatz(jahre: tuple[int, ...]) -> pd.DataFrame:
+    races = _sammle_rennen(range(jahre[0], jahre[-1] + 1))
+    if races.empty:
+        return races
+    races = _renn_form_anhaengen(races)
+    return races.dropna(subset=["grid", "position"])
+
+
+with tab_renn:
+    with st.spinner(f"Rennergebnisse {RENN_JAHRE[0]}-{RENN_JAHRE[-1]} werden "
+                   "aus dem lokalen Cache gebaut (nur beim ersten Aufruf - "
+                   "ein Ladevorgang je Rennen, dauert einige Minuten) ..."):
+        races = _renn_datensatz(RENN_JAHRE)
+
+    if races.empty:
+        st.info(f"Fuer {RENN_JAHRE[0]}-{RENN_JAHRE[-1]} liegen nicht genug "
+               "Rennsessions im Cache.")
+    else:
+        feat = ["grid", "driver_form", "team_form", "dnf_rate"]
+        races = races.sort_values(["season", "round"]).reset_index(drop=True)
+        X = races[feat]
+        y_podium = races["podium"].astype(int)
+
+        k = st.columns(4)
+        k[0].metric("Fahrer-Rennen", len(races))
+        k[1].metric("Rennen", races[["season", "round"]].drop_duplicates().shape[0])
+        k[2].metric("DNF-Quote", f"{races['dnf'].mean():.1%}")
+        k[3].metric("Podium-Quote", f"{races['podium'].mean():.1%}")
+
+        with st.spinner("TimeSeriesSplit-Validierung (5 Folds, Klassifikation "
+                       "+ Regression) ..."):
+            cv = TimeSeriesSplit(n_splits=5)
+            auc_scores, brier_scores = [], []
+            alle_y_true, alle_y_prob = [], []
+            letzter_test_idx = None
+            for tr, te in cv.split(X):
+                m = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
+                m.fit(X.iloc[tr], y_podium.iloc[tr])
+                prob = m.predict_proba(X.iloc[te])[:, 1]
+                auc_scores.append(roc_auc_score(y_podium.iloc[te], prob))
+                brier_scores.append(brier_score_loss(y_podium.iloc[te], prob))
+                alle_y_true.append(y_podium.iloc[te].to_numpy())
+                alle_y_prob.append(prob)
+                letzter_test_idx = te
+
+            y_true_ges = np.concatenate(alle_y_true)
+            y_prob_ges = np.concatenate(alle_y_prob)
+            basisrate = y_podium.mean()
+            brier_baseline = brier_score_loss(
+                y_true_ges, np.full(len(y_true_ges), basisrate))
+            acc_baseline = ((races["grid"] <= 3).astype(int) == y_podium).mean()
+
+            fertig = races[~races["dnf"]].copy()
+            Xf, yf = fertig[feat], fertig["position"]
+            mae_scores, mae_baseline_scores = [], []
+            for tr, te in cv.split(Xf):
+                m2 = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
+                m2.fit(Xf.iloc[tr], yf.iloc[tr])
+                mae_scores.append(mean_absolute_error(
+                    yf.iloc[te], m2.predict(Xf.iloc[te])))
+                mae_baseline_scores.append(mean_absolute_error(
+                    yf.iloc[te], fertig["grid"].iloc[te]))
+
+            beob, vorh = calibration_curve(y_true_ges, y_prob_ges, n_bins=10,
+                                           strategy="uniform")
+
+            m_final = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
+            tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
+            m_final.fit(X.iloc[tr_final], y_podium.iloc[tr_final])
+            imp = permutation_importance(m_final, X.iloc[letzter_test_idx],
+                                         y_podium.iloc[letzter_test_idx],
+                                         scoring="roc_auc", n_repeats=20,
+                                         random_state=7)
+            imp_s = pd.Series(imp.importances_mean, index=feat).sort_values()
+
+        links, mitte, rechts = st.columns(3)
+        with links:
+            st.markdown("##### Podium-Klassifikation")
+            labels_p = ["Modell\n(ROC-AUC)", "Baseline Grid<=3\n(Accuracy)"]
+            werte_p = [np.mean(auc_scores), acc_baseline]
+            fig = go.Figure(go.Bar(x=labels_p, y=werte_p,
+                                   marker={"color": [d.SERIEN[0], d.MUTED]},
+                                   text=[f"{v:.3f}" for v in werte_p],
+                                   textposition="outside"))
+            zeige(fig, hoehe=340, showlegend=False, xaxis=namensachse(),
+                 yaxis=achse("Score", range=[0, 1.05]))
+            hinweis(f"Brier Score Modell {np.mean(brier_scores):.3f} gegen "
+                    f"Baseline (immer Basisrate {basisrate:.1%}): "
+                    f"{brier_baseline:.3f} (siehe P36).")
+
+        with mitte:
+            st.markdown("##### Kalibrierung")
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines",
+                                      line={"color": d.MUTED, "dash": "dash"},
+                                      name="perfekt kalibriert"))
+            fig2.add_trace(go.Scatter(x=vorh, y=beob, mode="lines+markers",
+                                      line={"color": d.SERIEN[1]},
+                                      name="Modell"))
+            zeige(fig2, hoehe=340, xaxis=achse("Vorhergesagt"),
+                 yaxis=achse("Beobachtet"))
+            hinweis("Eine Vorhersage von 70% Podium muss ueber viele Faelle "
+                    "auch in etwa 70% der Zeit eintreffen, sonst ist sie "
+                    "keine echte Wahrscheinlichkeit (siehe P36).")
+
+        with rechts:
+            st.markdown("##### Feature Importance")
+            farben = [d.SERIEN[0] if v == imp_s.max() else d.MUTED
+                     for v in imp_s.to_numpy()]
+            fig3 = go.Figure(go.Bar(x=imp_s.to_numpy(), y=imp_s.index,
+                                    orientation="h", marker={"color": farben}))
+            zeige(fig3, hoehe=340, showlegend=False,
+                 xaxis=achse("Permutation Importance (AUC-Abfall)"),
+                 yaxis=namensachse())
+            hinweis(f"Positions-Regression (nur gefinishte Ergebnisse): "
+                    f"MAE {np.mean(mae_scores):.2f} gegen Baseline "
+                    f"(Grid=Ziel) {np.mean(mae_baseline_scores):.2f} - "
+                    "Startplatz dominiert, Form/Zuverlaessigkeit liefern nur "
+                    "Feinschliff (siehe P36).")
