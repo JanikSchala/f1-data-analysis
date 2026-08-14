@@ -22,6 +22,7 @@ from f1lab.core import (
     active_distance_zones,
     bootstrap_median,
     braking_zones,
+    calibrate_lap_model,
     drs_state,
     elevation_profile,
     elo_expected,
@@ -40,8 +41,10 @@ from f1lab.core import (
     path_length,
     pit_loss_crossovers,
     roll_out,
+    simulate_lap,
     solve_policy,
     status_intervals,
+    track_curvature,
     undercut_gain,
 )
 
@@ -872,3 +875,87 @@ class TestExpectedCostAndHindsight:
         deterministic = optimal_strategy(cfg).green_time
         assert blind == pytest.approx(deterministic)
         assert se == pytest.approx(0.0, abs=1e-9)
+
+
+# --------------------------------------------------------- track_curvature
+class TestTrackCurvature:
+    """Kruemmung aus X/Y-Ideallinie (P37)."""
+
+    def test_straight_line_has_zero_curvature(self):
+        x = np.linspace(0, 100, 101)
+        y = np.zeros_like(x)
+        kappa = track_curvature(x, y, x)
+        assert np.max(np.abs(kappa[5:-5])) == pytest.approx(0.0, abs=1e-9)
+
+    def test_circle_matches_one_over_radius(self):
+        """Auf einem Kreis mit Radius R ist kappa(s) konstant 1/R."""
+        R = 50.0
+        theta = np.linspace(0, np.pi, 300)
+        x, y, dist = R * np.cos(theta), R * np.sin(theta), R * theta
+        kappa = track_curvature(x, y, dist, window=15)
+        mitte = kappa[50:-50]
+        assert mitte.mean() == pytest.approx(1.0 / R, rel=1e-5)
+
+
+# ------------------------------------------------------------- simulate_lap
+class TestSimulateLap:
+    """Quasi-stationaere Punktmassen-Rundenzeitsimulation (P37)."""
+
+    def test_straight_line_runs_at_top_speed(self):
+        """Ohne Kruemmung ist v_top die einzige Grenze - konstante
+        Geschwindigkeit, Rundenzeit exakt Distanz/v_top."""
+        dist = np.linspace(0, 1000, 200)
+        kappa = np.zeros_like(dist)
+        v, t = simulate_lap(dist, kappa, mu_g=20.0, a_accel=8.0, a_brake=25.0,
+                            v_top=80.0)
+        assert np.allclose(v, 80.0)
+        assert t == pytest.approx(1000 / 80.0)
+
+    def test_constant_curvature_runs_at_grip_limited_speed(self):
+        """Bei konstanter Kruemmung ist die kurvengrip-begrenzte
+        Geschwindigkeit sqrt(mu_g/kappa) ueberall bindend, unabhaengig von
+        den Beschleunigungsgrenzen."""
+        mu_g, kappa_wert = 20.0, 0.02
+        dist = np.linspace(0, 500, 200)
+        kappa = np.full_like(dist, kappa_wert)
+        v, t = simulate_lap(dist, kappa, mu_g=mu_g, a_accel=8.0, a_brake=25.0,
+                            v_top=200.0)
+        erwartet = np.sqrt(mu_g / kappa_wert)
+        assert np.allclose(v, erwartet, atol=1e-6)
+        assert t == pytest.approx(500 / erwartet)
+
+    def test_lower_brake_deceleration_starts_braking_earlier(self):
+        """Der Rueckwaertspass ist bremsbegrenzt: mit schwaecherer
+        Bremsverzoegerung muss frueher vor der Kurve gebremst werden."""
+        dist = np.linspace(0, 300, 600)
+        kappa = np.where(dist < 200, 1e-6, 0.0125)
+        v_top = 100.0
+        v_schwach, _ = simulate_lap(dist, kappa, mu_g=20.0, a_accel=10.0,
+                                    a_brake=30.0, v_top=v_top)
+        v_stark, _ = simulate_lap(dist, kappa, mu_g=20.0, a_accel=10.0,
+                                  a_brake=60.0, v_top=v_top)
+        beginn_schwach = dist[np.argmax(v_schwach < v_top - 1)]
+        beginn_stark = dist[np.argmax(v_stark < v_top - 1)]
+        assert 0 < beginn_schwach < beginn_stark < 200
+
+
+# -------------------------------------------------------- calibrate_lap_model
+class TestCalibrateLapModel:
+    """Kleinste-Quadrate-Kalibrierung der vier Fahrzeugparameter (P37)."""
+
+    def test_recovers_known_parameters_from_noiseless_trace(self):
+        """Aus einer mit bekannten Parametern simulierten (rauschfreien)
+        Geschwindigkeitsspur muss die Kalibrierung dieselben Parameter
+        zurueckgewinnen - der Rundtrip simulate_lap -> calibrate_lap_model
+        ist die staerkste Pruefung fuer diese Funktion."""
+        wahr = {"mu_g": 15.0, "a_accel": 9.0, "a_brake": 28.0, "v_top": 90.0}
+        dist = np.linspace(0, 1500, 750)
+        kappa = 1e-5 + 0.05 * (np.sin(dist / 120.0) ** 8)
+        v_echt, _ = simulate_lap(dist, kappa, **wahr)
+
+        params = calibrate_lap_model(dist, kappa, v_echt)
+
+        assert params["mu_g"] == pytest.approx(wahr["mu_g"], abs=1e-3)
+        assert params["a_accel"] == pytest.approx(wahr["a_accel"], abs=1e-3)
+        assert params["a_brake"] == pytest.approx(wahr["a_brake"], abs=1e-3)
+        assert params["rmse_ms"] == pytest.approx(0.0, abs=1e-3)

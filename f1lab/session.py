@@ -33,6 +33,7 @@ from .core import (
     match_by_distance,
     path_length,
     status_intervals,
+    track_curvature,
 )
 
 CACHE_DIR = Path.home() / "f1_cache"
@@ -591,6 +592,22 @@ def circuit_dimension(events, identifier: str = "Q") -> pd.DataFrame:
     if "length_m" in df.columns:
         df = df.sort_values("length_m", ascending=False, ignore_index=True)
     return df
+
+
+def lap_speed_profile(session) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Distanz, Streckenkruemmung und echte Geschwindigkeit der schnellsten
+    Runde - Eingabe fuer die Rundenzeit-Simulation (siehe P37,
+    :func:`f1lab.core.simulate_lap`/:func:`calibrate_lap_model`).
+
+    Returns:
+        (Distanz [m], Kruemmung [1/m], Geschwindigkeit [m/s])
+    """
+    lap = session.laps.pick_fastest()
+    tel = lap.get_telemetry().add_distance()
+    dist = tel["Distance"].to_numpy(dtype=float)
+    kappa = track_curvature(tel["X"], tel["Y"], dist)
+    speed_ms = tel["Speed"].to_numpy(dtype=float) / 3.6
+    return dist, kappa, speed_ms
 
 
 def corner_labels(session) -> pd.DataFrame:
