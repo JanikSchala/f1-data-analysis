@@ -9,6 +9,8 @@ import random
 from dataclasses import dataclass, replace
 
 import numpy as np
+from scipy.optimize import least_squares
+from scipy.signal import savgol_filter
 
 # Faustwerte aus der Literatur. Groessenordnung belastbar, keine Messwerte.
 FUEL_KG_PER_LAP = 1.8
@@ -963,6 +965,90 @@ def path_length(x, y, closed: bool = True) -> float:
         px = np.r_[px, px[0]]
         py = np.r_[py, py[0]]
     return float(np.hypot(np.diff(px), np.diff(py)).sum())
+
+
+# --------------------------------------------------------- Rundenzeit-Simulation (P37)
+def track_curvature(x, y, dist, window: int = 21) -> np.ndarray:
+    """Kruemmung kappa(s) = |x'y'' - y'x''| / (x'^2+y'^2)^1.5 einer Ideallinie,
+    numerisch ueber die Distanz differenziert (siehe P37).
+
+    Vor der zweifachen Ableitung geglaettet (Savitzky-Golay): GPS-Rauschen
+    in der Rohposition wuerde sonst durch die zweite Ableitung stark
+    verstaerkt - differenzieren VOR dem Glaetten ist hier der Fehler, nicht
+    danach.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    dist = np.asarray(dist, dtype=float)
+    xs = savgol_filter(x, window, 3)
+    ys = savgol_filter(y, window, 3)
+    dx, dy = np.gradient(xs, dist), np.gradient(ys, dist)
+    ddx, ddy = np.gradient(dx, dist), np.gradient(dy, dist)
+    return np.abs(dx * ddy - dy * ddx) / np.maximum((dx**2 + dy**2) ** 1.5, 1e-9)
+
+
+def simulate_lap(dist, kappa, mu_g: float, a_accel: float, a_brake: float,
+                 v_top: float) -> tuple[np.ndarray, float]:
+    """Quasi-stationaere Punktmassen-Rundenzeitsimulation (siehe P37): das
+    Standardverfahren fuer diese Modellklasse (vgl. OptimumLap und aehnliche
+    Rundenzeit-Simulatoren).
+
+    Kurvengrenzgeschwindigkeit aus v = sqrt(mu_g / kappa) (Kreisbewegung,
+    ``mu_g`` fasst Reibung und Abtrieb in einer effektiven
+    Grenzbeschleunigung zusammen). Vorwaertspass: von jedem Punkt aus so
+    schnell wie moeglich beschleunigen, gedeckelt durch die Kurvengrenze
+    voraus. Rueckwaertspass: von jedem Punkt aus rueckwaerts so, dass eine
+    Bremsung rechtzeitig vor der naechsten Kurve fertig ist. Das Minimum
+    beider Passes ist die tatsaechlich fahrbare Geschwindigkeit.
+
+    Returns:
+        (Geschwindigkeit je Punkt in m/s, Rundenzeit in Sekunden)
+    """
+    dist = np.asarray(dist, dtype=float)
+    kappa = np.asarray(kappa, dtype=float)
+    v_max = np.minimum(np.sqrt(mu_g / np.maximum(kappa, 1e-6)), v_top)
+    n = len(dist)
+    ds = np.diff(dist, prepend=dist[0])
+    ds[0] = ds[1] if n > 1 else 1.0
+
+    v_vor = np.empty(n)
+    v_vor[0] = v_max[0]
+    for i in range(1, n):
+        v_vor[i] = min(v_max[i], np.sqrt(v_vor[i - 1] ** 2 + 2 * a_accel * ds[i]))
+
+    v = v_vor.copy()
+    for i in range(n - 2, -1, -1):
+        v[i] = min(v[i], np.sqrt(v[i + 1] ** 2 + 2 * a_brake * ds[i + 1]))
+
+    dt = np.zeros(n)
+    v_mittel = (v[1:] + v[:-1]) / 2
+    dt[1:] = ds[1:] / np.maximum(v_mittel, 0.1)
+    return v, float(dt.sum())
+
+
+def calibrate_lap_model(dist, kappa, speed_real) -> dict:
+    """Vier Fahrzeugparameter (mu_g, a_accel, a_brake, v_top) per kleinste
+    Quadrate an eine echte Geschwindigkeitsspur anpassen (siehe P37).
+
+    Returns:
+        dict mit den vier Parametern (SI-Einheiten, m/s bzw. m/s^2) und
+        ``rmse_ms`` (Guete des Fits in m/s).
+    """
+    dist = np.asarray(dist, dtype=float)
+    kappa = np.asarray(kappa, dtype=float)
+    speed_real = np.asarray(speed_real, dtype=float)
+
+    def residuen(p):
+        mu_g, a_b, a_br, v_top = p
+        v_sim, _ = simulate_lap(dist, kappa, mu_g, a_b, a_br, v_top)
+        return v_sim - speed_real
+
+    start = [15.0, 10.0, 30.0, 95.0]
+    grenzen = ([5.0, 3.0, 10.0, 70.0], [40.0, 20.0, 60.0, 120.0])
+    ergebnis = least_squares(residuen, start, bounds=grenzen)
+    mu_g, a_b, a_br, v_top = ergebnis.x
+    return {"mu_g": float(mu_g), "a_accel": float(a_b), "a_brake": float(a_br),
+           "v_top": float(v_top), "rmse_ms": float(np.sqrt(np.mean(ergebnis.fun ** 2)))}
 
 
 @dataclass(frozen=True)

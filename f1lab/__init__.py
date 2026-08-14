@@ -30,6 +30,7 @@ from .core import (
     active_distance_zones,
     bootstrap_median,
     braking_zones,
+    calibrate_lap_model,
     drs_state,
     elevation_profile,
     elo_expected,
@@ -48,10 +49,12 @@ from .core import (
     path_length,
     pit_loss_crossovers,
     roll_out,
+    simulate_lap,
     solve_policy,
     status_intervals,
     stint_arcs,
     telemetry_source_quality,
+    track_curvature,
     undercut_gain,
 )
 from .session import (
@@ -76,6 +79,7 @@ from .session import (
     event_dimension,
     field_spread,
     find_cache,
+    lap_speed_profile,
     load,
     marshal_light_labels,
     marshal_sector_labels,
@@ -132,4 +136,6 @@ __all__ = [
     # Ungenutzte FastF1-Felder nachgezogen
     "marshal_light_labels", "blue_flags", "deleted_reason_crosscheck",
     "telemetry_source_quality", "sc_deployment_sectors",
+    # Rundenzeit-Simulation (P37)
+    "track_curvature", "simulate_lap", "calibrate_lap_model", "lap_speed_profile",
 ]
