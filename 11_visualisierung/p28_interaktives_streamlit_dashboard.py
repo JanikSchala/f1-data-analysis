@@ -25,8 +25,27 @@ GENUTZTE FASTF1-BAUSTEINE
   - streamlit
   - plotly
 
-AUSBAUSTUFE
-Ergaenze einen Vergleichsmodus ueber zwei Sessions hinweg (z. B. Quali 2023 vs. 2024 auf derselben Strecke).
+AUSBAUSTUFE  [ueberholt - siehe unten]
+Urspruenglich geplant: ein Vergleichsmodus ueber zwei Sessions hinweg (z. B.
+Quali 2023 vs. 2024 auf derselben Strecke). Nicht an dieser Stelle
+umgesetzt, sondern das ganze Projekt ist ueber die AUSBAUSTUFE
+hinausgewachsen: statt P28 als eines von 34 Projekten auszubauen, wurde es
+vorgezogen zu "dem Haus, in das jedes ausgebaute Projekt einzieht" (siehe
+CLAUDE.md) - die eigentliche, laufend erweiterte Umsetzung liegt seitdem in
+`app/` (`streamlit run app/Start.py`, `Start.py` + 21 Seiten unter
+`app/pages/`, gerechnet wird dort nirgends selbst, jede Seite importiert
+aus `f1lab`). Das Skript hier ist bewusst unveraendert als das urspruengliche,
+minimale Vorbild stehen geblieben statt geloescht oder nachtraeglich auf
+f1lab umgestellt zu werden - es zeigt den Ausgangspunkt vor dem Umbau.
+
+Der gewuenschte Sessions-Vergleich existiert inzwischen trotzdem, nur nicht
+generisch: `app/pages/10_Strecke.py` (P33) vergleicht dieselbe Strecke ueber
+mehrere Jahre per Telemetrie-Geschwindigkeitsdelta, `9_Teamkollegen.py`
+(P05) und mehrere Season-Scan-Seiten (P38/P40/P43) vergleichen ueber ganze
+Saisons hinweg. Ein freier "beliebige Session A gegen beliebige Session B"-
+Modus fehlt weiterhin - dafuer gab es in keiner der bisherigen Analysen
+einen konkreten Anlass, der ueber die bereits gebauten Spezialfaelle
+hinausgeht.
 """
 
 # streamlit run f1_dashboard.py
