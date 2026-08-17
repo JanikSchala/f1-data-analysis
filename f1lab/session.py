@@ -1008,6 +1008,52 @@ def undercut_duels(session, fenster: int = 3, nachlauf: int = 2) -> pd.DataFrame
                                            "rival_lap", "erfolg"])
 
 
+def qualifying_track_evolution(session) -> pd.DataFrame:
+    """Paarweise Fahrer-Deltas zwischen Q1/Q2/Q3 als Mass fuer Streckenentwicklung
+    (siehe P43).
+
+    Vergleicht je Fahrer die schnellste gewertete Rundenzeit eines Segments
+    gegen die des naechsten - nur fuer Fahrer, die in BEIDEN Segmenten eine
+    Zeit gesetzt haben. Dieser paarweise Vergleich haelt Auto- und
+    Fahrerqualitaet konstant: ein reiner Vergleich der Segment-Durchschnitte
+    waere verzerrt, weil in Q2/Q3 nur die schnelleren Autos uebrig bleiben -
+    "im Schnitt schneller" wuerde dann teilweise nur "die langsameren Autos
+    sind raus" messen, nicht Streckenentwicklung.
+
+    Args:
+        session: geladene Qualifying-Session (braucht Session-Status-Daten
+            fuer ``Laps.split_qualifying_sessions()``).
+
+    Returns:
+        DataFrame mit ``driver``, ``segment`` ("Q1->Q2"/"Q2->Q3``),
+        ``delta_s`` (positiv heisst: das spaetere Segment war schneller).
+    """
+    laps = session.laps
+    try:
+        q1, q2, q3 = laps.split_qualifying_sessions()
+    except Exception:
+        return pd.DataFrame(columns=["driver", "segment", "delta_s"])
+
+    def bestzeit_je_fahrer(q) -> pd.Series:
+        if q is None or q.empty:
+            return pd.Series(dtype="timedelta64[ns]")
+        gueltig = q.dropna(subset=["LapTime"])
+        return gueltig.groupby("Driver")["LapTime"].min()
+
+    b1 = bestzeit_je_fahrer(q1)
+    b2 = bestzeit_je_fahrer(q2)
+    b3 = bestzeit_je_fahrer(q3)
+
+    zeilen = []
+    for segment, a, b in (("Q1->Q2", b1, b2), ("Q2->Q3", b2, b3)):
+        gemeinsam = a.index.intersection(b.index)
+        delta = (a[gemeinsam] - b[gemeinsam]).dt.total_seconds()
+        for fahrer, wert in delta.items():
+            zeilen.append({"driver": fahrer, "segment": segment,
+                           "delta_s": float(wert)})
+    return pd.DataFrame(zeilen, columns=["driver", "segment", "delta_s"])
+
+
 # --------------------------------------------------------------- Start
 def _zeit_bei_speed(t: np.ndarray, v: np.ndarray, ziel: float, t0: float
                     ) -> float | None:
