@@ -275,6 +275,20 @@ class TestFindCliff:
         cliff, _, right = find_cliff(x, y)
         assert cliff is None and right is None
 
+    def test_noiseless_line_is_deterministic_across_platforms(self):
+        """Regressionstest: eine exakt rauschfreie Gerade hat single_sse nahe
+        der Gleitkomma-Aufloesung (~1e-27 auf diesem Rechner) - der Vergleich
+        sse > 0.8*single_sse wird dann zum Vergleich von Rauschen gegen
+        Rauschen und kippt je nach BLAS/LAPACK der Plattform in eine der
+        beiden Richtungen (in CI mit anderer numpy-Version beobachtet:
+        cliff=10 statt None, lokal nicht reproduzierbar). Die 1e-6-Schwelle
+        in find_cliff() faengt genau das ab, unabhaengig vom Vorzeichen des
+        Rauschens."""
+        x = np.arange(1, 25, dtype=float)
+        y = 90.0 + 0.08 * x       # exakt, keine Zufallskomponente
+        cliff, _, right = find_cliff(x, y)
+        assert cliff is None and right is None
+
 
 # --------------------------------------------------------------- Strategie
 class TestPitLoss:
