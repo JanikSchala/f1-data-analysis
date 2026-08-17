@@ -209,6 +209,15 @@ def find_cliff(tyre_life, lap_times, min_segment: int = 4
 
     single_sse = float(np.sum(
         (y - (single.slope * x + single.intercept)) ** 2))
+    if single_sse < 1e-6:
+        # Praktisch perfekt linear (Restfehler nur noch Gleitkomma-Rauschen,
+        # keine echte Streuung mehr, wie bei einer rauschfreien synthetischen
+        # Gerade). Der Vergleich sse > 0.8*single_sse waere dann ein
+        # Vergleich von Rauschen gegen Rauschen - je nach BLAS/LAPACK der
+        # Plattform kippt er in die eine oder andere Richtung (in CI mit
+        # anderer numpy-Version beobachtet, lokal nicht reproduziert). Ohne
+        # echte Streuung gibt es nichts zu erklaeren, also kein Cliff.
+        return None, single, None
 
     best = None
     for i in range(min_segment, x.size - min_segment + 1):
