@@ -66,6 +66,7 @@ from .core import (
 from .session import (
     PaceEntry,
     blue_flags,
+    cache_ready,
     cached_sessions,
     circuit_dimension,
     circuit_geometry,
@@ -131,7 +132,7 @@ __all__ = [
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",
     "pit_loss", "track_status_phases", "event_dimension", "circuit_geometry",
-    "circuit_dimension", "find_cache", "cached_sessions",
+    "circuit_dimension", "find_cache", "cached_sessions", "cache_ready",
     "driver_braking_zones", "compare_braking_zones", "drs_zones", "drs_usage",
     "position_progression", "overtake_events", "overtakes_matrix",
     "overtake_locations", "distance_in_any_zone", "lead_distance_to_zone",

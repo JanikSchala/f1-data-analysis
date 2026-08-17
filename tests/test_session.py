@@ -15,6 +15,7 @@ from f1lab.session import (
     TELEMETRY_MARKER,
     TIMING_MARKER,
     TRACK_STATUS,
+    cache_ready,
     cached_sessions,
     find_cache,
     not_deleted_mask,
@@ -241,3 +242,21 @@ class TestFindCache:
             session_mod, "__file__",
             str(tmp_path / "tief" / "f1lab" / "session.py"))
         assert find_cache() is None
+
+
+class TestCacheReady:
+    """Regressionstest fuer einen echten Bug in f1analyze/data.py:
+    load_session() rief bei JEDEM Aufruf enable_cache() ohne Argumente auf
+    und hat damit einen von aussen gesetzten Offline-Fixture-Cache (siehe
+    tests/conftest.py dort) stillschweigend auf den Standardpfad
+    zurueckgesetzt. cache_ready() gibt Aufrufern eine Moeglichkeit, eine
+    bereits gesetzte Konfiguration zu respektieren, statt sie zu
+    ueberschreiben (siehe CLAUDE.md, f1analyze-Nachtrag)."""
+
+    def test_false_ohne_vorherigen_enable_cache_aufruf(self, monkeypatch):
+        monkeypatch.setattr(session_mod, "_active_cache", None)
+        assert cache_ready() is False
+
+    def test_true_nach_enable_cache_aufruf(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(session_mod, "_active_cache", tmp_path)
+        assert cache_ready() is True

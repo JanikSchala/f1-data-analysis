@@ -111,6 +111,21 @@ def enable_cache(path: Path | str | None = None,
     return p
 
 
+def cache_ready() -> bool:
+    """Ob enable_cache() in diesem Prozess schon lief.
+
+    Fuer Aufrufer, die eine Session laden koennen muessen, ohne eine von
+    aussen bereits gesetzte Cache-Konfiguration stillschweigend zu
+    ueberschreiben - siehe f1analyze/data.py: load_session() rief bislang
+    bei JEDEM Aufruf enable_cache() ohne Argumente auf und hat damit einen
+    von Tests (tests/conftest.py) absichtlich gesetzten Offline-Fixture-
+    Cache-Pfad wieder auf den Standardpfad zurueckgesetzt - ein echter,
+    lange unbemerkter Bug, weil die CLI-Tests dadurch nie wirklich offline
+    liefen, sondern nur zufaellig genug im lokal warmgelaufenen Cache
+    fuendig wurden (siehe CLAUDE.md, f1analyze-Nachtrag)."""
+    return _active_cache is not None
+
+
 def cached_sessions(cache_dir: Path | str | None = None) -> pd.DataFrame:
     """Bestandsaufnahme des Caches, allein aus der Ordnerstruktur.
 
