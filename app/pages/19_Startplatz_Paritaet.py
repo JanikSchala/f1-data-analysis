@@ -9,6 +9,8 @@ Runde-1-Position je Fahrer, keine Telemetrie noetig.
 """
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -54,6 +56,7 @@ def _startdaten(cache_pfad: str):
             m = f1lab.grid_lap1_positions(ses)
         except Exception:
             continue
+        time.sleep(0.2)      # ergast/jolpica etwas schonen (siehe P40)
         if m.empty:
             continue
         m["parity"] = np.where(m["grid"].astype(int) % 2 == 0,
