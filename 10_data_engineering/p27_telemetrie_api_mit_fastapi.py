@@ -62,6 +62,19 @@ derselben Strecke liegt bei p50 304 ms, p95 aber bei 3794 ms - unter 8
 parallelen Anfragen ohne Antwort-Cache dominiert die pandas-Filterung pro
 Request und die Formulierung der Response neu, mit deutlich hoeherer
 Streuung als mit der Cache-Ebene davor.
+
+Nachtrag (2026-08-17): drei neue Endpunkte fuer P35/P39/P41 -
+/strategy (exakter Boxenstopp-Plan), /overtakes (Ueberholorte gegen
+DRS-Zonen), /traffic (Verkehrs-Simulation gegen eine Alternative).
+/overtakes und /traffic teilen sich dieselbe TTL-Antwort-Cache-Ebene wie
+/telemetry und /compare - beide sind teuer genug (Telemetrie-Auswertung
+bzw. Monte-Carlo-Simulation), dass sich das lohnt. /strategy dagegen
+nicht: braucht keine Telemetrie und ist schon aus dem
+f1lab.load()-Sessioncache heraus schnell genug. P38 (Ueberholschwierigkeit
+je Strecke) und P40 (Startplatz-Paritaet) bewusst OHNE Endpunkt - beide
+brauchen einen Season-Scan ueber Dutzende bis hunderte Sessions (Minuten),
+das wuerde jede HTTP-Anfrage blockierend genauso lange haengen lassen,
+kein Fall fuer einen synchronen GET-Endpunkt.
 """
 from __future__ import annotations
 
@@ -99,7 +112,7 @@ app = FastAPI(title="F1 Telemetry API", version="1.0")
 # Was Redis in Produktion waere: ein Antwort-Cache mit TTL, unabhaengig vom
 # f1lab.load()-Sessioncache darunter. Hier in-process statt extern, siehe
 # Docstring fuer die Begruendung.
-_ANTWORT_CACHE: dict[str, tuple[float, list]] = {}
+_ANTWORT_CACHE: dict[str, tuple[float, object]] = {}
 CACHE_TTL_S = 300.0
 
 
@@ -114,7 +127,7 @@ def cache_get(key: str):
     return wert
 
 
-def cache_set(key: str, wert: list) -> None:
+def cache_set(key: str, wert: object) -> None:
     _ANTWORT_CACHE[key] = (time.monotonic(), wert)
 
 
@@ -140,6 +153,36 @@ class ComparePoint(BaseModel):
     speed_a: float
     speed_b: float
     delta_s: float     # positiv = Fahrer B liegt zu diesem Zeitpunkt vorn
+
+
+class OvertakeOut(BaseModel):
+    gainer: str
+    loser: str
+    lap: int
+    distance_m: float
+    in_drs_zone: bool
+
+
+class StintOut(BaseModel):
+    compound: str
+    start_lap: int
+    end_lap: int
+
+
+class StrategyOut(BaseModel):
+    n_stops: int
+    green_time_s: float
+    stints: list[StintOut]
+
+
+class TrafficOut(BaseModel):
+    hero_stops: int
+    hero_free_s: float
+    hero_traffic_s: float
+    alt_stops: int
+    alt_free_s: float
+    alt_traffic_s: float
+    recommendation_flips: bool
 
 
 @app.get("/sessions/{year}")
@@ -231,6 +274,93 @@ def compare(year: int, gp: str, ident: str, driver_a: str, driver_b: str,
     return out
 
 
+@app.get("/strategy/{year}/{gp}", response_model=StrategyOut)
+def strategy(year: int, gp: str):
+    """Exakt bester Boxenstopp-Plan (P35). Keine Telemetrie noetig, kein
+    Antwort-Cache - schon aus dem f1lab.load()-Sessioncache heraus schnell."""
+    try:
+        s = f1lab.load(year, gp, "R", telemetry=False)
+        cfg = f1lab.race_config_from_session(s)
+        plan = f1lab.optimal_strategy(cfg)
+    except Exception as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return StrategyOut(
+        n_stops=plan.n_stops, green_time_s=plan.green_time,
+        stints=[StintOut(compound=st.compound, start_lap=st.start_lap,
+                         end_lap=st.end_lap) for st in plan.stints])
+
+
+@app.get("/overtakes/{year}/{gp}/{ident}", response_model=list[OvertakeOut])
+def overtakes(year: int, gp: str, ident: str):
+    """Ueberholungen dieser Session, lokalisiert und gegen DRS-Zonen
+    geprueft (P39). Braucht Telemetrie fuer Rennen UND Qualifying - siehe
+    f1lab.overtake_locations()-Docstring fuer den Grund (im Rennen selbst
+    oft keine offene DRS-Zone messbar)."""
+    key = f"ov:{year}:{gp}:{ident}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+
+    try:
+        s = f1lab.load(year, gp, ident, telemetry=True)
+        orte = f1lab.overtake_locations(s)
+    except Exception as exc:
+        raise HTTPException(404, str(exc)) from exc
+    out = [OvertakeOut(gainer=r.gainer, loser=r.loser, lap=int(r.lap),
+                       distance_m=float(r.distance_m),
+                       in_drs_zone=bool(r.in_drs_zone))
+          for r in orte.itertuples()]
+    cache_set(key, out)
+    return out
+
+
+@app.get("/traffic/{year}/{gp}", response_model=TrafficOut)
+def traffic(year: int, gp: str, alt_stops: int,
+           delta: float = 0.15, gap: float = 3.0, p_overtake: float = 0.15):
+    """Verkehrs-Simulation (P41): DAG-Optimum gegen eine Alternative mit
+    ``alt_stops`` Stopps, beide gegen einen Rivalen simuliert. Rivalen-
+    Tempo/Startabstand/Ueberholwahrscheinlichkeit sind Szenario-Annahmen,
+    keine Messwerte - siehe P41."""
+    key = f"tr:{year}:{gp}:{alt_stops}:{delta}:{gap}:{p_overtake}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+
+    try:
+        s = f1lab.load(year, gp, "R", telemetry=False)
+        cfg = f1lab.race_config_from_session(s)
+        hero = f1lab.optimal_strategy(cfg)
+        kandidaten = {n: st_ for n, st_ in
+                     f1lab.frontier_by_stops(cfg, up_to=4).items()
+                     if st_ is not None}
+        if alt_stops not in kandidaten:
+            raise HTTPException(
+                404, f"{alt_stops}-Stopp nicht moeglich, verfuegbar: "
+                    f"{sorted(kandidaten)}")
+        alt = kandidaten[alt_stops]
+        hero_t = f1lab.lap_times_for_strategy(cfg, hero)
+        alt_t = f1lab.lap_times_for_strategy(cfg, alt)
+        rivale_t = hero_t + delta
+        c_hero, _ = f1lab.traffic_cost(hero_t, rivale_t, gap, p_overtake,
+                                       n_sim=3000, seed=1)
+        c_alt, _ = f1lab.traffic_cost(alt_t, rivale_t, gap, p_overtake,
+                                      n_sim=3000, seed=1)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+    hero_traffic = hero.green_time + c_hero
+    alt_traffic = alt.green_time + c_alt
+    out = TrafficOut(
+        hero_stops=hero.n_stops, hero_free_s=hero.green_time,
+        hero_traffic_s=hero_traffic, alt_stops=alt_stops,
+        alt_free_s=alt.green_time, alt_traffic_s=alt_traffic,
+        recommendation_flips=alt_traffic < hero_traffic)
+    cache_set(key, out)
+    return out
+
+
 # --------------------------------------------------------------- Demo/Test
 DEMO_HOST, DEMO_PORT = "127.0.0.1", 8321
 
@@ -290,6 +420,18 @@ def smoke_test_und_benchmark():
             f"{basis}/compare/2024/Bahrain/R?driver_a=VER&driver_b=PER"
             f"&points=200", timeout=15)
         print(f"      GET /compare/...VER-PER -> {r.status}")
+
+        r = urllib.request.urlopen(f"{basis}/strategy/2024/Bahrain", timeout=15)
+        print(f"      GET /strategy/2024/Bahrain -> {r.status}")
+
+        r = urllib.request.urlopen(
+            f"{basis}/traffic/2024/Bahrain?alt_stops=3", timeout=30)
+        print(f"      GET /traffic/2024/Bahrain?alt_stops=3 -> {r.status}")
+
+        r = urllib.request.urlopen(f"{basis}/overtakes/2024/Bahrain/R", timeout=90)
+        n_ov = len(json.loads(r.read()))
+        print(f"      GET /overtakes/2024/Bahrain/R -> {r.status}, "
+             f"{n_ov} lokalisierte Ueberholungen")
         print(f"      Swagger: {basis}/docs")
 
         print("\n[2/3] Benchmark: kalt (Cache-Miss) vs. warm (Cache-Hit) "

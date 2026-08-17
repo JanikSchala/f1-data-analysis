@@ -29,3 +29,17 @@ def race_session():
 def quali_session():
     f1lab.enable_cache(offline=True)
     return f1lab.load(FIXTURE_SEASON, FIXTURE_EVENT, "Q", telemetry=False)
+
+
+@pytest.fixture(scope="session")
+def race_session_tel():
+    """Wie race_session, aber mit Telemetrie - fuer P37/P39-Bausteine
+    (lap_simulation, overtake_summary), die ohne nicht auskommen."""
+    f1lab.enable_cache(offline=True)
+    return f1lab.load(FIXTURE_SEASON, FIXTURE_EVENT, "R", telemetry=True)
+
+
+@pytest.fixture(scope="session")
+def quali_session_tel():
+    f1lab.enable_cache(offline=True)
+    return f1lab.load(FIXTURE_SEASON, FIXTURE_EVENT, "Q", telemetry=True)
