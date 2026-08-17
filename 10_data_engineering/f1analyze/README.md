@@ -51,9 +51,12 @@ genau wie es jedes `p*.py`-Skript im Projekt einzeln tut.
 pytest
 ```
 
-Laeuft komplett gegen den lokalen FastF1-Cache (`f1lab.enable_cache(offline=True)`,
-siehe `tests/conftest.py`) - kein Netzzugriff, keine flakiness durch
-API-Limits.
+Laeuft komplett gegen einen mitgelieferten FastF1-Cache-Ausschnitt
+(`tests/fixtures/f1_cache_bahrain2024/`, ~147 MB, per
+`f1lab.enable_cache(path=..., offline=True)` in `tests/conftest.py`) - kein
+Netzzugriff, keine flakiness durch API-Limits, und deterministisch fuer
+jeden, der das Repo klont (nicht abhaengig davon, was zufaellig im eigenen
+`~/f1_cache` liegt).
 
 ## CI
 
