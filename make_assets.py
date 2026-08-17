@@ -23,13 +23,13 @@ import matplotlib
 
 matplotlib.use("Agg")                      # kein Fenster, nur Dateien
 
+import fastf1.plotting as f1plt
 import matplotlib.pyplot as plt
 import numpy as np
+from fastf1.utils import delta_time
 from matplotlib.collections import LineCollection
 
-import fastf1.plotting as f1plt
 import f1lab
-from fastf1.utils import delta_time
 
 warnings.filterwarnings("ignore")
 
@@ -121,7 +121,8 @@ def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
                            gridspec_kw={"height_ratios": [3, 2, 2, 2]})
     ax[0].plot(t1["Distance"], t1["Speed"], label=d1, lw=1.6, **s1)
     ax[0].plot(t2["Distance"], t2["Speed"], label=d2, lw=1.6, **s2)
-    ax[0].set_ylabel("Speed [km/h]"); ax[0].legend(loc="lower right")
+    ax[0].set_ylabel("Speed [km/h]")
+    ax[0].legend(loc="lower right")
 
     ax[1].plot(ref["Distance"], dlt, color=FG, lw=1.4)
     ax[1].axhline(0, color="#666", lw=0.8)
@@ -137,7 +138,8 @@ def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
 
     ax[3].plot(t1["Distance"], t1["Brake"].astype(int), lw=1.2, **s1)
     ax[3].plot(t2["Distance"], t2["Brake"].astype(int), lw=1.2, **s2)
-    ax[3].set_ylabel("Bremse"); ax[3].set_yticks([0, 1])
+    ax[3].set_ylabel("Bremse")
+    ax[3].set_yticks([0, 1])
     ax[3].set_xlabel("Distanz [m]")
 
     for a in ax:
