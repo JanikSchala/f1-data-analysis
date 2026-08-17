@@ -23,6 +23,7 @@ from f1lab.core import (
     bootstrap_median,
     braking_zones,
     calibrate_lap_model,
+    distance_in_any_zone,
     drs_state,
     elevation_profile,
     elo_expected,
@@ -34,6 +35,7 @@ from f1lab.core import (
     frontier_by_stops,
     fuel_correct,
     hindsight_value,
+    lead_distance_to_zone,
     mad_outlier_mask,
     match_by_distance,
     optimal_strategy,
@@ -42,6 +44,7 @@ from f1lab.core import (
     pit_loss_crossovers,
     roll_out,
     simulate_lap,
+    simulate_stint,
     solve_policy,
     status_intervals,
     track_curvature,
@@ -422,6 +425,61 @@ class TestActiveDistanceZones:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError, match="gleich lang"):
             active_distance_zones([True, False], [0, 1, 2])
+
+
+# ----------------------------------------------------------- distance_in_any_zone
+class TestDistanceInAnyZone:
+    """Zonen-Zugehoerigkeit einzelner Distanzen (P39)."""
+
+    def test_inside_and_outside(self):
+        out = distance_in_any_zone([5, 50, 150, 250], [0, 200], [100, 300])
+        assert out.tolist() == [True, True, False, True]
+
+    def test_boundary_is_inclusive(self):
+        out = distance_in_any_zone([0, 100], [0], [100])
+        assert out.tolist() == [True, True]
+
+    def test_no_zones_returns_all_false(self):
+        out = distance_in_any_zone([1, 2, 3], [], [])
+        assert out.tolist() == [False, False, False]
+
+    def test_overlapping_zones_still_true(self):
+        """Eine Distanz in mehreren Zonen zaehlt trotzdem nur einmal True."""
+        out = distance_in_any_zone([50], [0, 40], [60, 80])
+        assert out.tolist() == [True]
+
+
+# ------------------------------------------------------- lead_distance_to_zone
+class TestLeadDistanceToZone:
+    """Abstand zur naechsten Zone in Fahrtrichtung, mit Rundenumbruch (P39,
+    dritte AUSBAUSTUFE)."""
+
+    def test_before_a_zone(self):
+        out = lead_distance_to_zone([80], [100, 300], track_length_m=1000)
+        assert out.tolist() == [20.0]
+
+    def test_at_zone_start_is_zero(self):
+        out = lead_distance_to_zone([100], [100, 300], track_length_m=1000)
+        assert out.tolist() == [0.0]
+
+    def test_between_two_zones_picks_the_next_one(self):
+        out = lead_distance_to_zone([150], [100, 300], track_length_m=1000)
+        assert out.tolist() == [150.0]
+
+    def test_past_last_zone_wraps_to_next_lap(self):
+        """Nach der letzten Zone zaehlt die Reststrecke bis zum Ziel plus
+        die Distanz vom Start bis zur ersten Zone der naechsten Runde."""
+        out = lead_distance_to_zone([950], [100, 300], track_length_m=1000)
+        assert out.tolist() == [150.0]        # (1000-950) + 100
+
+    def test_no_zones_returns_nan(self):
+        out = lead_distance_to_zone([1, 2], [], track_length_m=1000)
+        assert np.isnan(out).all()
+
+    def test_vectorized_over_multiple_points(self):
+        out = lead_distance_to_zone([80, 150, 950], [100, 300],
+                                    track_length_m=1000)
+        assert out.tolist() == [20.0, 150.0, 150.0]
 
 
 class TestDrsState:
@@ -959,3 +1017,49 @@ class TestCalibrateLapModel:
         assert params["a_accel"] == pytest.approx(wahr["a_accel"], abs=1e-3)
         assert params["a_brake"] == pytest.approx(wahr["a_brake"], abs=1e-3)
         assert params["rmse_ms"] == pytest.approx(0.0, abs=1e-3)
+
+
+# ----------------------------------------------------------- simulate_stint
+class TestSimulateStint:
+    """Rundenzeit ueber einen Stint mit sinkender Kraftstoffmasse (P37, zweite
+    AUSBAUSTUFE)."""
+
+    def _strecke(self):
+        dist = np.linspace(0, 1000, 400)
+        kappa = 1e-5 + 0.04 * (np.sin(dist / 80.0) ** 8)
+        return dist, kappa
+
+    def test_laptimes_fall_monotonically_as_tank_empties(self):
+        """Mit vollerem Tank ist das Auto langsamer - je mehr Kraftstoff
+        verbrannt ist, desto schneller die Runde, nie umgekehrt."""
+        dist, kappa = self._strecke()
+        zeiten = simulate_stint(dist, kappa, mu_g_ref=20.0, a_accel_ref=10.0,
+                                a_brake_ref=28.0, v_top=90.0,
+                                fuel_start_kg=100.0, n_laps=40)
+        assert np.all(np.diff(zeiten) <= 1e-9)
+        assert zeiten[0] > zeiten[-1]
+
+    def test_empty_tank_throughout_matches_plain_simulate_lap(self):
+        """Ohne Kraftstoff (fuel_start_kg=0) ist jede Runde identisch zur
+        unskalierten simulate_lap-Rundenzeit - die Skalierung m_dry/(m_dry+0)
+        ist 1."""
+        dist, kappa = self._strecke()
+        params = dict(mu_g=20.0, a_accel=10.0, a_brake=28.0, v_top=90.0)
+        _, t_erwartet = simulate_lap(dist, kappa, **params)
+
+        zeiten = simulate_stint(dist, kappa, mu_g_ref=params["mu_g"],
+                                a_accel_ref=params["a_accel"],
+                                a_brake_ref=params["a_brake"],
+                                v_top=params["v_top"], fuel_start_kg=0.0,
+                                n_laps=10)
+        assert np.allclose(zeiten, t_erwartet)
+
+    def test_laptimes_constant_once_tank_is_dry(self):
+        """Sobald der errechnete Rest-Kraftstoff 0 erreicht, aendert sich die
+        Rundenzeit nicht mehr - Tank kann nicht negativ werden."""
+        dist, kappa = self._strecke()
+        zeiten = simulate_stint(dist, kappa, mu_g_ref=20.0, a_accel_ref=10.0,
+                                a_brake_ref=28.0, v_top=90.0,
+                                fuel_start_kg=10.0, kg_per_lap=5.0, n_laps=6)
+        assert zeiten[2] == pytest.approx(zeiten[3])
+        assert zeiten[3] == pytest.approx(zeiten[5])
