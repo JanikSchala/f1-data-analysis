@@ -940,6 +940,74 @@ def overtake_locations(session, drs_session=None, drs_referenz: str | None = Non
     return orte
 
 
+def undercut_duels(session, fenster: int = 3, nachlauf: int = 2) -> pd.DataFrame:
+    """Echte, paarweise Undercut-Versuche und ob sie gelangen (siehe P42).
+
+    Anders als eine flaechendeckende Vorher-Nachher-Positionszaehlung (die
+    JEDEN Boxenstopp automatisch als Verlust gegen das ganze Feld zaehlt,
+    weil nicht-stoppende Autos in der Zwischenzeit einfach weiterfahren -
+    siehe CLAUDE.md, verworfener erster Versuch) vergleicht das hier gezielt
+    gegen einen konkreten Rivalen: fuer jeden Boxenstopp (Fahrer A, Runde L)
+    der Fahrer, der zu Rundenbeginn genau eine Position vor A lag (der
+    eigentliche Gegner des Stopps) - nur gezaehlt, wenn dieser Rivale nicht
+    selbst in derselben Runde stoppt (sonst kein Undercut-Versuch) und
+    innerhalb von ``fenster`` Runden danach selbst an die Box faehrt (sonst
+    ist die Verfolgung kein Undercut, sondern nur zufaellig zeitversetzte
+    Stopps). Erfolg heisst: ``nachlauf`` Runden nach dem spaeteren der
+    beiden Stopps liegt A vor dem Rivalen.
+
+    Args:
+        fenster: wie viele Runden nach As Stopp der Rivale noch selbst
+            stoppen darf, damit es als Undercut-Versuch zaehlt.
+        nachlauf: wie viele gruene Runden nach dem letzten der beiden
+            Stopps abgewartet wird, bevor die Position verglichen wird.
+
+    Returns:
+        DataFrame mit ``driver``, ``lap``, ``rival``, ``rival_lap``,
+        ``erfolg``.
+    """
+    laps = session.laps
+    pos = laps.pivot_table(index="LapNumber", columns="Driver",
+                           values="Position", aggfunc="first")
+    if pos.empty:
+        return pd.DataFrame(columns=["driver", "lap", "rival", "rival_lap",
+                                     "erfolg"])
+    box_laps_liste = list(zip(laps.loc[laps["PitInTime"].notna(), "Driver"],
+                              laps.loc[laps["PitInTime"].notna(), "LapNumber"]))
+    box_laps = set(box_laps_liste)
+
+    versuche = []
+    for drv, lap in box_laps_liste:
+        if lap not in pos.index or (lap - 1) not in pos.index:
+            continue
+        p_vor = pos.loc[lap - 1, drv]
+        if pd.isna(p_vor):
+            continue
+        kandidaten = pos.loc[lap - 1]
+        rivale = kandidaten[kandidaten == p_vor - 1]
+        if rivale.empty:
+            continue
+        rival_drv = str(rivale.index[0])
+        if (rival_drv, lap) in box_laps:
+            continue
+        rivale_stopps = sorted(stopp for (d, stopp) in box_laps
+                               if d == rival_drv and lap < stopp <= lap + fenster)
+        if not rivale_stopps:
+            continue
+        rival_lap = rivale_stopps[0]
+        nach = max(lap, rival_lap) + nachlauf
+        if nach not in pos.index:
+            continue
+        p_a_nach, p_r_nach = pos.loc[nach, drv], pos.loc[nach, rival_drv]
+        if pd.isna(p_a_nach) or pd.isna(p_r_nach):
+            continue
+        versuche.append({"driver": drv, "lap": int(lap), "rival": rival_drv,
+                        "rival_lap": int(rival_lap),
+                        "erfolg": bool(p_a_nach < p_r_nach)})
+    return pd.DataFrame(versuche, columns=["driver", "lap", "rival",
+                                           "rival_lap", "erfolg"])
+
+
 # --------------------------------------------------------------- Start
 def _zeit_bei_speed(t: np.ndarray, v: np.ndarray, ziel: float, t0: float
                     ) -> float | None:

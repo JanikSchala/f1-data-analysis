@@ -64,8 +64,11 @@ hinweis("Der Verfolger stoppt frueher und faehrt auf frischen Reifen, waehrend "
         "Fenster.")
 
 # Startwerte aus der Session, damit die Rechnung nicht im Leeren steht.
-je_mischung = f1lab.degradation_by_compound(ses)
-if not je_mischung.empty:
+# ses.total_laps ist nur fuer Rennen/Sprint gesetzt - fuer Qualifying/Practice
+# faellt f1lab.fuel_correct() sonst mit TypeError auf None - int.
+je_mischung = (f1lab.degradation_by_compound(ses)
+               if ses.total_laps is not None else None)
+if je_mischung is not None and not je_mischung.empty:
     vor_alt = float(je_mischung["mean"].max())
     vor_neu = float(je_mischung["mean"].min())
     st.caption(
@@ -122,6 +125,37 @@ hinweis("Nicht modelliert ist Verkehr - und der entscheidet den Undercut in "
         "der Praxis oefter als die Reifen. Wer hinter einem langsameren Auto "
         "herauskommt, gibt den rechnerischen Vorteil in einer einzigen Runde "
         "wieder ab.")
+
+# --- Echte Undercut-Duelle (P42) -------------------------------------------
+st.markdown("##### Wie oft gewinnt der Undercut wirklich?")
+if not nur_rennen(auswahl, "Die Undercut-Duelle"):
+    duelle = f1lab.undercut_duels(ses)
+    if duelle.empty:
+        st.info("Keine echten Undercut-Duelle in dieser Session gefunden - "
+                "das braucht zwei Fahrer, die innerhalb weniger Runden "
+                "hintereinander stoppen, waehrend einer den anderen direkt "
+                "verfolgt.")
+    else:
+        n_duelle = len(duelle)
+        erfolge = int(duelle["erfolg"].sum())
+        k = st.columns(2)
+        k[0].metric("Undercut-Duelle in dieser Session", n_duelle)
+        k[1].metric("Davon erfolgreich", f"{erfolge}/{n_duelle}",
+                    help="Erfolg heisst: der fruehere Stopper liegt zwei "
+                         "gruene Runden nach dem spaeteren der beiden "
+                         "Stopps vor seinem Rivalen.")
+        tabelle(duelle.rename(columns={
+            "driver": "Fahrer", "lap": "Stopp-Runde", "rival": "Rivale",
+            "rival_lap": "Rivale stoppt Runde", "erfolg": "Erfolg"}))
+    hinweis("Gegen den echten Rivalen gemessen (nicht gegen das ganze "
+            "Feld, siehe P42) gewinnt der Undercut saison-weit (2024, 24 "
+            "Rennen, 161 Duelle) nur 23.6% dieser direkten Duelle "
+            "(95%-KI 17.3%-30.9%, p<0.0001 gegen 50%) - die Verteidigung "
+            "gewinnt in diesen Daten gut drei von vier. Genau das ist der "
+            "Verkehr-Effekt, den das Modell oben nicht sieht: wer frueher "
+            "stoppt, muss sich erst durch den Rueckstand zurueckarbeiten, "
+            "waehrend der Vordermann seine alte Reifenmischung gezielt "
+            "gegen genau diesen einen Rivalen verteidigt.")
 
 with st.expander("Wie die Rechnung aufgebaut ist"):
     st.markdown(
