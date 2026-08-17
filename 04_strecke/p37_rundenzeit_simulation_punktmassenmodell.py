@@ -67,6 +67,39 @@ Ein EIN Satz Fahrzeugparameter fuer die ganze Saison ist damit eine zu
 starke Vereinfachung - realistische Simulatoren passen mindestens Abtrieb/
 v_top je Strecke an, was dieses Modell bewusst nicht tut, um zu zeigen, wo
 genau die Grenze der Vereinfachung liegt.
+
+ZWEITE AUSBAUSTUFE  [umgesetzt]
+Kraftstoffmasse als eigener Zustand statt vier fester Parameter: der Tank
+startet mit einer Renndistanz Kraftstoff und brennt Runde fuer Runde ab
+(f1lab.simulate_stint). Modellannahme - dieselbe EINE-Skalierung wie beim
+Streckentransfer oben, nicht mehrere Parameter: die kalibrierten
+Grenzwerte (mu_g, a_accel, a_brake) gelten fuer die fast leere
+Qualifyingrunde, mit vollerem Tank sinken alle drei um denselben Faktor
+m_dry/(m_dry+Kraftstoff) - v_top bleibt konstant (kaum massenabhaengig).
+Das ist eine Vereinfachung (echte Bremskraft haengt z.B. auch von der
+gewichtsabhaengigen Normalkraft ab), aber ohne zweiten Kalibrierungspunkt
+(eine zweite Referenzrunde mit bekannter, abweichender Kraftstoffmasse)
+nicht weiter auftrennbar.
+
+Bahrain 2024, 57-Runden-Stint (Renndistanz, 102.6 kg Startkraftstoff bei
+1.8 kg/Runde - derselbe Verbrauchswert, der auch f1lab.fuel_correct()
+zugrunde liegt): die Simulation wird von Runde 1 zu Runde 57 monoton
+schneller, 94.258s auf 89.709s (+4.549s ueber den ganzen Stint). Die aus
+der Simulation gefittete Steigung (Rundenzeit gegen Restkraftstoff) betraegt
+0.045 s/kg - in derselben Groessenordnung wie der in P04 unabhaengig aus
+echten Rennrunden ermittelte Wert (FUEL_S_PER_KG=0.03 s/kg), aber gut 50%
+hoeher. Die Simulation ist bewusst NICHT auf den P04-Wert kalibriert, der
+Unterschied ist damit ein echter Modellbefund, keine Kalibrierungslücke:
+die EINE 1/m-Skalierung fuer alle drei Grenzwerte behandelt
+Kurvengrenzbeschleunigung, Laengsbeschleunigung und Bremsverzoegerung
+gleich abtriebsdominiert. Real ist nur der Hochgeschwindigkeitsanteil
+(Abtrieb waechst mit v^2) so stark massenabhaengig - in langsamen Kurven
+und beim Anfahren traegt das Gewicht selbst noch spuerbar zum Grip bei,
+und dieser Anteil aendert sich mit dem Tankstand kaum. Das Modell ueber-
+schaetzt den Kraftstoffeffekt deshalb systematisch, exakt weil es (wie in
+der ersten AUSBAUSTUFE beschrieben) nicht zwischen abtriebs- und
+gewichtsbasiertem Grip unterscheidet - dieselbe Modellgrenze zeigt sich
+hier ein zweites Mal, nur an einer anderen Messgroesse.
 """
 from __future__ import annotations
 
@@ -111,6 +144,25 @@ def zeichne_referenz(ax, dist: np.ndarray, speed_real: np.ndarray,
                 f"simuliert {t_sim:.2f}s ({100 * (t_sim - t_real) / t_real:+.1f}%)",
                 loc="left", color=FG, fontsize=13, pad=10)
     ax.legend(loc="upper right", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def zeichne_stint(ax, runde: np.ndarray, zeiten: np.ndarray,
+                  fuel_kg: np.ndarray) -> None:
+    """ZWEITE AUSBAUSTUFE: Rundenzeit ueber einen Stint, waehrend der Tank
+    leerer wird."""
+    ax.plot(runde, zeiten, color=SERIEN[0], lw=1.8, marker="o", ms=3)
+    ax.set_xlabel("Runde")
+    ax.set_ylabel("Simulierte Rundenzeit [s]")
+    ax.set_title("ZWEITE AUSBAUSTUFE: Kraftstoffmasse im Stint "
+                f"({fuel_kg[0]:.0f} kg -> {fuel_kg[-1]:.0f} kg)",
+                loc="left", color=FG, fontsize=13, pad=10)
+    ax.text(0.98, 0.92, f"{zeiten[0] - zeiten[-1]:+.2f}s ueber den Stint",
+           transform=ax.transAxes, ha="right", va="top", color=MUTED,
+           fontsize=10)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
@@ -181,10 +233,31 @@ def main():
          f"{ergebnisse['diff_pct'].abs().mean():.1f}%  "
          f"(mittlerer Fehler mit Vorzeichen: {ergebnisse['diff_pct'].mean():+.1f}%)")
 
+    print("\nZWEITE AUSBAUSTUFE: Kraftstoffmasse im Stint "
+         "(Tank brennt Runde fuer Runde ab) ...")
+    stint_laps = 57  # Bahrain GP 2024, echte Renndistanz
+    fuel_start = f1lab.core.FUEL_KG_PER_LAP * stint_laps
+    fuel_kg = np.maximum(fuel_start - f1lab.core.FUEL_KG_PER_LAP
+                        * np.arange(stint_laps), 0.0)
+    zeiten_stint = f1lab.simulate_stint(dist, kappa, params["mu_g"],
+                                        params["a_accel"], params["a_brake"],
+                                        params["v_top"], fuel_start_kg=fuel_start,
+                                        n_laps=stint_laps)
+    steigung = np.polyfit(fuel_kg, zeiten_stint, 1)[0]
+    print(f"      {stint_laps} Runden, {fuel_start:.1f} kg Startkraftstoff "
+         f"({f1lab.core.FUEL_KG_PER_LAP} kg/Runde)")
+    print(f"      Runde 1: {zeiten_stint[0]:.3f}s -> Runde {stint_laps}: "
+         f"{zeiten_stint[-1]:.3f}s ({zeiten_stint[0] - zeiten_stint[-1]:+.3f}s "
+         "ueber den Stint)")
+    print(f"      Aus der Simulation gefittete Steigung: {steigung:.4f} s/kg "
+         f"(P04-Referenzwert aus echten Rennrunden: "
+         f"{f1lab.core.FUEL_S_PER_KG} s/kg)")
+
     print("\nGrafik ...")
-    fig, ax = plt.subplots(2, 1, figsize=(13, 11))
+    fig, ax = plt.subplots(3, 1, figsize=(13, 16))
     zeichne_referenz(ax[0], dist, speed_real, v_sim, t_real, t_sim)
     zeichne_uebertragung(ax[1], ergebnisse)
+    zeichne_stint(ax[2], np.arange(1, stint_laps + 1), zeiten_stint, fuel_kg)
     fig.suptitle("Rundenzeit-Simulation: Punktmassenmodell", x=0.09, ha="left",
                 fontsize=16, color=FG, y=0.995)
     plt.tight_layout()

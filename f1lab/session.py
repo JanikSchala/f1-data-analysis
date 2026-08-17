@@ -25,6 +25,7 @@ from .core import (
     active_distance_zones,
     bootstrap_median,
     braking_zones,
+    distance_in_any_zone,
     drs_state,
     elevation_profile,
     estimate_pit_loss,
@@ -797,30 +798,36 @@ def position_progression(session) -> pd.DataFrame:
                                     values="Position", aggfunc="first")
 
 
-def overtakes_matrix(session) -> pd.DataFrame:
-    """Wer ueberholt wen wie oft, ohne Boxenstopp-Effekt und nur auf gruener
-    Flagge (siehe P20 VORGEHEN 3/4).
+def overtake_events(session) -> pd.DataFrame:
+    """Einzelne Ueberholvorgaenge (Fahrer A ueberholt Fahrer B in Runde N),
+    ohne Boxenstopp-Effekt und nur auf gruener Flagge (siehe P20 VORGEHEN
+    3/4). :func:`overtakes_matrix` aggregiert genau diese Liste zu einer
+    Matrix, :func:`overtake_locations` (P39) sucht je Ereignis die Stelle
+    auf der Strecke.
 
-    Zeile ueberholt Spalte. Zwei Faelle zaehlen nicht als echtes Duell:
-    ein Boxenstopp verschiebt die Position ohne Ueberholen auf der Strecke,
-    und ein Safety-Car-Restart wirbelt das Feld durcheinander, ohne dass
-    Position durch Tempo gewonnen wurde. Die Positionstabelle selbst bleibt
-    ueber die volle, ungefilterte Rundenliste - sonst fehlen Rundennummern
-    in der Reihe, sobald eine Runde komplett herausfaellt, und lap - 1
-    zeigt ins Leere.
+    Zwei Faelle zaehlen nicht als echtes Duell: ein Boxenstopp verschiebt
+    die Position ohne Ueberholen auf der Strecke, und ein
+    Safety-Car-Restart wirbelt das Feld durcheinander, ohne dass Position
+    durch Tempo gewonnen wurde. Die Positionstabelle selbst bleibt ueber
+    die volle, ungefilterte Rundenliste - sonst fehlen Rundennummern in der
+    Reihe, sobald eine Runde komplett herausfaellt, und lap - 1 zeigt ins
+    Leere.
+
+    Returns:
+        DataFrame mit Spalten ``gainer``, ``loser``, ``lap``.
     """
     laps = session.laps
     pos = laps.pivot_table(index="LapNumber", columns="Driver",
                            values="Position", aggfunc="first")
     if pos.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=["gainer", "loser", "lap"])
 
     box_laps = set(zip(laps.loc[laps["PitInTime"].notna(), "Driver"],
                        laps.loc[laps["PitInTime"].notna(), "LapNumber"]))
     gruene_laps = set(zip(laps.pick_track_status("1")["Driver"],
                           laps.pick_track_status("1")["LapNumber"]))
     drivers = list(pos.columns)
-    mat = pd.DataFrame(0, index=drivers, columns=drivers)
+    events = []
 
     for lap in pos.index[1:]:
         prev, cur = pos.loc[lap - 1], pos.loc[lap]
@@ -834,8 +841,103 @@ def overtakes_matrix(session) -> pd.DataFrame:
                         continue
                     if (a, lap) not in gruene_laps or (b, lap) not in gruene_laps:
                         continue
-                    mat.loc[a, b] += 1
+                    events.append({"gainer": a, "loser": b, "lap": int(lap)})
+    return pd.DataFrame(events, columns=["gainer", "loser", "lap"])
+
+
+def overtakes_matrix(session) -> pd.DataFrame:
+    """Wer ueberholt wen wie oft (siehe P20 VORGEHEN 3/4). Zeile ueberholt
+    Spalte. Aggregiert :func:`overtake_events`."""
+    laps = session.laps
+    drivers = list(laps.pivot_table(index="LapNumber", columns="Driver",
+                                    values="Position", aggfunc="first").columns)
+    mat = pd.DataFrame(0, index=drivers, columns=drivers)
+    for e in overtake_events(session).itertuples():
+        mat.loc[e.gainer, e.loser] += 1
     return mat
+
+
+def overtake_locations(session, drs_session=None, drs_referenz: str | None = None,
+                       naehe_m: float = 30.0) -> pd.DataFrame:
+    """Ort jedes Ueberholvorgangs auf der Strecke, gegen die DRS-Zonen
+    geprueft (siehe P39).
+
+    Fuer jedes Ereignis aus :func:`overtake_events`: in der Telemetrie des
+    Ueberholers (``gainer``) fuer genau diese Runde die letzte Stelle
+    suchen, an der ``DriverAhead`` (FastF1s eigener, GPS-basierter
+    "Auto direkt davor"-Kanal) noch dem Ueberholten (``loser``) entspricht -
+    das ist die Stelle kurz vor dem Positionswechsel. Nur uebernommen, wenn
+    dort auch ``DistanceToDriverAhead`` unter ``naehe_m`` liegt (sonst war
+    ``loser`` zwar irgendwann auf der Runde davor, aber nicht mehr in dem
+    Moment, der als Wechsel gezaehlt wird - z.B. bei mehreren
+    Positionswechseln in derselben Runde).
+
+    Die DRS-Zonen kommen bewusst NICHT aus der Renn-Session selbst: DRS
+    braucht in einem Rennen einen Rueckstand unter 1s auf das Auto davor,
+    eine schnellste Rennrunde entsteht aber typisch in freier Fahrt ohne
+    Vordermann - dann bleibt DRS auf der ganzen Runde zu, und
+    :func:`drs_zones` faende keine einzige Zone, obwohl die Zonen
+    physisch existieren (siehe P39 fuer den Monza-Fall, an dem das
+    auffiel). Im Qualifying ist DRS ohne Abstandsregel verfuegbar, deshalb
+    Default: die Qualifying-Session desselben Events (ueber die
+    Rundennummer, nicht den Streckennamen - robuster gegen
+    Schreibweisen). ``drs_session`` laesst sich trotzdem explizit setzen,
+    falls keine Qualifying-Telemetrie im Cache liegt.
+
+    Returns:
+        DataFrame mit ``gainer``, ``loser``, ``lap``, ``distance_m``,
+        ``in_drs_zone``. Ereignisse ohne verwertbare Telemetriestelle
+        fehlen in der Rueckgabe (nicht als Zeile mit NaN) - die Differenz
+        zu :func:`overtake_events` ist die Abdeckung dieser Methode.
+    """
+    events = overtake_events(session)
+    if events.empty:
+        return pd.DataFrame(columns=["gainer", "loser", "lap", "distance_m",
+                                     "in_drs_zone"])
+
+    nummer_zu_code = (session.laps[["Driver", "DriverNumber"]]
+                      .drop_duplicates().set_index("DriverNumber")["Driver"]
+                      .to_dict())
+    code_zu_nummer = {v: k for k, v in nummer_zu_code.items()}
+
+    if drs_session is None:
+        drs_session = load(int(session.event.year),
+                           int(session.event["RoundNumber"]), "Q",
+                           telemetry=True)
+    if drs_referenz is None:
+        drs_referenz = str(drs_session.laps.pick_fastest()["Driver"])
+    zonen = drs_zones(drs_session, drs_referenz)
+    zone_starts = zonen["start_m"].to_numpy() if not zonen.empty else np.array([])
+    zone_ends = zonen["end_m"].to_numpy() if not zonen.empty else np.array([])
+
+    rows = []
+    for e in events.itertuples():
+        loser_nr = code_zu_nummer.get(e.loser)
+        if loser_nr is None:
+            continue
+        try:
+            lap = session.laps.pick_drivers(e.gainer).pick_laps(e.lap)
+            tel = lap.get_telemetry().add_distance().add_driver_ahead()
+        except Exception:
+            continue
+        if tel.empty:
+            continue
+
+        treffer = tel[(tel["DriverAhead"] == loser_nr)
+                     & (tel["DistanceToDriverAhead"] < naehe_m)]
+        if treffer.empty:
+            continue
+        letzte = treffer.iloc[-1]
+        rows.append({"gainer": e.gainer, "loser": e.loser, "lap": e.lap,
+                    "distance_m": round(float(letzte["Distance"]), 1)})
+
+    orte = pd.DataFrame(rows, columns=["gainer", "loser", "lap", "distance_m"])
+    if orte.empty:
+        orte["in_drs_zone"] = pd.Series(dtype=bool)
+        return orte
+    orte["in_drs_zone"] = distance_in_any_zone(orte["distance_m"], zone_starts,
+                                               zone_ends)
+    return orte
 
 
 # --------------------------------------------------------------- Start
@@ -890,6 +992,25 @@ def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
         })
     return pd.DataFrame(rows).sort_values("m_nach_5s", ascending=False,
                                           ignore_index=True)
+
+
+def grid_lap1_positions(session) -> pd.DataFrame:
+    """Startplatz gegen Position am Ende von Runde 1, ohne Boxenstarts
+    (siehe P40 - die telemetriefreie Variante von P31s Startkennzahlen,
+    fuer Saison-Scans ueber viele Rennen ohne Telemetrie-Download).
+
+    Returns:
+        DataFrame mit ``driver_number``, ``grid``, ``lap1``, ``gewinn``
+        (grid - lap1, positiv = Positionen gewonnen).
+    """
+    grid = session.results[["DriverNumber", "GridPosition"]].dropna()
+    lap1 = session.laps.pick_laps(1)
+    lap1 = lap1.loc[lap1["PitOutTime"].isna(), ["DriverNumber", "Position"]].dropna()
+    m = grid.merge(lap1, on="DriverNumber").rename(
+        columns={"DriverNumber": "driver_number", "GridPosition": "grid",
+                "Position": "lap1"})
+    m["gewinn"] = m["grid"] - m["lap1"]
+    return m
 
 
 # --------------------------------------------------------------- Verfolgung

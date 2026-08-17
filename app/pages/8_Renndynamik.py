@@ -1,9 +1,10 @@
 """Positionsverlauf, Ueberholungen, Start und Verfolgung ueber ein Rennen.
 
-Drei Reiter, alle auf derselben Session: wer gewinnt/verliert wo Positionen
-(P20), wer gewinnt die ersten Meter (P31), und was ein enger Vordermann eine
-Rundenzeit kostet (P32). Gerechnet wird nirgends hier - jede Kennzahl kommt
-aus f1lab.
+Vier Reiter, alle auf derselben Session: wer gewinnt/verliert wo Positionen
+(P20), wer gewinnt die ersten Meter (P31), was ein enger Vordermann eine
+Rundenzeit kostet (P32), und wo genau auf der Strecke Ueberholungen
+passieren - DRS-Zone oder nicht (P39). Gerechnet wird nirgends hier - jede
+Kennzahl kommt aus f1lab.
 """
 from __future__ import annotations
 
@@ -44,8 +45,9 @@ if nur_rennen(auswahl, "Renndynamik"):
 ses = lade(auswahl, telemetrie=auswahl.telemetrie)
 kopfzeile(ses, auswahl)
 
-tab_position, tab_start, tab_verfolgung = st.tabs(
-    ["Position & Ueberholungen", "Start", "Verfolgung (Dirty Air)"])
+tab_position, tab_start, tab_verfolgung, tab_drs = st.tabs(
+    ["Position & Ueberholungen", "Start", "Verfolgung (Dirty Air)",
+     "Ueberholorte (DRS)"])
 
 
 # ================================================== Position & Ueberholungen
@@ -179,3 +181,123 @@ with tab_verfolgung:
                 hinweis("Treibstoff- (P04) und degradationsbereinigt (P13) - "
                         "sonst misst die Regression den Sprit- oder "
                         "Reifeneffekt statt Dirty Air, siehe P32.")
+
+
+# ============================================================ Ueberholorte (DRS)
+with tab_drs:
+    if not auswahl.telemetrie:
+        st.info("Fuer diese Session liegt keine Telemetrie vor - der Ort "
+               "eines Ueberholvorgangs braucht sie (DriverAhead-Kanal).")
+    else:
+        @st.cache_data(show_spinner="Ueberholorte werden bestimmt (eigene "
+                                    "Telemetrie je Ereignis, dauert einen "
+                                    "Moment) ...")
+        def _ueberholorte(cache_pfad: str, season: int, event: str, ident: str):
+            s = f1lab.load(season, event, ident, telemetry=True)
+            events = f1lab.overtake_events(s)
+            orte = f1lab.overtake_locations(s)
+            q = f1lab.load(season, int(s.event["RoundNumber"]), "Q",
+                           telemetry=True)
+            lap_q = q.laps.pick_fastest()
+            zonen = f1lab.drs_zones(q, str(lap_q["Driver"]))
+            ref_lap = s.laps.pick_fastest()
+            tel = ref_lap.get_telemetry().add_distance()
+            bremszonen = f1lab.driver_braking_zones(s, str(ref_lap["Driver"]))
+            return events, orte, zonen, tel, bremszonen
+
+        events, orte, zonen, tel, bremszonen = _ueberholorte(
+            str(pfad), auswahl.season, auswahl.event, auswahl.ident)
+
+        if events.empty:
+            st.info("Keine auswertbaren Ueberholungen fuer diese Session.")
+        elif orte.empty:
+            st.info("Keine der Ueberholungen liess sich in der Telemetrie "
+                   "eindeutig lokalisieren.")
+        else:
+            k = st.columns(3)
+            k[0].metric("Lokalisiert", f"{len(orte)}/{len(events)}",
+                       help=f"{100 * len(orte) / len(events):.0f}% "
+                            "Abdeckung - der Rest hatte im entscheidenden "
+                            "Moment keinen sauberen DriverAhead-Treffer "
+                            "(siehe P39).")
+            k[1].metric("Davon in DRS-Zone",
+                       f"{100 * orte['in_drs_zone'].mean():.0f}%")
+            k[2].metric("DRS-Zonen", len(zonen),
+                       help="Aus der Qualifying-Session desselben Events - "
+                            "DRS im Rennen braucht einen Rueckstand unter "
+                            "1s, die schnellste Rennrunde hat deshalb oft "
+                            "gar keine offene Zone (siehe P39).")
+
+            x = (tel["X"] / 10).to_numpy()
+            y = (tel["Y"] / 10).to_numpy()
+            dist = tel["Distance"].to_numpy()
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x, y=y, mode="lines",
+                                     line={"color": d.GRID, "width": 8},
+                                     hoverinfo="skip", showlegend=False))
+            for _, z in zonen.iterrows():
+                maske = (dist >= z["start_m"]) & (dist <= z["end_m"])
+                fig.add_trace(go.Scatter(
+                    x=x[maske], y=y[maske], mode="lines",
+                    line={"color": d.SERIEN[0], "width": 8},
+                    hoverinfo="skip", showlegend=False))
+
+            idx = [int(np.argmin(np.abs(dist - v))) for v in orte["distance_m"]]
+            farben = [d.POSITIV if v else d.SERIEN[1]
+                     for v in orte["in_drs_zone"]]
+            text = [f"{g} ueberholt {v} (Runde {int(lp)})" for g, v, lp
+                   in zip(orte["gainer"], orte["loser"], orte["lap"])]
+            fig.add_trace(go.Scatter(
+                x=x[idx], y=y[idx], mode="markers",
+                marker={"color": farben, "size": 10,
+                       "line": {"color": d.FG, "width": 0.5}},
+                text=text, hovertemplate="%{text}<extra></extra>",
+                showlegend=False))
+            zeige(fig, hoehe=560, xaxis={"visible": False},
+                 yaxis={"visible": False, "scaleanchor": "x", "scaleratio": 1})
+            hinweis("Blau eingefaerbte Streckenabschnitte sind die "
+                   "DRS-Zonen. Punktfarbe: gruen ueberholt in einer Zone, "
+                   "orange ausserhalb. Nur lokalisierte Ueberholungen sind "
+                   "eingezeichnet (siehe Abdeckung oben) - kein Zufalls-"
+                   "Bias in eine bestimmte Streckenhaelfte, aber die Zahl "
+                   "ist keine vollstaendige Zaehlung (siehe P39).")
+
+            with st.expander("Tabelle"):
+                tabelle(orte.rename(columns={
+                    "gainer": "Ueberholer", "loser": "Ueberholter",
+                    "lap": "Runde", "distance_m": "Distanz [m]",
+                    "in_drs_zone": "DRS-Zone"}))
+
+            if not bremszonen.empty:
+                st.markdown("##### Dritte AUSBAUSTUFE: Abstand zur naechsten "
+                           "Bremszone")
+                strecke_m = float(dist.max())
+                vorlauf_echt = f1lab.lead_distance_to_zone(
+                    orte["distance_m"], bremszonen["start_m"], strecke_m)
+                rng = np.random.default_rng(42)
+                zufall = rng.uniform(0, strecke_m, 20_000)
+                vorlauf_zufall = f1lab.lead_distance_to_zone(
+                    zufall, bremszonen["start_m"], strecke_m)
+
+                fig2 = go.Figure()
+                fig2.add_trace(go.Histogram(
+                    x=vorlauf_zufall, histnorm="probability density",
+                    name="Zufalls-Baseline", marker={"color": d.GRID},
+                    opacity=0.7, nbinsx=25))
+                fig2.add_trace(go.Histogram(
+                    x=vorlauf_echt, histnorm="probability density",
+                    name="Echte Ueberholorte", marker={"color": d.SERIEN[0]},
+                    opacity=0.7, nbinsx=25))
+                zeige(fig2, hoehe=360, barmode="overlay",
+                     xaxis=achse("Abstand zur naechsten Bremszone [m]"),
+                     yaxis=achse("Dichte"))
+                hinweis(f"Median Abstand: echt {np.median(vorlauf_echt):.0f}m "
+                       f"gegen Zufall {np.median(vorlauf_zufall):.0f}m. "
+                       f"Anteil unter 200m: echt "
+                       f"{100 * (vorlauf_echt < 200).mean():.0f}% gegen "
+                       f"Zufall {100 * (vorlauf_zufall < 200).mean():.0f}% - "
+                       "echte Ueberholungen passieren NICHT ueberdurch"
+                       "schnittlich direkt vor dem Bremspunkt, aber "
+                       "zuverlaessig irgendwo auf der Geraden davor (unter "
+                       "800m: siehe P39, dritte AUSBAUSTUFE).")

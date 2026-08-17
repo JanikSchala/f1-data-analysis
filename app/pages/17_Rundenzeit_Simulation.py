@@ -1,13 +1,15 @@
 """Rundenzeit-Simulation (P37): ein Punktmassenmodell aus Streckenkruemmung
 und vier Fahrzeugparametern, kalibriert gegen die echte Geschwindigkeitsspur
-einer Referenzrunde - und dieselben Parameter unveraendert auf andere
-Strecken uebertragen.
+einer Referenzrunde - dieselben Parameter unveraendert auf andere Strecken
+uebertragen, und (zweite AUSBAUSTUFE) auf einen ganzen Stint mit sinkender
+Kraftstoffmasse angewendet.
 
-Gerechnet wird nirgends hier: jede Zahl kommt aus
-f1lab.lap_speed_profile()/calibrate_lap_model()/simulate_lap().
+Gerechnet wird nirgends hier: jede Zahl kommt aus f1lab.lap_speed_profile()/
+calibrate_lap_model()/simulate_lap()/simulate_stint().
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -148,6 +150,58 @@ hinweis(f"Mittlerer absoluter Fehler {fehler_abs:.1f}%, mittlerer Fehler mit "
 tabelle(ergebnisse.rename(columns={"strecke": "Strecke", "real_s": "Real [s]",
                                    "sim_s": "Simuliert [s]",
                                    "diff_pct": "Abweichung [%]"}))
+
+st.markdown("##### ZWEITE AUSBAUSTUFE: Kraftstoffmasse im Stint")
+hinweis("Kein Streckentransfer diesmal, sondern ein Zustand ueber die Zeit: "
+       "derselbe kalibrierte Wagen faehrt eine Renndistanz mit vollem Tank "
+       "und wird Runde fuer Runde leichter. Die kalibrierten Grenzwerte "
+       "gelten fuer die fast leere Qualifyingrunde oben (siehe P37) - mit "
+       "vollerem Tank sinken Kurvengrenze, Beschleunigung und "
+       "Bremsverzoegerung um denselben Faktor.")
+
+stint_laps = st.slider("Rundenzahl des Stints", 10, 70, 57,
+                       help="Default 57 = echte Bahrain-GP-2024-Renndistanz.")
+fuel_start = f1lab.core.FUEL_KG_PER_LAP * stint_laps
+
+
+@st.cache_data(show_spinner="Stint wird simuliert ...")
+def _stint(cache_pfad: str, season: int, event: str, ident: str,
+          params: dict, n_laps: int):
+    s = f1lab.load(season, event, ident, telemetry=True)
+    d3, k3, _ = f1lab.lap_speed_profile(s)
+    fuel = f1lab.core.FUEL_KG_PER_LAP * n_laps
+    zeiten = f1lab.simulate_stint(d3, k3, params["mu_g"], params["a_accel"],
+                                  params["a_brake"], params["v_top"],
+                                  fuel_start_kg=fuel, n_laps=n_laps)
+    return zeiten
+
+
+zeiten_stint = _stint(str(pfad), auswahl.season, auswahl.event, auswahl.ident,
+                      params, stint_laps)
+runden = list(range(1, stint_laps + 1))
+fuel_kg = [max(fuel_start - f1lab.core.FUEL_KG_PER_LAP * i, 0.0)
+          for i in range(stint_laps)]
+
+k2 = st.columns(3)
+k2[0].metric("Runde 1 (voller Tank)", f"{zeiten_stint[0]:.2f}s")
+k2[1].metric(f"Runde {stint_laps} (leerer Tank)", f"{zeiten_stint[-1]:.2f}s")
+k2[2].metric("Gewinn ueber den Stint",
+            f"{zeiten_stint[0] - zeiten_stint[-1]:+.2f}s")
+
+fig3 = go.Figure()
+fig3.add_trace(go.Scatter(x=runden, y=zeiten_stint, mode="lines+markers",
+                          line={"color": d.SERIEN[0]}, marker={"size": 5},
+                          name="Simulierte Rundenzeit"))
+zeige(fig3, hoehe=340, showlegend=False, xaxis=achse("Runde"),
+     yaxis=achse("Simulierte Rundenzeit [s]"))
+
+steigung = float(np.polyfit(fuel_kg, zeiten_stint, 1)[0])
+hinweis(f"Aus der Simulation gefittete Steigung {steigung:.3f} s/kg gegen "
+       f"den P04-Referenzwert aus echten Rennrunden ({f1lab.core.FUEL_S_PER_KG} "
+       "s/kg): dieselbe Groessenordnung, aber spuerbar hoeher - das Modell "
+       "behandelt Kurvengrenze, Beschleunigung und Bremsverzoegerung mit "
+       "derselben Skalierung, obwohl real nur der abtriebsdominierte "
+       "Hochgeschwindigkeitsanteil so stark massenabhaengig ist (siehe P37).")
 
 with st.expander("Was das Modell nicht kann"):
     st.markdown(

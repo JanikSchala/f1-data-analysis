@@ -15,6 +15,7 @@ from scipy.signal import savgol_filter
 # Faustwerte aus der Literatur. Groessenordnung belastbar, keine Messwerte.
 FUEL_KG_PER_LAP = 1.8
 FUEL_S_PER_KG = 0.03
+M_DRY_KG = 798.0  # FIA-Mindestgewicht 2024 (Auto+Fahrer, ohne Kraftstoff)
 
 
 # --------------------------------------------------------------- Statistik
@@ -919,6 +920,51 @@ def active_distance_zones(active, distance, min_length_m: float = 20.0
     return zones
 
 
+def distance_in_any_zone(distances, zone_starts, zone_ends) -> np.ndarray:
+    """Fuer jede Distanz: liegt sie innerhalb irgendeiner der Zonen
+    [start, end]? (siehe P39, Ueberholorte gegen DRS-Zonen).
+
+    Allgemein gehalten wie :func:`active_distance_zones` - nimmt beliebige
+    Start/Ende-Paare, nicht nur DRS.
+
+    Returns:
+        Bool-Array derselben Laenge wie ``distances``.
+    """
+    d = np.asarray(distances, dtype=float)
+    starts = np.asarray(zone_starts, dtype=float)
+    ends = np.asarray(zone_ends, dtype=float)
+    if starts.size == 0:
+        return np.zeros(d.shape, dtype=bool)
+    return ((d[:, None] >= starts[None, :])
+           & (d[:, None] <= ends[None, :])).any(axis=1)
+
+
+def lead_distance_to_zone(distances, zone_starts, track_length_m: float) -> np.ndarray:
+    """Fuer jede Distanz: wie weit bis zum Beginn der naechsten Zone in
+    Fahrtrichtung? (siehe P39, dritte AUSBAUSTUFE: Ueberholorte gegen
+    Bremszonen).
+
+    Mit Rundenumbruch - liegt die naechste Zone erst in der naechsten
+    Runde, zaehlt die Reststrecke bis zum Ziel plus die Distanz vom Start
+    bis zur Zone. Anders als :func:`distance_in_any_zone` (nur drinnen
+    oder draussen) misst das hier einen Abstand, auch ausserhalb jeder
+    Zone - noetig, um zu pruefen, ob Ereignisse sich in der ANNAEHERUNG an
+    eine Zone haeufen, nicht nur exakt darin.
+
+    Returns:
+        Float-Array derselben Laenge wie ``distances`` (NaN ohne Zonen).
+    """
+    d = np.asarray(distances, dtype=float)
+    starts = np.sort(np.asarray(zone_starts, dtype=float))
+    if starts.size == 0:
+        return np.full(d.shape, np.nan)
+    idx = np.searchsorted(starts, d, side="left")
+    wrap = idx >= starts.size
+    naechste = np.where(wrap, starts[0] + track_length_m,
+                        starts[np.clip(idx, 0, starts.size - 1)])
+    return naechste - d
+
+
 def drs_state(drs_values, open_codes: tuple[int, ...] = (10, 12, 14),
               detected_code: int = 8):
     """Klassifiziert den codierten DRS-Kanal in drei Zustaende.
@@ -1049,6 +1095,45 @@ def calibrate_lap_model(dist, kappa, speed_real) -> dict:
     mu_g, a_b, a_br, v_top = ergebnis.x
     return {"mu_g": float(mu_g), "a_accel": float(a_b), "a_brake": float(a_br),
            "v_top": float(v_top), "rmse_ms": float(np.sqrt(np.mean(ergebnis.fun ** 2)))}
+
+
+def simulate_stint(dist, kappa, mu_g_ref: float, a_accel_ref: float,
+                   a_brake_ref: float, v_top: float, fuel_start_kg: float,
+                   n_laps: int, kg_per_lap: float = FUEL_KG_PER_LAP,
+                   m_dry_kg: float = M_DRY_KG) -> np.ndarray:
+    """Rundenzeit je Runde eines Stints, waehrend der Tank leerer wird
+    (P37, zweite AUSBAUSTUFE).
+
+    Die kalibrierten Grenzwerte (``*_ref``) gelten fuer eine Qualifyingrunde,
+    also nahezu leeren Tank (siehe ``calibrate_lap_model``) - das ist hier der
+    Bezugspunkt bei Kraftstoffmasse 0. Modellannahme: die Kraefte hinter
+    Kurvengrip, Laengsbeschleunigung und Bremsung (Abtrieb, Reifenhaftung,
+    Bremsanlage) haengen kaum vom Fahrzeuggewicht ab, nur die erreichbare
+    Beschleunigung a=F/m schon - mit vollerem Tank (hoehere Masse) sinken alle
+    drei Grenzwerte deshalb um denselben Faktor m_dry/(m_dry+Kraftstoff).
+    Grobe Vereinfachung (echte Bremskraft haengt z.B. auch von der
+    gewichtsabhaengigen Normalkraft ab), aber ohne zweiten Kalibrierungspunkt
+    nicht weiter auftrennbar - deshalb hier bewusst EINE Skalierung fuer alle
+    drei statt einer pro Groesse. v_top bleibt konstant (leistungs-/
+    luftwiderstandsbegrenzt, kaum massenabhaengig).
+
+    Args:
+        fuel_start_kg: Kraftstoffmasse zu Stint-Beginn.
+        n_laps: Rundenzahl des Stints.
+        kg_per_lap: Verbrauch je Runde, Default wie ``fuel_correct``.
+        m_dry_kg: Fahrzeugmasse ohne Kraftstoff (Bezugsgewicht der Skalierung).
+
+    Returns:
+        Rundenzeit in Sekunden je Runde, Laenge ``n_laps``. Faellt monoton,
+        waehrend der Tank leerer wird, danach konstant.
+    """
+    fuel = np.maximum(fuel_start_kg - kg_per_lap * np.arange(n_laps), 0.0)
+    skala = m_dry_kg / (m_dry_kg + fuel)
+    zeiten = np.empty(n_laps)
+    for i, s in enumerate(skala):
+        _, zeiten[i] = simulate_lap(dist, kappa, mu_g_ref * s, a_accel_ref * s,
+                                    a_brake_ref * s, v_top)
+    return zeiten
 
 
 @dataclass(frozen=True)
