@@ -42,7 +42,9 @@ from .core import (
     fit_degradation,
     frontier_by_stops,
     fuel_correct,
+    gap_evolution,
     hindsight_value,
+    lap_times_for_strategy,
     lead_distance_to_zone,
     mad_outlier_mask,
     match_by_distance,
@@ -58,6 +60,7 @@ from .core import (
     stint_arcs,
     telemetry_source_quality,
     track_curvature,
+    traffic_cost,
     undercut_gain,
 )
 from .session import (
@@ -147,4 +150,6 @@ __all__ = [
     # Rundenzeit-Simulation (P37)
     "track_curvature", "simulate_lap", "calibrate_lap_model", "lap_speed_profile",
     "simulate_stint",
+    # Verkehr (P41)
+    "lap_times_for_strategy", "gap_evolution", "traffic_cost",
 ]
