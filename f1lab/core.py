@@ -764,6 +764,106 @@ def hindsight_value(cfg: RaceConfig, prozess: SafetyCarProcess,
     return mittel, (varianz / n) ** 0.5
 
 
+# --------------------------------------------------------------------- Verkehr (P41)
+def lap_times_for_strategy(cfg: RaceConfig, strategy: Strategy) -> np.ndarray:
+    """Freie Rundenzeit je Runde 1..n_laps fuer eine feste Strategie, ohne
+    Verkehr (siehe P41 - Eingabe fuer :func:`gap_evolution`).
+
+    "Frei" heisst: exakt die Zeiten, aus denen :func:`optimal_strategy` selbst
+    rechnet (Reifenmodell plus Pitloss auf der Boxenrunde) - keine neue
+    Rechnung, nur dieselbe Kostenstruktur je Runde statt nur summiert.
+    """
+    zeiten = np.empty(cfg.n_laps)
+    for st in strategy.stints:
+        tyre = next(t for t in cfg.tyres if t.compound == st.compound)
+        for lap in range(st.start_lap, st.end_lap + 1):
+            zeiten[lap - 1] = tyre.lap_time(lap - st.start_lap + 1)
+    for lap in strategy.pit_laps:
+        zeiten[lap - 1] += pit_loss_at(cfg, lap)
+    return zeiten
+
+
+def gap_evolution(hero_times, rival_times, initial_gap: float,
+                  p_overtake: float, block_gap_s: float = 1.0,
+                  rng: random.Random | None = None) -> tuple[np.ndarray, int]:
+    """Rundenweiser Abstand zweier Autos, mit Ueberholwahrscheinlichkeit statt
+    der Annahme, dass ein Tempovorteil sich sofort in Position uebersetzt
+    (siehe P41 - die in P35 bewusst offen gelassene "Verkehr"-Luecke, jetzt
+    mit P38/P39 als Eingabegroesse fuer ``p_overtake``).
+
+    ``gap`` > 0 heisst: der Ueberholer (hero) liegt so viele Sekunden hinter
+    dem Vordermann (rival). Solange der freie (unblockierte) Abstand unter
+    ``block_gap_s`` faellt - grob die Distanz, auf der DRS/Windschatten
+    wirken - passiert der Ueberholvorgang nicht automatisch: jede solche
+    Runde ist ein Versuch mit Erfolgswahrscheinlichkeit ``p_overtake``.
+    Scheitert er, haelt hero den Abstand bei ``block_gap_s`` (kann nicht
+    weiter aufschliessen, faellt aber auch nicht zurueck) statt den vollen
+    Tempovorteil sofort zu realisieren - genau der Mechanismus, den das
+    reine Rundenzeitmodell aus P35 nicht kennt.
+
+    Args:
+        hero_times, rival_times: Rundenzeiten je Runde (inkl. Pitloss auf der
+            Boxenrunde, siehe :func:`lap_times_for_strategy`), gleiche Laenge.
+        initial_gap: Abstand vor Runde 1 (positiv = hero hinten).
+        p_overtake: Erfolgswahrscheinlichkeit je Ueberholversuch-Runde -
+            Streckeneigenschaft (siehe P38: Kurven/km korreliert mit
+            Ueberholzahlen; P39: rund drei Viertel der Ueberholungen in der
+            DRS-Zone), hier bewusst als externer Parameter statt intern
+            geschaetzt - siehe P41-Docstring fuer die Kalibrierungsgrenzen.
+        block_gap_s: Abstand, unter dem "blockiert" gilt.
+        rng: fuer reproduzierbare Zufallszahlen; ohne wird ein neuer erzeugt.
+
+    Returns:
+        (Abstandsverlauf inkl. Runde 0 an Index 0, Anzahl blockierter Runden).
+    """
+    hero_times = np.asarray(hero_times, dtype=float)
+    rival_times = np.asarray(rival_times, dtype=float)
+    if hero_times.shape != rival_times.shape:
+        raise ValueError("hero_times und rival_times muessen gleich lang sein")
+    rng = rng if rng is not None else random.Random()
+    n = hero_times.size
+    verlauf = np.empty(n + 1)
+    verlauf[0] = gap = initial_gap
+    blockiert = 0
+    for lap in range(n):
+        frei = gap + (hero_times[lap] - rival_times[lap])
+        if gap > 0 and frei <= block_gap_s:
+            blockiert += 1
+            gap = frei if rng.random() < p_overtake else block_gap_s
+        else:
+            gap = frei
+        verlauf[lap + 1] = gap
+    return verlauf, blockiert
+
+
+def traffic_cost(hero_times, rival_times, initial_gap: float,
+                 p_overtake: float, block_gap_s: float = 1.0,
+                 n_sim: int = 2000, seed: int = 0) -> tuple[float, float]:
+    """Erwarteter Zeitverlust durch Verkehr gegenueber der freien Annahme,
+    ueber viele Zufallslaeufe (siehe P41). Mittel und Standardfehler, im
+    selben Stil wie :func:`hindsight_value`.
+
+    "Zeitverlust" ist der Endabstand MIT Blockade minus der Endabstand OHNE
+    (reine Summe der Rundenzeiten) - positiv heisst, hero verliert durch
+    Verkehr Zeit auf rival, unabhaengig davon, ob am Ende noch ueberholt
+    wurde oder nicht.
+    """
+    hero_times = np.asarray(hero_times, dtype=float)
+    rival_times = np.asarray(rival_times, dtype=float)
+    frei_ende = initial_gap + float((hero_times - rival_times).sum())
+    rng = random.Random(seed)
+    summe = quadrat = 0.0
+    for _ in range(n_sim):
+        verlauf, _ = gap_evolution(hero_times, rival_times, initial_gap,
+                                   p_overtake, block_gap_s, rng)
+        verlust = verlauf[-1] - frei_ende
+        summe += verlust
+        quadrat += verlust * verlust
+    mittel = summe / n_sim
+    varianz = max(0.0, quadrat / n_sim - mittel * mittel)
+    return mittel, (varianz / n_sim) ** 0.5
+
+
 # --------------------------------------------------------------- Telemetrie
 def telemetry_source_quality(source) -> dict:
     """Anteil real gemessener gegen interpolierter Telemetriepunkte

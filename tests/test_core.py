@@ -8,6 +8,8 @@ F1-API abzuhaengen.
 """
 from __future__ import annotations
 
+import random
+
 import numpy as np
 import pytest
 
@@ -34,7 +36,9 @@ from f1lab.core import (
     fit_degradation,
     frontier_by_stops,
     fuel_correct,
+    gap_evolution,
     hindsight_value,
+    lap_times_for_strategy,
     lead_distance_to_zone,
     mad_outlier_mask,
     match_by_distance,
@@ -48,6 +52,7 @@ from f1lab.core import (
     solve_policy,
     status_intervals,
     track_curvature,
+    traffic_cost,
     undercut_gain,
 )
 
@@ -933,6 +938,148 @@ class TestExpectedCostAndHindsight:
         deterministic = optimal_strategy(cfg).green_time
         assert blind == pytest.approx(deterministic)
         assert se == pytest.approx(0.0, abs=1e-9)
+
+
+# --------------------------------------------------------- lap_times_for_strategy
+class TestLapTimesForStrategy:
+    """Rundenzeiten je Runde aus einer festen Strategie (P41)."""
+
+    def test_sum_matches_green_time(self):
+        cfg = RaceConfig(n_laps=20, pit_loss=20.0, min_stint=3,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)))
+        plan = optimal_strategy(cfg)
+        zeiten = lap_times_for_strategy(cfg, plan)
+        assert zeiten.sum() == pytest.approx(plan.green_time)
+
+    def test_length_matches_n_laps(self):
+        cfg = RaceConfig(n_laps=15, pit_loss=20.0,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)))
+        plan = optimal_strategy(cfg)
+        assert len(lap_times_for_strategy(cfg, plan)) == 15
+
+    def test_pit_loss_lands_on_pit_lap(self):
+        """Der Boxenverlust steckt auf der Runde, an deren Ende gestoppt
+        wird - genau die in Strategy.pit_laps genannte Runde."""
+        cfg = RaceConfig(n_laps=10, pit_loss=25.0, min_stint=2,
+                         tyres=(TyreModel("SOFT", 90.0, 0.0),
+                               TyreModel("HARD", 90.0, 0.0)),
+                         exact_stops=1)
+        plan = optimal_strategy(cfg)
+        zeiten = lap_times_for_strategy(cfg, plan)
+        pit_lap = plan.pit_laps[0]
+        andere = [zeiten[lap - 1] for lap in range(1, 11) if lap != pit_lap]
+        assert zeiten[pit_lap - 1] == pytest.approx(90.0 + 25.0)
+        assert all(z == pytest.approx(90.0) for z in andere)
+
+
+# ------------------------------------------------------------- gap_evolution
+class TestGapEvolution:
+    """Rundenweiser Abstand zweier Autos mit Ueberholwahrscheinlichkeit (P41)."""
+
+    def test_far_apart_never_blocks(self):
+        """Weit auseinander liegend entspricht die Simulation exakt der
+        freien Rechnung, unabhaengig von p_overtake."""
+        hero = np.full(10, 90.0)
+        rival = np.full(10, 90.0)
+        verlauf, blockiert = gap_evolution(hero, rival, initial_gap=30.0,
+                                           p_overtake=0.0,
+                                           rng=random.Random(1))
+        assert blockiert == 0
+        assert verlauf[-1] == pytest.approx(30.0)
+
+    def test_p_overtake_one_matches_free_gap(self):
+        """Gelingt jeder Versuch, macht die Blockade keinen Unterschied mehr -
+        die Simulation muss der freien Rechnung entsprechen."""
+        hero = np.full(20, 89.0)     # 1s/Runde schneller
+        rival = np.full(20, 90.0)
+        verlauf, _ = gap_evolution(hero, rival, initial_gap=0.5,
+                                   p_overtake=1.0, block_gap_s=1.0,
+                                   rng=random.Random(2))
+        frei_ende = 0.5 + float(np.sum(hero - rival))
+        assert verlauf[-1] == pytest.approx(frei_ende)
+
+    def test_p_overtake_zero_pins_at_block_gap(self):
+        """Gelingt kein Versuch, kann hero nie unter block_gap_s
+        aufschliessen, auch bei grossem Tempovorteil."""
+        hero = np.full(20, 85.0)     # 5s/Runde schneller
+        rival = np.full(20, 90.0)
+        verlauf, blockiert = gap_evolution(hero, rival, initial_gap=0.8,
+                                           p_overtake=0.0, block_gap_s=1.0,
+                                           rng=random.Random(3))
+        assert blockiert > 0
+        assert verlauf[-1] == pytest.approx(1.0)
+        assert (verlauf[1:] >= 1.0 - 1e-9).all()
+
+    def test_deterministic_with_same_rng_state(self):
+        hero = np.full(15, 89.5)
+        rival = np.full(15, 90.0)
+        v1, _ = gap_evolution(hero, rival, 0.7, 0.4, rng=random.Random(42))
+        v2, _ = gap_evolution(hero, rival, 0.7, 0.4, rng=random.Random(42))
+        assert np.allclose(v1, v2)
+
+    def test_mismatched_lengths_raise(self):
+        with pytest.raises(ValueError, match="gleich lang"):
+            gap_evolution([90.0, 90.0], [90.0], initial_gap=1.0, p_overtake=0.5)
+
+    def test_hero_already_ahead_never_blocks(self):
+        """Negativer Startabstand (hero schon vorn) darf nie in die
+        Blockade-Logik laufen, selbst wenn rival deutlich schneller waere."""
+        hero = np.full(10, 90.0)
+        rival = np.full(10, 85.0)    # rival 5s/Runde schneller
+        verlauf, blockiert = gap_evolution(hero, rival, initial_gap=-2.0,
+                                           p_overtake=0.0, block_gap_s=1.0,
+                                           rng=random.Random(4))
+        assert blockiert == 0
+        assert verlauf[-1] == pytest.approx(-2.0 + 10 * 5.0)
+
+
+# --------------------------------------------------------------- traffic_cost
+class TestTrafficCost:
+    """Erwarteter Zeitverlust durch Verkehr, Monte Carlo (P41)."""
+
+    def test_zero_when_never_close(self):
+        hero = np.full(10, 90.0)
+        rival = np.full(10, 90.0)
+        mittel, se = traffic_cost(hero, rival, initial_gap=50.0,
+                                  p_overtake=0.3, n_sim=100, seed=1)
+        assert mittel == pytest.approx(0.0, abs=1e-9)
+        assert se == pytest.approx(0.0, abs=1e-9)
+
+    def test_zero_when_overtake_always_succeeds(self):
+        hero = np.full(20, 89.0)
+        rival = np.full(20, 90.0)
+        mittel, _ = traffic_cost(hero, rival, initial_gap=0.5,
+                                 p_overtake=1.0, n_sim=100, seed=2)
+        assert mittel == pytest.approx(0.0, abs=1e-6)
+
+    def test_higher_p_overtake_costs_less(self):
+        """Monotonie: eine leichtere Strecke (hohe p_overtake) darf im
+        Mittel nie mehr kosten als eine schwere (niedrige p_overtake)."""
+        hero = np.full(30, 88.0)
+        rival = np.full(30, 90.0)
+        schwer, _ = traffic_cost(hero, rival, initial_gap=0.5, p_overtake=0.05,
+                                 n_sim=1000, seed=5)
+        leicht, _ = traffic_cost(hero, rival, initial_gap=0.5, p_overtake=0.6,
+                                 n_sim=1000, seed=5)
+        assert leicht <= schwer
+
+    def test_deterministic_with_seed(self):
+        hero = np.full(20, 89.0)
+        rival = np.full(20, 90.0)
+        a = traffic_cost(hero, rival, 0.5, 0.2, n_sim=300, seed=7)
+        b = traffic_cost(hero, rival, 0.5, 0.2, n_sim=300, seed=7)
+        assert a == b
+
+    def test_cost_is_never_negative(self):
+        """Verkehr kann hero nur bremsen, nie beschleunigen - der
+        Zeitverlust ist per Konstruktion >= 0."""
+        hero = np.full(25, 89.0)
+        rival = np.full(25, 90.0)
+        mittel, _ = traffic_cost(hero, rival, initial_gap=0.5, p_overtake=0.2,
+                                 n_sim=500, seed=9)
+        assert mittel >= -1e-9
 
 
 # --------------------------------------------------------- track_curvature
