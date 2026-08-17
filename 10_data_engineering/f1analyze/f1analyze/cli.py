@@ -1,7 +1,14 @@
 """CLI mit Subcommands (VORGEHEN 3): weekend, pace, strategy, telemetry,
-report.
+report, optimize, lap-sim, overtakes, traffic.
 
 Aufruf, sobald installiert (siehe README): f1analyze weekend 2024 Monza
+
+P38 (Ueberholschwierigkeit je Strecke) und P40 (Startplatz-Paritaet)
+bewusst NICHT als Subcommand: beide brauchen einen Season-Scan ueber
+Dutzende bis hunderte Sessions (Minuten, nicht Sekunden) - ein Einzelaufruf
+"f1analyze irgendwas 2024 Monza" passt nicht zu dieser Kostenstruktur. Beide
+leben deshalb nur als Dashboard-Seiten mit ``persist="disk"``-Cache
+(18_Ueberholschwierigkeit.py, 19_Startplatz_Paritaet.py).
 """
 from __future__ import annotations
 
@@ -65,6 +72,70 @@ def weekend(year: int, gp: str) -> None:
     typer.echo(analysis.race_pace(race).head(10).to_string(index=False))
     typer.echo("\n--- Degradation je Mischung ---")
     typer.echo(analysis.degradation_by_compound(race).to_string())
+
+
+@app.command()
+def optimize(year: int, gp: str) -> None:
+    """Exakt bester Boxenstopp-Plan (P35), aus echter Degradation/Pitloss."""
+    ses = load_session(year, gp, "R")
+    try:
+        cfg, plan = analysis.optimal_plan(ses)
+    except ValueError as exc:
+        typer.secho(f"Kein Modell bildbar: {exc}", fg="red")
+        raise typer.Exit(1) from exc
+    typer.echo(f"{cfg.n_laps} Runden, Pitloss {cfg.pit_loss:.1f}s, "
+              f"{len(cfg.tyres)} belastbare Mischungen\n")
+    typer.echo(plan.describe())
+
+
+@app.command()
+def lap_sim(year: int, gp: str, session: str = "Q") -> None:
+    """Punktmassen-Rundenzeitsimulation der schnellsten Runde (P37)."""
+    ses = load_session(year, gp, session, telemetry=True)
+    erg = analysis.lap_simulation(ses)
+    typer.echo(f"mu_g={erg['mu_g']:.2f} m/s^2 ({erg['mu_g'] / 9.81:.2f}g)  "
+              f"a_accel={erg['a_accel']:.2f} m/s^2  "
+              f"a_brake={erg['a_brake']:.2f} m/s^2  "
+              f"v_top={erg['v_top'] * 3.6:.1f} km/h")
+    typer.echo(f"real {erg['t_real_s']:.3f}s  simuliert {erg['t_sim_s']:.3f}s  "
+              f"({erg['diff_pct']:+.2f}%)")
+
+
+@app.command()
+def overtakes(year: int, gp: str) -> None:
+    """Ueberholungen und ihr Anteil in der DRS-Zone (P39)."""
+    race = load_session(year, gp, "R", telemetry=True)
+    quali = load_session(year, gp, "Q", telemetry=True)
+    erg = analysis.overtake_summary(race, quali)
+    typer.echo(f"{erg['ueberholungen']} Ueberholungen, "
+              f"{erg['lokalisiert']} lokalisiert")
+    if erg["lokalisiert"]:
+        typer.echo(f"davon {100 * erg['drs_anteil']:.1f}% in einer DRS-Zone")
+
+
+@app.command()
+def traffic(year: int, gp: str, alt_stops: int,
+           delta: float = 0.15, gap: float = 3.0,
+           p_overtake: float = 0.15) -> None:
+    """Verkehrs-Simulation (P41): DAG-Optimum gegen eine Alternative mit
+    Stoppzahl ALT_STOPS, beide gegen einen Rivalen simuliert. Rivalen-Tempo,
+    Startabstand und Ueberholwahrscheinlichkeit sind Szenario-Annahmen,
+    keine Messwerte - siehe P41."""
+    ses = load_session(year, gp, "R")
+    try:
+        erg = analysis.traffic_scenario(ses, alt_stops, delta, gap, p_overtake)
+    except ValueError as exc:
+        typer.secho(str(exc), fg="red")
+        raise typer.Exit(1) from exc
+    typer.echo(f"{erg['hero_stops']}-Stopp (Optimum):  "
+              f"{erg['hero_frei']:8.2f}s frei  {erg['hero_verkehr']:8.2f}s "
+              "mit Verkehr")
+    typer.echo(f"{erg['alt_stops']}-Stopp (Alternative): "
+              f"{erg['alt_frei']:8.2f}s frei  {erg['alt_verkehr']:8.2f}s "
+              "mit Verkehr")
+    diff = erg["alt_verkehr"] - erg["hero_verkehr"]
+    typer.echo(f"Abstand mit Verkehr: {diff:+.2f}s -> "
+              f"{'Optimum bleibt besser' if diff > 0 else 'Alternative waere besser!'}")
 
 
 @app.command()

@@ -69,6 +69,21 @@ leer. Uebler: jeder einzelne der urspruenglichen Tests bestand trotzdem
 bis ein expliziter Mindestgroessen-Test ergaenzt wurde. Gefixt durch
 Wiederverwendung von f1lab.not_deleted_mask() direkt bei der Extraktion,
 statt das NULL-Verhalten in SQL zu wiederholen.
+
+Nachtrag (2026-08-17): sechste Tabelle fact_overtake aus P38/P39
+(f1lab.overtake_events(), keine Telemetrie noetig - passt damit ins
+bestehende, telemetriefreie Extraktionsmuster von fact_lap/fact_pitstop,
+anders als P39s Ueberholorte gegen DRS-Zonen, die Telemetrie brauchen und
+deshalb bewusst nicht hier landen). Echte Inkrementalitaets-Frage dabei:
+die lokale Warehouse-Datei hatte schon Saison 2024 im Manifest geladen,
+bevor es fact_overtake gab - ein simples "schon geladen? dann ueberspringen"
+haette die neue Tabelle fuer alle bestehenden Runden leer gelassen.
+event_laden() prueft deshalb fact_lap/fact_pitstop (Manifest) und
+fact_overtake (Parquet-Datei) getrennt: fehlt nur Letzteres, wird die
+schon lokal gecachte FastF1-Session erneut geladen (kein Netz noetig) und
+NUR fact_overtake nachgezogen, ohne fact_lap/fact_pitstop neu zu schreiben.
+Neues Mart-Modell mart_overtakes_by_event.sql, ein weiterer Assertion-Test
+(Gainer/Loser nie NULL oder gleich).
 """
 from __future__ import annotations
 
@@ -92,7 +107,8 @@ MODELS_DIR = Path(__file__).parent / "models"
 SEASON = 2024
 SESSION_IDENT = "R"
 
-for tabelle in ("fact_lap", "fact_pitstop", "dim_event", "dim_driver", "dim_team"):
+for tabelle in ("fact_lap", "fact_pitstop", "fact_overtake", "dim_event",
+               "dim_driver", "dim_team"):
     (WH / tabelle).mkdir(parents=True, exist_ok=True)
 
 
@@ -131,14 +147,48 @@ def pitstops_extrahieren(laps: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(zeilen)
 
 
+def overtakes_extrahieren(session, season: int, rnd: int, sess: str) -> pd.DataFrame:
+    """fact_overtake: ein Datensatz je Ueberholvorgang (P39s
+    f1lab.overtake_events(), P20-Logik). Braucht wie fact_lap/fact_pitstop
+    keine Telemetrie - passt ins bestehende, telemetriefreie
+    Extraktionsmuster (anders als P39s Ueberholorte gegen DRS-Zonen, die
+    Telemetrie brauchen und deshalb bewusst NICHT hier landen, siehe
+    Docstring)."""
+    events = f1lab.overtake_events(session)
+    events = events.rename(columns={"gainer": "Gainer", "loser": "Loser",
+                                    "lap": "Lap"})
+    events["Season"], events["Round"], events["Session"] = season, rnd, sess
+    return events
+
+
+def fact_overtake_pfad(season: int, rnd: int, sess: str) -> Path:
+    return WH / "fact_overtake" / f"season={season}" / f"round={rnd}_{sess}.parquet"
+
+
 def event_laden(season: int, rnd: int, sess: str):
     con = verbindung()
-    if bereits_geladen(con, season, rnd, sess):
+    schon_geladen = bereits_geladen(con, season, rnd, sess)
+    ov_pfad = fact_overtake_pfad(season, rnd, sess)
+    if schon_geladen and ov_pfad.exists():
         print(f"      skip {season}-{rnd}-{sess} (schon geladen)")
         con.close()
         return None
+    con.close()
 
     s = f1lab.load(season, rnd, sess, telemetry=False, weather=False, messages=False)
+
+    if schon_geladen:
+        # Nachtrag (2026-08-17): fact_overtake kam nach fact_lap/fact_pitstop
+        # dazu - fuer Runden, die vor diesem Feature schon im Manifest
+        # standen, wird NUR das Fehlende nachgezogen (derselbe, lokal schon
+        # gecachte FastF1-Session-Load, kein Netz noetig), nicht die
+        # bestehenden fact_lap/fact_pitstop-Parquets neu geschrieben.
+        events = overtakes_extrahieren(s, season, rnd, sess)
+        ov_pfad.parent.mkdir(parents=True, exist_ok=True)
+        events.to_parquet(ov_pfad, index=False)
+        print(f"      nachgezogen {season}-{rnd}-{sess}: "
+             f"{len(events)} Ueberholungen (fact_overtake)")
+        return None
     laps = s.laps.copy()
     for c in ("LapTime", "Sector1Time", "Sector2Time", "Sector3Time"):
         laps[c + "_s"] = laps[c].dt.total_seconds()
@@ -161,6 +211,8 @@ def event_laden(season: int, rnd: int, sess: str):
     fact_pitstop = pitstops_extrahieren(laps)
     fact_pitstop["Season"], fact_pitstop["Round"], fact_pitstop["Session"] = season, rnd, sess
 
+    fact_overtake = overtakes_extrahieren(s, season, rnd, sess)
+
     lap_pfad = WH / "fact_lap" / f"season={season}" / f"round={rnd}_{sess}.parquet"
     lap_pfad.parent.mkdir(parents=True, exist_ok=True)
     fact_lap.to_parquet(lap_pfad, index=False)
@@ -169,11 +221,15 @@ def event_laden(season: int, rnd: int, sess: str):
     pit_pfad.parent.mkdir(parents=True, exist_ok=True)
     fact_pitstop.to_parquet(pit_pfad, index=False)
 
+    ov_pfad.parent.mkdir(parents=True, exist_ok=True)
+    fact_overtake.to_parquet(ov_pfad, index=False)
+
+    con = verbindung()
     con.execute("INSERT INTO load_manifest VALUES (?,?,?,now(),?,?)",
                [season, rnd, sess, len(fact_lap), len(fact_pitstop)])
     con.close()
     print(f"      geladen {season}-{rnd}-{sess}: {len(fact_lap)} Runden, "
-         f"{len(fact_pitstop)} Boxenstopps")
+         f"{len(fact_pitstop)} Boxenstopps, {len(fact_overtake)} Ueberholungen")
 
     res = s.results[["Abbreviation", "DriverNumber", "FullName", "CountryCode",
                      "TeamName"]].copy()
@@ -210,7 +266,7 @@ def dims_schreiben(season: int, driver_frames: list[pd.DataFrame]) -> None:
 
 def views_anlegen(con) -> None:
     """VORGEHEN 4."""
-    for tabelle in ("fact_lap", "fact_pitstop"):
+    for tabelle in ("fact_lap", "fact_pitstop", "fact_overtake"):
         con.execute(f"""CREATE OR REPLACE VIEW {tabelle} AS
             SELECT * FROM read_parquet('{WH}/{tabelle}/*/*.parquet',
                                        hive_partitioning=1)""")
@@ -254,6 +310,9 @@ def tests_ausfuehren(con) -> None:
             "SELECT count(*) FROM fact_pitstop WHERE Team IS NULL",
         "degradation_nur_bekannte_mischungen":
             "SELECT count(*) FROM mart_degradation WHERE Compound = 'UNKNOWN'",
+        "jede_ueberholung_hat_gainer_und_loser":
+            "SELECT count(*) FROM fact_overtake "
+            "WHERE Gainer IS NULL OR Loser IS NULL OR Gainer = Loser",
     }
     for name, sql in tests.items():
         n = con.execute(sql).fetchone()[0]
@@ -288,10 +347,12 @@ def main():
     con = verbindung()
     print("\n[2/4] DuckDB-Views ueber die Parquet-Partitionen (VORGEHEN 4) ...")
     views_anlegen(con)
-    n_laps, n_pits = con.execute(
-        "SELECT (SELECT count(*) FROM fact_lap), (SELECT count(*) FROM fact_pitstop)"
+    n_laps, n_pits, n_ov = con.execute(
+        "SELECT (SELECT count(*) FROM fact_lap), (SELECT count(*) FROM fact_pitstop), "
+        "(SELECT count(*) FROM fact_overtake)"
     ).fetchone()
-    print(f"      fact_lap: {n_laps} Zeilen, fact_pitstop: {n_pits} Zeilen")
+    print(f"      fact_lap: {n_laps} Zeilen, fact_pitstop: {n_pits} Zeilen, "
+         f"fact_overtake: {n_ov} Zeilen")
 
     print("\n[3/4] dbt-Ersatz: Modelle und Tests (AUSBAUSTUFE) ...")
     modelle = modelle_ausfuehren(con)
@@ -330,6 +391,14 @@ def main():
         WHERE DurationS BETWEEN 15 AND 40
         GROUP BY 1
         ORDER BY median_s
+    """).df().to_string(index=False))
+
+    print("\n      Ueberholungen je Rennen (P38/P39-Baustein, "
+         "Nachtrag 2026-08-17):")
+    print(con.execute("""
+        SELECT * FROM mart_overtakes_by_event
+        ORDER BY ueberholungen DESC
+        LIMIT 10
     """).df().to_string(index=False))
 
     con.close()

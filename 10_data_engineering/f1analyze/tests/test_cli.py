@@ -27,6 +27,35 @@ def test_weekend_command_runs(race_session, quali_session):
     assert "Degradation" in result.stdout
 
 
+def test_optimize_command_runs(race_session):
+    result = runner.invoke(app, ["optimize", str(FIXTURE_SEASON), FIXTURE_EVENT])
+    assert result.exit_code == 0
+    assert "Stopp" in result.stdout
+
+
+def test_lap_sim_command_runs(quali_session_tel):
+    result = runner.invoke(app, ["lap-sim", str(FIXTURE_SEASON), FIXTURE_EVENT])
+    assert result.exit_code == 0
+    assert "mu_g" in result.stdout
+
+
+def test_overtakes_command_runs(race_session_tel, quali_session_tel):
+    result = runner.invoke(app, ["overtakes", str(FIXTURE_SEASON), FIXTURE_EVENT])
+    assert result.exit_code == 0
+    assert "Ueberholungen" in result.stdout
+
+
+def test_traffic_command_runs(race_session):
+    result = runner.invoke(app, ["traffic", str(FIXTURE_SEASON), FIXTURE_EVENT, "3"])
+    assert result.exit_code == 0
+    assert "mit Verkehr" in result.stdout
+
+
+def test_traffic_command_rejects_impossible_stop_count(race_session):
+    result = runner.invoke(app, ["traffic", str(FIXTURE_SEASON), FIXTURE_EVENT, "99"])
+    assert result.exit_code == 1
+
+
 def test_garbage_event_name_is_fuzzy_matched_not_rejected():
     """Kein sauberer Fehlerfall, sondern ein echter Fund: FastF1 lehnt einen
     unbekannten Streckennamen nicht ab, sondern korrigiert ihn per
