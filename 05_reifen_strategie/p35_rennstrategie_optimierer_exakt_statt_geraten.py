@@ -51,6 +51,21 @@ braucht ein anderes Verfahren (Simulation oder ein ganzzahliges Programm) und
 bekommt dafuer das erste Modell, in dem Reagieren wirklich viel wert ist -
 bewusst nicht umgesetzt, das waere ein eigenes Projekt.
 
+Nachtrag (2026-08-17): P38/P39 liefern inzwischen echte, quantifizierte
+Bausteine genau fuer dieses "eigene Projekt" - Ueberholschwierigkeit je
+Strecke (P38, Kurven/km korreliert mit r=-0.71 gegen Ueberholzahlen) und wo
+Ueberholungen tatsaechlich stattfinden (P39, ~76% in der DRS-Zone). Bewusst
+NICHT hier eingebaut: der naheliegende Versuch, daraus einen einzelnen
+"Verkehrs-Zuschlag" auf ``pit_loss`` zu rechnen, wuerde P32s Dirty-Air-Slope
+(R^2=0.01-0.07, siehe dort - real, aber schwach gegenueber der uebrigen
+Streuung) mit einer in diesem Modell gar nicht vorhandenen Groesse
+verknuepfen: der Wahrscheinlichkeit, nach einem Stopp ueberhaupt hinter
+einem Auto herauszukommen. Diese Zahl gibt es hier nicht (das Modell kennt
+keine anderen Autos), sie zu erfinden waere keine Kalibrierung, sondern eine
+Annahme mit Kalibrierungs-Anstrich. P38/P39 sind trotzdem die richtigen
+Eingaben, sobald die Simulation/das ganzzahlige Programm oben tatsaechlich
+gebaut wird - genau dafuer hier vermerkt, statt spekulativ vorwegzunehmen.
+
 Die zwei im urspruenglichen Docstring offen gelassenen Ausbauten sind jetzt
 da: die Optimierungslogik (TyreModel bis hindsight_value) steckt seit der
 App-Integration in f1lab.core neben undercut_gain (kein FastF1 noetig, siehe

@@ -85,6 +85,7 @@ Mythos noch Universalgesetz, sondern eine streckenspezifische Ausnahme.
 from __future__ import annotations
 
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -172,6 +173,7 @@ def main():
             m = f1lab.grid_lap1_positions(ses)
         except Exception:
             continue
+        time.sleep(0.2)      # ergast/jolpica etwas schonen (siehe Docstring)
         if m.empty:
             continue
         m["parity"] = np.where(m["grid"].astype(int) % 2 == 0,

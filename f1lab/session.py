@@ -955,6 +955,12 @@ def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
     Boxenstarts (PitOutTime auf Runde 1 gesetzt) werden ausgeschlossen - ein
     Start aus der Box hat eine komplett andere Ausgangsgeschwindigkeit
     (Boxengassen-Limit statt Ampel-Start) und ist nicht vergleichbar.
+
+    Liest ``session.results`` fuer die Startaufstellung - das kann fuer
+    manche Saisons echten Ergast/jolpica-Netzzugriff ausloesen, obwohl es
+    wie eine reine Lokaldaten-Spalte aussieht (siehe P40, dort in einem
+    Saison-Scan entdeckt). Fuer eine einzelne Session unkritisch, bei vielen
+    Sessions hintereinander siehe dortige Drosselung.
     """
     rows = []
     for drv in session.drivers:
