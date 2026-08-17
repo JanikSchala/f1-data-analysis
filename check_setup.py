@@ -10,7 +10,7 @@ problems = []
 
 print("\n=== Umgebung ===")
 print(f"  Python  {platform.python_version()}  ({sys.executable})")
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 9):  # noqa: UP036 - prueft die Nutzer-Installation, kein totes Gate
     problems.append("Python 3.9 oder neuer wird benoetigt.")
     print(BAD + "Version zu alt")
 else:

@@ -31,7 +31,6 @@ Ergaenze einen Vergleichsmodus ueber zwei Sessions hinweg (z. B. Quali 2023 vs. 
 
 # streamlit run f1_dashboard.py
 import fastf1
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 

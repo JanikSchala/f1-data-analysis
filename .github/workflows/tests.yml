@@ -1,0 +1,27 @@
+name: Tests
+
+# Deckt f1lab/tests ab - die CLAUDE.md-Regel "vor Push: Tests gruen, ruff
+# check . sauber" war bislang reine Handdisziplin, keine Automatisierung.
+# f1analyze (10_data_engineering/f1analyze) hat schon eine eigene, gepfadete
+# CI (.github/workflows/ci.yml dort) - diese hier deckt den Rest ab.
+
+on:
+  push:
+    paths-ignore:
+      - "10_data_engineering/f1analyze/**"
+  pull_request:
+    paths-ignore:
+      - "10_data_engineering/f1analyze/**"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest tests -q
