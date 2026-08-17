@@ -319,6 +319,13 @@ zwei Wahrheiten, und eine davon ist immer falsch.
 
 ---
 
+## Weiterführende Ressourcen
+
+Externe APIs, Datensätze, Dashboards und Lernmaterial rund um F1 und Motorsport:
+[RESOURCES.md](RESOURCES.md).
+
+---
+
 ## Hinweis
 
 FastF1 ist ein inoffizielles Open-Source-Projekt und steht in keiner Verbindung zu
