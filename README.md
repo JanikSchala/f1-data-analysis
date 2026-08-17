@@ -9,7 +9,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **34 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **43 eigenständige Analysen über zwölf Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -118,7 +118,7 @@ mit derselben Mischung ganz andere Stintlängen hinbekommen als andere.
 
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 34 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 43 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```
@@ -141,7 +141,7 @@ print(f1lab.degradation_by_compound(ses))
 print(f"Pitloss: {f1lab.pit_loss(ses):.2f} s")
 ```
 
-**58 Tests, alle ohne Netzzugriff:**
+**186 Tests, alle ohne Netzzugriff:**
 
 ```bash
 pip install pytest
@@ -180,7 +180,7 @@ das Repo auf den Importpfad.
 
 ```
 f1lab/                installierbares Paket, core (rein) + session (FastF1)
-tests/                43 Tests, laufen offline
+tests/                186 Tests, laufen offline
 
 01_grundlagen/        Datenzugriff, Caching, Kalender als Dimensionstabelle
 02_timing/            Rundenzeiten, Pace-Ranking, Sektoren, Positionsverlauf
@@ -294,6 +294,15 @@ Events per Name (`"Monza"`), Land (`"Italy"`) oder Rundennummer (`14`).
 | `P32` | [Verfolgungsjagd: Abstand zum Vordermann und Dirty Air](03_telemetrie/p32_verfolgungsjagd_abstand_zum_vordermann_und_dirty.py) | Telemetrie | Profi |
 | `P33` | [Streckenvergleich über Jahre: Hat sich das Layout geändert?](04_strecke/p33_streckenvergleich_ueber_jahre_hat_sich_das_layou.py) | Strecke | Fortgeschritten |
 | `P34` | [Der komplette Wochenend-Analyzer als CLI-Tool](10_data_engineering/p34_der_komplette_wochenend_analyzer_als_cli_tool.py) | Engineering | Profi |
+| `P35` | [Rennstrategie-Optimierer: exakt statt geraten](05_reifen_strategie/p35_rennstrategie_optimierer_exakt_statt_geraten.py) | Reifen | Profi |
+| `P36` | [Rennergebnis- und Podium-Wahrscheinlichkeit vorhersagen](09_machine_learning/p36_rennergebnis_und_podium_wahrscheinlichkeit.py) | ML | Profi |
+| `P37` | [Rundenzeit-Simulation: ein Punktmassenmodell](04_strecke/p37_rundenzeit_simulation_punktmassenmodell.py) | Strecke | Profi |
+| `P38` | [Überholschwierigkeit je Strecke: Saison-Scan gegen die Geometrie](04_strecke/p38_ueberholschwierigkeit_je_strecke_saison_scan.py) | Strecke | Fortgeschritten |
+| `P39` | [Überholungen: in der DRS-Zone oder woanders?](03_telemetrie/p39_ueberholungen_in_der_drs_zone_oder_woanders.py) | Telemetrie | Profi |
+| `P40` | [Startplatz-Parität: hat die Startseite einen echten Effekt?](02_timing/p40_startplatz_paritaet_hat_die_startseite_einen_ec.py) | Timing | Profi |
+| `P41` | [Verkehr: was das Rundenzeitmodell aus P35 nicht sieht](05_reifen_strategie/p41_verkehr_was_das_modell_aus_p35_nicht_sieht.py) | Reifen | Profi |
+| `P42` | [Undercut-Erfolgsquote: echte, paarweise Rivalen-Duelle](05_reifen_strategie/p42_undercut_erfolgsquote_echte_rivalen_duelle.py) | Reifen | Profi |
+| `P43` | [Streckenentwicklung: wird die Strecke von Q1 zu Q3 schneller?](02_timing/p43_streckenentwicklung_uebers_qualifying_wochenende.py) | Timing | Profi |
 
 ---
 
