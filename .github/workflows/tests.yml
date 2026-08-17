@@ -2,8 +2,9 @@ name: Tests
 
 # Deckt f1lab/tests ab - die CLAUDE.md-Regel "vor Push: Tests gruen, ruff
 # check . sauber" war bislang reine Handdisziplin, keine Automatisierung.
-# f1analyze (10_data_engineering/f1analyze) hat schon eine eigene, gepfadete
-# CI (.github/workflows/ci.yml dort) - diese hier deckt den Rest ab.
+# f1analyze (10_data_engineering/f1analyze) hat eine eigene, gepfadete CI
+# (f1analyze-ci.yml, ebenfalls hier - GitHub Actions erkennt nur
+# .github/workflows/ im Repo-Wurzelverzeichnis) - diese hier deckt den Rest ab.
 
 on:
   push:

@@ -57,8 +57,12 @@ API-Limits.
 
 ## CI
 
-`.github/workflows/ci.yml` fuehrt bei jedem Push Tests, `ruff check` und
-`mypy` aus - das GitHub-Actions-Aequivalent der AUSBAUSTUFE. Der zweite Teil
+`.github/workflows/f1analyze-ci.yml` (im Repo-Wurzelverzeichnis - GitHub
+Actions erkennt nur dort liegende Workflows, ein verschachteltes
+`.github/` innerhalb dieses Ordners haette nie ausgeloest, siehe Nachtrag
+in CLAUDE.md) fuehrt bei jedem Push, der diesen Pfad aendert, Tests,
+`ruff check` und `mypy` aus - das GitHub-Actions-Aequivalent der
+AUSBAUSTUFE. Der zweite Teil
 der AUSBAUSTUFE (Veroeffentlichung auf PyPI) ist bewusst nicht ausgefuehrt:
 das ist eine echte, oeffentliche, kaum rueckgaengig zu machende Aktion, die
 ausserhalb dieses Projekts entschieden werden sollte, nicht automatisiert

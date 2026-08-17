@@ -1,0 +1,35 @@
+name: f1analyze CI
+
+# War urspruenglich unter 10_data_engineering/f1analyze/.github/workflows/
+# abgelegt - GitHub Actions durchsucht aber ausschliesslich .github/workflows/
+# im Repo-Wurzelverzeichnis, eine verschachtelte .github/-Struktur wird nie
+# erkannt. Die Datei sah seit P34 vollstaendig korrekt aus (Pfad-Filter,
+# working-directory, alle Schritte richtig), lief aber nie ein einziges Mal -
+# "GitHub Action fuer CI ist da" in CLAUDE.md war falsch, niemand hat es
+# bemerkt, weil kein Fehler auftrat, sondern schlicht nichts passierte.
+# Hierher verschoben, damit sie tatsaechlich triggert.
+
+on:
+  push:
+    paths:
+      - "10_data_engineering/f1analyze/**"
+  pull_request:
+    paths:
+      - "10_data_engineering/f1analyze/**"
+
+defaults:
+  run:
+    working-directory: 10_data_engineering/f1analyze
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]" mypy
+      - run: ruff check .
+      - run: mypy f1analyze --ignore-missing-imports
+      - run: pytest -q
