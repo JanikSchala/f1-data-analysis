@@ -205,12 +205,43 @@ def neuestes_rennen(jahr: int) -> str:
     return vergangen.iloc[-1]["EventName"]
 
 
+def _lade_mit_wiederholung(year: int, gp: str, versuche: int = 2):
+    """f1lab.load() plus eine Absicherung gegen einen echten, in CI
+    beobachteten Fund: Session.load() kann ohne Exception zurueckkehren,
+    obwohl session.laps danach leer/nicht geladen ist - FastF1 faengt
+    einen Teil seiner eigenen API-Fehler intern ab (@soft_exceptions) und
+    loggt nur eine WARNING statt einen Fehler zu werfen. Lokal (warmer
+    Cache oder stabile Heimverbindung) trat das nie auf, im
+    Weekly-Report-Workflow (frischer Runner, Rechenzentrums-IP) zweimal
+    hintereinander deterministisch fuer dasselbe Event - ein echter,
+    aber nicht abschliessend geklaerter Netzwerk-/API-Unterschied
+    zwischen Umgebungen. Ein zweiter Versuch behebt es in der Praxis
+    meistens; schlaegt auch der fehl, ist eine klare Meldung besser als
+    ein Traceback tief in clean_laps()."""
+    letzter_fehler: Exception | None = None
+    for versuch in range(1, versuche + 1):
+        ses = f1lab.load(year, gp, "R", telemetry=False)
+        try:
+            if not ses.laps.empty:
+                return ses
+            letzter_fehler = RuntimeError("session.laps ist leer")
+        except fastf1.exceptions.DataNotLoadedError as exc:
+            letzter_fehler = exc
+        print(f"Warnung: Rundendaten fuer {gp} {year} nicht geladen "
+             f"(Versuch {versuch}/{versuche}): {letzter_fehler}")
+    raise RuntimeError(
+        f"Rundendaten fuer {gp} {year} liessen sich nach {versuche} "
+        "Versuchen nicht laden - vermutlich ein voruebergehendes "
+        "API-/Netzwerkproblem, kein Code-Fehler. Spaeter erneut "
+        "versuchen.") from letzter_fehler
+
+
 def build(year: int, gp: str | None, out: Path) -> None:
     f1lab.enable_cache()
     if gp is None:
         gp = neuestes_rennen(year)
         print(f"kein --gp angegeben, juengstes Rennen gewaehlt: {gp}")
-    ses = f1lab.load(year, gp, "R", telemetry=False)
+    ses = _lade_mit_wiederholung(year, gp)
 
     seiten = [page_results, page_pace, page_strategy, page_positions]
     with PdfPages(out) as pdf:
