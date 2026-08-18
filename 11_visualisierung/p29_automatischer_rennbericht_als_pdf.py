@@ -228,12 +228,13 @@ def _lade_mit_wiederholung(year: int, gp: str, versuche: int = 2):
         except fastf1.exceptions.DataNotLoadedError as exc:
             letzter_fehler = exc
         print(f"Warnung: Rundendaten fuer {gp} {year} nicht geladen "
-             f"(Versuch {versuch}/{versuche}): {letzter_fehler}")
+             f"(Versuch {versuch}/{versuche}): {letzter_fehler} - "
+             f"f1_api_support={ses.f1_api_support}")
     raise RuntimeError(
         f"Rundendaten fuer {gp} {year} liessen sich nach {versuche} "
-        "Versuchen nicht laden - vermutlich ein voruebergehendes "
-        "API-/Netzwerkproblem, kein Code-Fehler. Spaeter erneut "
-        "versuchen.") from letzter_fehler
+        f"Versuchen nicht laden (f1_api_support={ses.f1_api_support}) - "
+        "vermutlich ein voruebergehendes API-/Netzwerkproblem, kein "
+        "Code-Fehler. Spaeter erneut versuchen.") from letzter_fehler
 
 
 def build(year: int, gp: str | None, out: Path) -> None:
