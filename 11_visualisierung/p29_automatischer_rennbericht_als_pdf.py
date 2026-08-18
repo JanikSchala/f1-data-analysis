@@ -74,13 +74,14 @@ from matplotlib.backends.backend_pdf import PdfPages
 import f1lab
 from f1lab.design import COMPOUND, FG, GRID, MUTED, SERIEN, matplotlib_stil
 
-# Diagnose fuer einen offenen Fund (siehe CLAUDE.md, "weekly-report.yml"):
-# im GitHub-Actions-Runner blieb FastF1s eigenes Logging (INFO/WARNING zu
-# jedem Ladeschritt, in jedem anderen Skript dieses Repos sichtbar)
-# vollstaendig stumm, obwohl das Laden nachweisbar unterwegs war
-# (f1_api_support=True, ~5s Laufzeit) - auch mit `python -u`. Erzwingt
-# einen eigenen Handler auf stdout, falls FastF1s Standard-Handler in
-# dieser Umgebung aus unbekanntem Grund nicht greift.
+# Bewusst dauerhaft, nicht nur zur einmaligen Diagnose (siehe CLAUDE.md,
+# "weekly-report.yml"): FastF1s eigener Handler blieb im GitHub-Actions-
+# Runner ohne erkennbaren Grund stumm (auch mit `python -u`), bis ein
+# erzwungener eigener Handler die eigentliche Ursache zeigte -
+# SessionNotAvailableError, siehe _lade_mit_wiederholung(). Fuer einen
+# unbeaufsichtigten Montags-Job soll ein kuenftiger Fehlschlag sofort im
+# Actions-Log diagnostizierbar sein, nicht erst nach einer neuen
+# Debug-Runde wie dieser hier.
 logging.basicConfig(level=logging.INFO, force=True, stream=sys.stdout,
                     format="%(name)s %(levelname)s %(message)s")
 
@@ -218,17 +219,28 @@ def neuestes_rennen(jahr: int) -> str:
 
 def _lade_mit_wiederholung(year: int, gp: str, versuche: int = 2):
     """f1lab.load() plus eine Absicherung gegen einen echten, in CI
-    beobachteten Fund: Session.load() kann ohne Exception zurueckkehren,
-    obwohl session.laps danach leer/nicht geladen ist - FastF1 faengt
-    einen Teil seiner eigenen API-Fehler intern ab (@soft_exceptions) und
-    loggt nur eine WARNING statt einen Fehler zu werfen. Lokal (warmer
-    Cache oder stabile Heimverbindung) trat das nie auf, im
-    Weekly-Report-Workflow (frischer Runner, Rechenzentrums-IP) zweimal
-    hintereinander deterministisch fuer dasselbe Event - ein echter,
-    aber nicht abschliessend geklaerter Netzwerk-/API-Unterschied
-    zwischen Umgebungen. Ein zweiter Versuch behebt es in der Praxis
-    meistens; schlaegt auch der fehl, ist eine klare Meldung besser als
-    ein Traceback tief in clean_laps()."""
+    gefundenen und aufgeklaerten Fehlerpfad: Session.load() kann ohne
+    Exception zurueckkehren, obwohl session.laps danach leer/nicht
+    geladen ist - FastF1 faengt einen Teil seiner eigenen API-Fehler
+    intern ab (@soft_exceptions) und loggt nur eine WARNING statt einen
+    Fehler zu werfen.
+
+    Ursache (per erzwungenem Logging-Handler ermittelt, siehe oben):
+    ``fastf1._api.SessionNotAvailableError: No data for this session!``
+    - FastF1s eigene Live-Timing-API meldet die Session als nicht
+    verfuegbar. Lokal (Heimverbindung) lud dieselbe Session mehrfach
+    klaglos, im GitHub-Actions-Runner (Azure-Rechenzentrum) scheiterte
+    JEDER einzelne Ladeschritt (Session-Info, Fahrerliste, Status,
+    Rundenzahl, Track-Status, Timing-Daten) mit demselben Fehler, auch
+    ueber den in FastF1 eingebauten livetiming-mirror-Fallback hinweg -
+    plausibelste Erklaerung ist eine regionale CDN-/Propagations-Luecke
+    fuer dieses (recht junge) Saison-Event, keine Netzwerkstoerung im
+    ueblichen Sinn und kein Fehler in diesem Repo. Ein zweiter Versuch
+    INNERHALB desselben Laufs behebt das deshalb nicht zuverlaessig
+    (derselbe Netzwerkpfad, dieselbe CDN-Kante) - er bleibt trotzdem
+    drin, weil er nichts kostet und bei echter Transienz hilft. Die
+    eigentliche Abhilfe ist der naechste Montags-Lauf: andere Zeit,
+    moeglicherweise andere Route/gefuellter CDN-Cache."""
     letzter_fehler: Exception | None = None
     for versuch in range(1, versuche + 1):
         ses = f1lab.load(year, gp, "R", telemetry=False)
@@ -244,8 +256,10 @@ def _lade_mit_wiederholung(year: int, gp: str, versuche: int = 2):
     raise RuntimeError(
         f"Rundendaten fuer {gp} {year} liessen sich nach {versuche} "
         f"Versuchen nicht laden (f1_api_support={ses.f1_api_support}) - "
-        "vermutlich ein voruebergehendes API-/Netzwerkproblem, kein "
-        "Code-Fehler. Spaeter erneut versuchen.") from letzter_fehler
+        "vermutlich meldet FastF1s Live-Timing-API die Session von dieser "
+        "Netzwerkroute aus als nicht verfuegbar (SessionNotAvailableError, "
+        "siehe Docstring), kein Code-Fehler in diesem Repo. Naechster "
+        "Montags-Lauf hat gute Chancen, anders zu laufen.") from letzter_fehler
 
 
 def build(year: int, gp: str | None, out: Path) -> None:
