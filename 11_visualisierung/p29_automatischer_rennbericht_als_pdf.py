@@ -54,6 +54,7 @@ getroffen werden sollte, nicht automatisch beim Bauen des Skripts.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import warnings
 from datetime import date, datetime
@@ -72,6 +73,16 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 import f1lab
 from f1lab.design import COMPOUND, FG, GRID, MUTED, SERIEN, matplotlib_stil
+
+# Diagnose fuer einen offenen Fund (siehe CLAUDE.md, "weekly-report.yml"):
+# im GitHub-Actions-Runner blieb FastF1s eigenes Logging (INFO/WARNING zu
+# jedem Ladeschritt, in jedem anderen Skript dieses Repos sichtbar)
+# vollstaendig stumm, obwohl das Laden nachweisbar unterwegs war
+# (f1_api_support=True, ~5s Laufzeit) - auch mit `python -u`. Erzwingt
+# einen eigenen Handler auf stdout, falls FastF1s Standard-Handler in
+# dieser Umgebung aus unbekanntem Grund nicht greift.
+logging.basicConfig(level=logging.INFO, force=True, stream=sys.stdout,
+                    format="%(name)s %(levelname)s %(message)s")
 
 warnings.filterwarnings("ignore")
 fastf1.set_log_level("ERROR")
