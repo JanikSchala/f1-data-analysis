@@ -93,6 +93,34 @@ trennen "mehr Runden legen mehr Gummi" nicht sauber von "Q1 ist als
 Session strukturell anders (laenger, mehr Verkehr)" - beide Erklaerungen
 sind mit dem hier Gemessenen vereinbar, nur die Groessenordnung des
 Gesamteffekts ist der gesicherte Teil.
+
+ZWEITE AUSBAUSTUFE  [umgesetzt]
+Ein vierter moeglicher Fallstrick blieb nach der ersten AUSBAUSTUFE offen,
+diesmal von P17 hergeleitet statt von der urspruenglichen Liste: die
+Strecke kuehlt waehrend eines Abend-Qualifyings meist ab, und P17 fand
+einen echten TrackTemp-Effekt auf die Pace (+0.215 s/°C in Japan 2024 R).
+Waere die Q1->Q3-Verbesserung also nur "kaelterer Asphalt", nicht "mehr
+Gummi"?
+
+Saison 2024, je Rennen die mittlere TrackTemp (aus `Laps.get_weather_data()`)
+pro Segment gegen das gepaarte Pace-Delta gestellt: die Strecke kuehlt in
+**20 von 21 (Q1->Q2) bzw. 18 von 21 (Q2->Q3)** Rennen tatsaechlich ab -
+aber der entscheidende Test ist nicht die Richtung, sondern die
+GROESSE des Zusammenhangs ueber die Rennen hinweg. Die ist schwach und
+NICHT signifikant: Q1->Q2 Pearson r=-0.372 (p=0.097, sogar in die
+FALSCHE Richtung - mehr Abkuehlung haengt mit KLEINEREM Pace-Gewinn
+zusammen), Q2->Q3 r=+0.279 (p=0.221). Noch deutlicher: in allen vier
+Faellen, in denen sich die Strecke stattdessen ERWAERMTE (Q1->Q2 einmal,
+Q2->Q3 dreimal), verbesserte sich die Pace trotzdem - genau das
+Gegenteil dessen, was die Temperatur-Hypothese vorhersagen wuerde, wenn
+sie der Haupttreiber waere.
+
+Ehrliches Fazit: Streckentemperatur ist ein realer, aber hier NICHT der
+tragende Faktor - die Q1->Q3-Verbesserung haelt unabhaengig davon, ob die
+Strecke waehrend der Session waermer oder kaelter wird. Das staerkt die
+urspruengliche "mehr Gummi auf der Strecke"-Interpretation, statt sie zu
+widerlegen - eine plausible Alternative wurde ernsthaft getestet, nicht
+nur erwaehnt und beiseitegelegt.
 """
 from __future__ import annotations
 
@@ -109,7 +137,7 @@ matplotlib.use("Agg")                      # kein Fenster, nur Dateien
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.stats import wilcoxon
+from scipy.stats import pearsonr, wilcoxon
 
 import f1lab
 from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
@@ -149,6 +177,77 @@ def saison_scan(saison: int) -> tuple[pd.DataFrame, list[str]]:
             alle.append(d)
     return (pd.concat(alle, ignore_index=True) if alle else pd.DataFrame(),
             nass)
+
+
+def temperatur_confound(saison: int) -> pd.DataFrame:
+    """ZWEITE AUSBAUSTUFE: TrackTemp-Trend gegen Pace-Delta, je Rennen.
+
+    Eigener, kleinerer Scan (mit weather=True) statt Wiederverwendung von
+    saison_scan() - der Temperatur-Check braucht Wetterdaten, die der
+    Haupt-Scan bewusst nicht laedt (unnoetiger Mehraufwand fuer die
+    Kernfrage)."""
+    schedule = f1lab.event_dimension([saison])
+    zeilen = []
+    for _, row in schedule.iterrows():
+        try:
+            ses = f1lab.load(saison, int(row["round"]), "Q", telemetry=False,
+                             weather=True)
+        except Exception:
+            continue
+        if ist_nass(ses):
+            continue
+        laps = ses.laps
+        try:
+            q1, q2, q3 = laps.split_qualifying_sessions()
+        except Exception:
+            continue
+        if q1 is None or q2 is None or q3 is None or q1.empty or q2.empty or q3.empty:
+            continue
+
+        def bestzeit(q):
+            gueltig = q.dropna(subset=["LapTime"])
+            return (gueltig.groupby("Driver")["LapTime"].min()
+                   if not gueltig.empty else pd.Series(dtype="timedelta64[ns]"))
+
+        def temp(q):
+            try:
+                return q.get_weather_data()["TrackTemp"].mean()
+            except Exception:
+                return np.nan
+
+        b1, b2, b3 = bestzeit(q1), bestzeit(q2), bestzeit(q3)
+        t1, t2, t3 = temp(q1), temp(q2), temp(q3)
+        for segment, a, b, ta, tb in (("Q1->Q2", b1, b2, t1, t2),
+                                      ("Q2->Q3", b2, b3, t2, t3)):
+            gemeinsam = a.index.intersection(b.index)
+            if len(gemeinsam) == 0 or pd.isna(ta) or pd.isna(tb):
+                continue
+            zeilen.append({
+                "gp": row["event_name"], "segment": segment,
+                "pace_delta_s": (a[gemeinsam] - b[gemeinsam]).dt.total_seconds().median(),
+                "temp_delta_c": ta - tb})  # positiv = Strecke kuehlt ab
+    return pd.DataFrame(zeilen)
+
+
+def zeichne_temperatur(ax, temp_df: pd.DataFrame) -> None:
+    """ZWEITE AUSBAUSTUFE: Streuung zeigt fehlenden Zusammenhang direkt."""
+    for seg, farbe, marker in (("Q1->Q2", SERIEN[0], "o"),
+                               ("Q2->Q3", SERIEN[1], "s")):
+        sub = temp_df[temp_df["segment"] == seg]
+        ax.scatter(sub["temp_delta_c"], sub["pace_delta_s"], color=farbe,
+                  marker=marker, s=60, label=seg, alpha=0.85,
+                  edgecolors=FG, linewidths=0.5)
+    ax.axvline(0, color=MUTED, lw=1, ls="--")
+    ax.axhline(0, color=MUTED, lw=1, ls="--")
+    ax.set_xlabel("Temperatur-Delta [°C], positiv = Strecke kuehlt ab")
+    ax.set_ylabel("Pace-Delta [s], positiv = spaeteres Segment schneller")
+    ax.set_title("ZWEITE AUSBAUSTUFE: Kuehlt die Strecke ab, oder gummiert "
+                "sie ein?", loc="left", color=FG, fontsize=13, pad=10)
+    ax.legend(loc="upper right", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
 
 
 def zeichne_verteilung(ax, deltas: pd.DataFrame) -> None:
@@ -252,12 +351,29 @@ def main():
     print(f"      ({len(nass_2023)} 2023er Qualifyings wegen Regen raus: "
          f"{nass_2023})")
 
+    print("\nZWEITE AUSBAUSTUFE: Streckentemperatur als moeglicher "
+         "Confound ...")
+    temp_df = temperatur_confound(SAISON)
+    for seg in ("Q1->Q2", "Q2->Q3"):
+        sub = temp_df[temp_df["segment"] == seg]
+        r, p = pearsonr(sub["temp_delta_c"], sub["pace_delta_s"])
+        kuehlt_ab = (sub["temp_delta_c"] > 0).sum()
+        erwaermt_aber_schneller = ((sub["temp_delta_c"] < 0)
+                                   & (sub["pace_delta_s"] > 0)).sum()
+        erwaermt = (sub["temp_delta_c"] < 0).sum()
+        print(f"      {seg}: n={len(sub)} Rennen, Strecke kuehlt ab in "
+             f"{kuehlt_ab}/{len(sub)}, Pearson r={r:+.3f} (p={p:.3f})")
+        print(f"        Rennen mit Erwaermung trotzdem schneller: "
+             f"{erwaermt_aber_schneller}/{erwaermt}")
+
     print("\nGrafiken speichern ...")
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 12),
-                                   gridspec_kw={"height_ratios": [1, 1.3]})
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(11, 17),
+                                        gridspec_kw={"height_ratios":
+                                                     [1, 1.3, 1]})
     fig.patch.set_facecolor(plt.rcParams["figure.facecolor"])
     zeichne_verteilung(ax1, deltas)
     zeichne_konsistenz(ax2, je_rennen)
+    zeichne_temperatur(ax3, temp_df)
     fig.tight_layout()
     fig.savefig(OUT / "p43_streckenentwicklung.png", dpi=140)
     plt.close(fig)

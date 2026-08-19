@@ -16,7 +16,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from common import achse, hinweis, inventar, kein_cache_hinweis, setup, tabelle, zeige
-from scipy.stats import wilcoxon
+from scipy.stats import pearsonr, wilcoxon
 
 import f1lab
 from f1lab import design as d
@@ -120,3 +120,93 @@ hinweis(f"Q1->Q2 positiv in {pos12}/{len(je_rennen)} Rennen dieser Saison, "
 
 with st.expander("Tabelle: Median-Delta je Rennen"):
     tabelle(je_rennen.rename(columns={"gp": "Rennen"}).round(3))
+
+
+st.markdown("##### ZWEITE AUSBAUSTUFE: kuehlt die Strecke ab, oder gummiert "
+           "sie ein?")
+
+
+@st.cache_data(persist="disk", show_spinner="Streckentemperatur wird "
+                                            "geladen (braucht Wetterdaten, "
+                                            "erster Aufruf je Saison "
+                                            "dauert) ...")
+def _temperatur(cache_pfad: str, saison: int) -> pd.DataFrame:
+    inv_lokal = f1lab.cached_sessions(cache_pfad)
+    rennen = sorted(inv_lokal[(inv_lokal["season"] == saison)
+                              & (inv_lokal["ident"] == "Q")]["event"].unique())
+    zeilen = []
+    for gp in rennen:
+        try:
+            ses = f1lab.load(saison, gp, "Q", telemetry=False, weather=True)
+        except Exception:
+            continue
+        if ses.laps["Compound"].isin(["INTERMEDIATE", "WET"]).any():
+            continue
+        laps = ses.laps
+        try:
+            q1, q2, q3 = laps.split_qualifying_sessions()
+        except Exception:
+            continue
+        if q1 is None or q2 is None or q3 is None or q1.empty or q2.empty or q3.empty:
+            continue
+
+        def bestzeit(q):
+            gueltig = q.dropna(subset=["LapTime"])
+            return (gueltig.groupby("Driver")["LapTime"].min()
+                   if not gueltig.empty else pd.Series(dtype="timedelta64[ns]"))
+
+        def temp(q):
+            try:
+                return q.get_weather_data()["TrackTemp"].mean()
+            except Exception:
+                return float("nan")
+
+        b1, b2, b3 = bestzeit(q1), bestzeit(q2), bestzeit(q3)
+        t1, t2, t3 = temp(q1), temp(q2), temp(q3)
+        for segment, a, b, ta, tb in (("Q1->Q2", b1, b2, t1, t2),
+                                      ("Q2->Q3", b2, b3, t2, t3)):
+            gemeinsam = a.index.intersection(b.index)
+            if len(gemeinsam) == 0 or pd.isna(ta) or pd.isna(tb):
+                continue
+            zeilen.append({
+                "gp": gp, "segment": segment,
+                "pace_delta_s": (a[gemeinsam] - b[gemeinsam]).dt.total_seconds().median(),
+                "temp_delta_c": ta - tb})
+    return pd.DataFrame(zeilen)
+
+
+temp_df = _temperatur(str(pfad), int(saison))
+if temp_df.empty:
+    st.info("Keine Wetterdaten fuer diese Saison auswertbar.")
+else:
+    fig3 = go.Figure()
+    for seg, farbe, symbol in (("Q1->Q2", d.SERIEN[0], "circle"),
+                               ("Q2->Q3", d.SERIEN[1], "square")):
+        sub = temp_df[temp_df["segment"] == seg]
+        fig3.add_trace(go.Scatter(
+            x=sub["temp_delta_c"], y=sub["pace_delta_s"], mode="markers",
+            name=seg, marker={"color": farbe, "symbol": symbol, "size": 10}))
+    fig3.add_hline(y=0, line_color=d.MUTED, line_width=1, line_dash="dash")
+    fig3.add_vline(x=0, line_color=d.MUTED, line_width=1, line_dash="dash")
+    zeige(fig3, hoehe=420,
+         xaxis=achse("Temperatur-Delta [°C], positiv = Strecke kuehlt ab"),
+         yaxis=achse("Pace-Delta [s], positiv = spaeteres Segment schneller"))
+
+    zeilen_txt = []
+    for seg in ("Q1->Q2", "Q2->Q3"):
+        sub = temp_df[temp_df["segment"] == seg]
+        if len(sub) < 3:
+            continue
+        r, p = pearsonr(sub["temp_delta_c"], sub["pace_delta_s"])
+        erwaermt = int((sub["temp_delta_c"] < 0).sum())
+        erwaermt_schneller = int(((sub["temp_delta_c"] < 0)
+                                  & (sub["pace_delta_s"] > 0)).sum())
+        zeilen_txt.append(f"{seg}: r={r:+.2f} (p={p:.2f}), bei Erwaermung "
+                          f"trotzdem schneller in {erwaermt_schneller}/"
+                          f"{erwaermt} Rennen")
+    hinweis("P17 fand einen echten TrackTemp-Effekt auf die Pace - koennte "
+           "die Q1->Q3-Verbesserung also nur abkuehlender Asphalt sein statt "
+           "mehr Gummi? " + " | ".join(zeilen_txt) + ". Schwacher, nicht "
+           "signifikanter Zusammenhang, und in Rennen mit Erwaermung wird "
+           "die Pace trotzdem besser - staerkt die Gummi-Interpretation, "
+           "statt sie zu widerlegen (siehe P43, zweite AUSBAUSTUFE).")
