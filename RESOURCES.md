@@ -3,7 +3,7 @@
 Kuratierte Liste externer F1- und Motorsport-Ressourcen — APIs, Datensätze,
 Telemetrie-Tools, Dashboards, Sim Racing, Lernmaterial. Übernommen aus
 [subinium/awesome-f1](https://github.com/subinium/awesome-f1) (Stand: 2026-08-14),
-zur eigenen Referenz neben den 43 Analysen in diesem Repo.
+zur eigenen Referenz neben den 44 Analysen in diesem Repo.
 
 ---
 
