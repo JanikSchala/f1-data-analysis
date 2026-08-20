@@ -98,6 +98,40 @@ mit dem DRS-Befund, statt ihn zu widersprechen: die 700-800m-Baende vor
 Monzas Bremszonen 1 und 4 SIND die DRS-Zonen (746m/766m lang) - "nah an
 einer Bremszone, aber nicht direkt davor" beschreibt denselben Ort wie
 "auf der DRS-Geraden".
+
+VIERTE AUSBAUSTUFE  [umgesetzt]
+Der Telemetrie-Cache deckt genau zwei Saisons vollstaendig ab: 2018 (letzte
+Saison vor der Ground-Effect-Regelaenderung) und 2024 (siehe P33, dieselbe
+Zwei-Jahre-Stichprobe fuer denselben groessten Regelumbruch der
+Telemetrie-Aera). Naheliegende Anschlussfrage an den DRS-Befund oben: hat
+sich der DRS-Anteil an Ueberholungen ueber diesen Umbruch veraendert - die
+2022er Regeln wurden explizit mit dem Versprechen engerer Rennen "auch
+ohne DRS" verkauft, hat sich das in echten Ueberholorten niedergeschlagen?
+
+7 von 8 telemetriefaehigen 2018-Rennen liefern lokalisierte Ueberholungen
+(Australien: 3 Ereignisse, aber keins lokalisierbar - derselbe methodische
+Rest wie beim 2024-Scan, kein neuer Fehler). DRS-Anteil je Strecke 2018:
+22.2% (Monaco) bis 92.2% (Spanien), Median 42.0% - deutlich unter 2024s
+Median von 71.6%. Gepoolt (nach Ereigniszahl gewichtet, wie oben): **2018
+55.8% (135/242) gegen 2024 76.0% (812/1069)**, Chi-Quadrat-Test auf dieser
+gepoolten Ebene hochsignifikant (p=4.1e-10). Der direkte Streckenvergleich
+(Mann-Whitney, n=7 gegen n=12) liegt knapp ueber der ueblichen Schwelle
+(p=0.056) - bei so kleinen Stichproben ehrlich als "nicht ganz signifikant,
+aber dieselbe Richtung wie der robustere gepoolte Test" einzuordnen, nicht
+als Widerspruch.
+
+Ergebnis ist das GEGENTEIL der These "Ground-Effect-Autos brauchen weniger
+DRS": Ueberholungen sind 2024 STAERKER DRS-abhaengig als 2018, nicht
+schwaecher. Eine moegliche Erklaerung, die sich mit diesen Daten allein
+nicht abschliessend pruefen laesst: die 2022er Regeln sollten das
+Hinterherfahren im Nachlauf (dirty air) erleichtern, nicht das Ueberholen
+selbst - wenn Autos dadurch naeher dranbleiben, aber der reine Top-Speed-
+Vorteil durch DRS unveraendert bleibt, waechst der Anteil der Ueberholungen,
+die erst durch DRS ueberhaupt moeglich werden, obwohl die Annaeherung
+leichter fiel. Ehrliche Grenze: n=2 Saisons ist eine Stichprobe von zwei
+Regel-Epochen, kein Trend - ob 2019-2023 (keine Telemetrie im Cache) einen
+allmaehlichen Anstieg oder einen Sprung genau 2022 zeigen wuerden, laesst
+sich von hier aus nicht sagen.
 """
 from __future__ import annotations
 
@@ -114,9 +148,10 @@ matplotlib.use("Agg")                      # kein Fenster, nur Dateien
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.stats import chi2_contingency, mannwhitneyu
 
 import f1lab
-from f1lab.design import FG, GRID, POSITIV, SERIEN, matplotlib_stil
+from f1lab.design import FG, GRID, MUTED, POSITIV, SERIEN, matplotlib_stil
 
 warnings.filterwarnings("ignore")
 
@@ -164,6 +199,55 @@ def zeichne_saisonvergleich(ax, ergebnisse: pd.DataFrame) -> None:
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     ax.grid(axis="x", alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
+def drs_saison_scan(saison: int) -> pd.DataFrame:
+    """AUSBAUSTUFE/VIERTE AUSBAUSTUFE: DRS-Anteil je telemetriefaehigem
+    Rennen einer Saison - faktorisiert aus main(), damit dieselbe Logik
+    fuer 2024 (Basis-AUSBAUSTUFE) und 2018 (vierte AUSBAUSTUFE) laeuft."""
+    inv = f1lab.cached_sessions()
+    tel_rennen = sorted(inv[(inv["season"] == saison) & (inv["ident"] == "R")
+                            & inv["telemetry"]]["event"].unique())
+    zeilen = []
+    for gp in tel_rennen:
+        s = f1lab.load(saison, gp, "R", telemetry=True)
+        ev = f1lab.overtake_events(s)
+        if ev.empty:
+            continue
+        o = f1lab.overtake_locations(s)
+        if o.empty:
+            continue
+        zeilen.append({
+            "gp": gp, "ueberholungen": len(ev), "lokalisiert": len(o),
+            "abdeckung_pct": round(100 * len(o) / len(ev), 1),
+            "drs_pct": round(100 * o["in_drs_zone"].mean(), 1),
+        })
+    return pd.DataFrame(zeilen)
+
+
+def zeichne_drs_ueber_zeit(ax, erg_2018: pd.DataFrame, erg_2024: pd.DataFrame) -> None:
+    """VIERTE AUSBAUSTUFE: DRS-Anteil je Strecke, 2018 gegen 2024."""
+    daten = [erg_2018["drs_pct"], erg_2024["drs_pct"]]
+    bp = ax.boxplot(daten, tick_labels=["2018", "2024"], patch_artist=True,
+                    widths=0.5, showfliers=False)
+    for patch, farbe in zip(bp["boxes"], SERIEN):
+        patch.set_facecolor(farbe)
+        patch.set_alpha(0.6)
+    for element in ("whiskers", "caps", "medians"):
+        for line in bp[element]:
+            line.set_color(FG)
+    for i, erg in enumerate((erg_2018, erg_2024), start=1):
+        jitter = np.random.default_rng(0).uniform(-0.08, 0.08, len(erg))
+        ax.scatter(np.full(len(erg), i) + jitter, erg["drs_pct"],
+                  color=MUTED, s=18, zorder=3)
+    ax.set_ylabel("DRS-Anteil je Strecke [%]")
+    ax.set_title("VIERTE AUSBAUSTUFE: DRS-Anteil vor (2018) und nach (2024) "
+                "dem Ground-Effect-Umbruch", loc="left", color=FG,
+                fontsize=13, pad=10)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(axis="y", alpha=0.3, linewidth=0.8, color=GRID)
     ax.set_axisbelow(True)
 
 
@@ -215,25 +299,9 @@ def main():
 
     print("\n[3/3] Saison-Scan ueber alle telemetriefaehigen Rennen 2024 "
          "(AUSBAUSTUFE) ...")
-    inv = f1lab.cached_sessions()
-    tel_rennen = sorted(inv[(inv["season"] == 2024) & (inv["ident"] == "R")
-                            & inv["telemetry"]]["event"].unique())
-    zeilen = []
-    for gp in tel_rennen:
-        s = f1lab.load(2024, gp, "R", telemetry=True)
-        ev = f1lab.overtake_events(s)
-        if ev.empty:
-            continue
-        o = f1lab.overtake_locations(s)
-        if o.empty:
-            continue
-        zeilen.append({
-            "gp": gp, "ueberholungen": len(ev), "lokalisiert": len(o),
-            "abdeckung_pct": round(100 * len(o) / len(ev), 1),
-            "drs_pct": round(100 * o["in_drs_zone"].mean(), 1),
-        })
-        print(f"      {gp:28s} {zeilen[-1]}")
-    ergebnisse = pd.DataFrame(zeilen)
+    ergebnisse = drs_saison_scan(2024)
+    for row in ergebnisse.itertuples(index=False):
+        print(f"      {row.gp:28s} {dict(row._asdict())}")
     print(f"\n      DRS-Anteil ueber {len(ergebnisse)} Strecken: "
          f"{ergebnisse['drs_pct'].min():.1f}-{ergebnisse['drs_pct'].max():.1f}%, "
          f"Median {ergebnisse['drs_pct'].median():.1f}%")
@@ -255,13 +323,41 @@ def main():
     print(f"      Anteil < 800m:  echt {100 * (vorlauf_echt < 800).mean():.1f}% "
          f"gegen Zufall {100 * (vorlauf_zufall < 800).mean():.1f}%")
 
+    print("\nVIERTE AUSBAUSTUFE: DRS-Anteil 2018 (vor Ground-Effect) gegen "
+         "2024 (danach) ...")
+    ergebnisse_2018 = drs_saison_scan(2018)
+    for row in ergebnisse_2018.itertuples(index=False):
+        print(f"      {row.gp:28s} {dict(row._asdict())}")
+    u, p_mw = mannwhitneyu(ergebnisse_2018["drs_pct"], ergebnisse["drs_pct"])
+    print(f"\n      2018: n={len(ergebnisse_2018)} Strecken, Median "
+         f"{ergebnisse_2018['drs_pct'].median():.1f}%")
+    print(f"      2024: n={len(ergebnisse)} Strecken, Median "
+         f"{ergebnisse['drs_pct'].median():.1f}%")
+    print(f"      Mann-Whitney (je Strecke): p={p_mw:.3f}")
+    drs_n_2018 = (ergebnisse_2018["lokalisiert"]
+                 * ergebnisse_2018["drs_pct"] / 100).round().astype(int)
+    drs_n_2024 = (ergebnisse["lokalisiert"]
+                 * ergebnisse["drs_pct"] / 100).round().astype(int)
+    tabelle_2x2 = [[drs_n_2018.sum(),
+                    ergebnisse_2018["lokalisiert"].sum() - drs_n_2018.sum()],
+                   [drs_n_2024.sum(),
+                    ergebnisse["lokalisiert"].sum() - drs_n_2024.sum()]]
+    _, p_chi, _, _ = chi2_contingency(tabelle_2x2)
+    print(f"      Gepoolt: 2018 {drs_n_2018.sum()}/"
+         f"{ergebnisse_2018['lokalisiert'].sum()} = "
+         f"{100 * drs_n_2018.sum() / ergebnisse_2018['lokalisiert'].sum():.1f}%, "
+         f"2024 {drs_n_2024.sum()}/{ergebnisse['lokalisiert'].sum()} = "
+         f"{100 * drs_n_2024.sum() / ergebnisse['lokalisiert'].sum():.1f}%, "
+         f"Chi-Quadrat p={p_chi:.2e}")
+
     print("\nGrafik ...")
-    fig = plt.figure(figsize=(15, 17))
-    gs = fig.add_gridspec(3, 1, height_ratios=[1.3, 1, 1], hspace=0.4)
+    fig = plt.figure(figsize=(15, 21))
+    gs = fig.add_gridspec(4, 1, height_ratios=[1.3, 1, 1, 1], hspace=0.5)
     zeichne_streckenkarte(fig.add_subplot(gs[0]), ref_xy, dist, zonen, orte)
     zeichne_saisonvergleich(fig.add_subplot(gs[1]), ergebnisse)
     zeichne_bremszonen_abstand(fig.add_subplot(gs[2]), vorlauf_echt,
                                vorlauf_zufall)
+    zeichne_drs_ueber_zeit(fig.add_subplot(gs[3]), ergebnisse_2018, ergebnisse)
     fig.suptitle("Ueberholungen: in der DRS-Zone oder woanders?", x=0.09,
                 ha="left", fontsize=16, color=FG, y=0.995)
     plt.tight_layout()

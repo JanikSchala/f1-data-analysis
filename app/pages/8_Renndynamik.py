@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import fastf1.plotting as f1plt
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from common import (
@@ -301,3 +302,71 @@ with tab_drs:
                        "schnittlich direkt vor dem Bremspunkt, aber "
                        "zuverlaessig irgendwo auf der Geraden davor (unter "
                        "800m: siehe P39, dritte AUSBAUSTUFE).")
+
+    st.markdown("##### Vierte AUSBAUSTUFE: DRS-Anteil vor und nach dem "
+               "Ground-Effect-Umbruch")
+    st.caption("Feste Saisons 2018/2024 (die einzigen mit vollstaendiger "
+              "Telemetrie im Cache), unabhaengig von der oben gewaehlten "
+              "Session.")
+
+    @st.cache_data(persist="disk", show_spinner="DRS-Anteil 2018 und 2024 "
+                                                "wird verglichen (erster "
+                                                "Aufruf dauert einige "
+                                                "Minuten) ...")
+    def _drs_saison_scan(cache_pfad: str, saison: int) -> pd.DataFrame:
+        inv_lokal = f1lab.cached_sessions(cache_pfad)
+        tel_rennen = sorted(inv_lokal[(inv_lokal["season"] == saison)
+                                      & (inv_lokal["ident"] == "R")
+                                      & inv_lokal["telemetry"]]["event"].unique())
+        zeilen = []
+        for gp in tel_rennen:
+            try:
+                s = f1lab.load(saison, gp, "R", telemetry=True)
+                ev = f1lab.overtake_events(s)
+                if ev.empty:
+                    continue
+                o = f1lab.overtake_locations(s)
+                if o.empty:
+                    continue
+            except Exception:
+                continue
+            zeilen.append({"gp": gp, "lokalisiert": len(o),
+                           "drs_pct": round(100 * o["in_drs_zone"].mean(), 1)})
+        return pd.DataFrame(zeilen)
+
+    erg_2018 = _drs_saison_scan(str(pfad), 2018)
+    erg_2024 = _drs_saison_scan(str(pfad), 2024)
+
+    if erg_2018.empty or erg_2024.empty:
+        st.info("Fuer 2018 oder 2024 liegt keine telemetriefaehige Session "
+               "im Cache.")
+    else:
+        n_2018 = int((erg_2018["lokalisiert"] * erg_2018["drs_pct"] / 100)
+                    .round().sum())
+        n_2024 = int((erg_2024["lokalisiert"] * erg_2024["drs_pct"] / 100)
+                    .round().sum())
+        kd = st.columns(2)
+        kd[0].metric("DRS-Anteil 2018 (gepoolt)",
+                    f"{100 * n_2018 / erg_2018['lokalisiert'].sum():.1f}%",
+                    help=f"{n_2018}/{erg_2018['lokalisiert'].sum()} "
+                         f"lokalisierte Ueberholungen, {len(erg_2018)} "
+                         "Strecken")
+        kd[1].metric("DRS-Anteil 2024 (gepoolt)",
+                    f"{100 * n_2024 / erg_2024['lokalisiert'].sum():.1f}%",
+                    help=f"{n_2024}/{erg_2024['lokalisiert'].sum()} "
+                         f"lokalisierte Ueberholungen, {len(erg_2024)} "
+                         "Strecken")
+
+        fig3 = go.Figure()
+        fig3.add_trace(go.Box(y=erg_2018["drs_pct"], name="2018",
+                              marker={"color": d.SERIEN[0]}, boxpoints="all"))
+        fig3.add_trace(go.Box(y=erg_2024["drs_pct"], name="2024",
+                              marker={"color": d.SERIEN[1]}, boxpoints="all"))
+        zeige(fig3, hoehe=380, showlegend=False,
+             yaxis=achse("DRS-Anteil je Strecke [%]"))
+        hinweis("Die 2022er Regeln sollten engere Rennen 'auch ohne DRS' "
+               "ermoeglichen - in diesen Daten ist das Gegenteil der Fall: "
+               "der DRS-Anteil an Ueberholungen ist 2024 deutlich hoeher als "
+               "2018, nicht niedriger. Bei nur zwei Saisons mit Telemetrie "
+               "im Cache ist das eine Momentaufnahme zweier Regel-Epochen, "
+               "kein belastbarer Trend (siehe P39, vierte AUSBAUSTUFE).")
