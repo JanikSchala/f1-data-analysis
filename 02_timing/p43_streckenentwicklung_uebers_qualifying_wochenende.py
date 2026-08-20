@@ -121,6 +121,34 @@ Strecke waehrend der Session waermer oder kaelter wird. Das staerkt die
 urspruengliche "mehr Gummi auf der Strecke"-Interpretation, statt sie zu
 widerlegen - eine plausible Alternative wurde ernsthaft getestet, nicht
 nur erwaehnt und beiseitegelegt.
+
+DRITTE AUSBAUSTUFE  [umgesetzt]
+Gilt derselbe Effekt auch fuer Sprint Qualifying/Sprint Shootout - die
+kuerzere, kleinere Schwester der normalen Qualifikation an einem
+Sprint-Wochenende (siehe P44)? `f1lab.qualifying_track_evolution()` braucht
+dafuer keine Anpassung: `Laps.split_qualifying_sessions()` funktioniert
+strukturell identisch, unabhaengig vom Session-Identifier.
+
+Echter, bisher unbenutzer FastF1-Fund dabei: der Session-Identifier fuer
+diese Session wechselte zwischen den Saisons - 2023 heisst sie "SS"
+(Sprint Shootout, der urspruengliche Name), 2024 "SQ" (Sprint Qualifying,
+nach der Umbenennung durch die FIA) - `f1lab.load(..., "SQ")` wirft fuer
+2023er Events einen klaren Fehler ("Session type 'SQ' does not exist"),
+nicht etwa ein leeres Ergebnis.
+
+Ueber beide Saisons und beide Namen zusammen: **9 von 9 trockenen
+Sprint-Qualifyings** (Oesterreich/Belgien 2023 als Sprint Shootout nass,
+China 2024 als Sprint Qualifying nass - dieselben Regen-Ausschluesse wie
+in P44 fuer die zugehoerigen Sprints) zeigen dieselbe Richtung wie die
+normale Qualifikation: Q1->Q2 median +0.504s (n=133, 94.0% positiv,
+p=1.4e-22), Q2->Q3 median +0.350s (n=88, 79.5% positiv, p=7.1e-10,
+**8/9** Rennen positiv). Die Groessenordnung ist nicht kleiner als bei der
+normalen Qualifikation, eher sogar etwas groesser (P43 Hauptbefund:
++0.407s/+0.167s in 2024 allein) - obwohl Sprint Qualifying insgesamt
+kuerzer ist (SQ1/SQ2/SQ3 statt Q1/Q2/Q3, kuerzere Segmentlaengen). Die
+Streckenentwicklung ist damit keine Eigenschaft der spezifisch langen
+Standard-Qualifikation, sondern zeigt sich unabhaengig vom Format, sobald
+das Feld auf der Strecke faehrt und sich verkleinert.
 """
 from __future__ import annotations
 
@@ -134,6 +162,7 @@ import matplotlib
 
 matplotlib.use("Agg")                      # kein Fenster, nur Dateien
 
+import fastf1
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -175,6 +204,37 @@ def saison_scan(saison: int) -> tuple[pd.DataFrame, list[str]]:
             d = d.copy()
             d["gp"] = row["event_name"]
             alle.append(d)
+    return (pd.concat(alle, ignore_index=True) if alle else pd.DataFrame(),
+            nass)
+
+
+SPRINT_QUALI_IDENT = {2023: "SS", 2024: "SQ"}  # DRITTE AUSBAUSTUFE: FIA-Umbenennung
+
+
+def sprint_quali_scan(saisons) -> tuple[pd.DataFrame, list[str]]:
+    """DRITTE AUSBAUSTUFE: dieselbe Frage an Sprint Qualifying/Sprint
+    Shootout - der Session-Identifier wechselt zwischen den Saisons
+    (SS 2023, SQ 2024), deshalb kein fester String wie bei saison_scan()."""
+    alle, nass = [], []
+    for saison in saisons:
+        ident = SPRINT_QUALI_IDENT[saison]
+        sched_roh = fastf1.get_event_schedule(saison, include_testing=False)
+        sprint_namen = sched_roh[sched_roh["EventFormat"]
+                                 .str.contains("sprint", case=False,
+                                              na=False)]["EventName"].tolist()
+        for gp in sprint_namen:
+            try:
+                ses = f1lab.load(saison, gp, ident, telemetry=False)
+            except Exception:
+                continue
+            if ist_nass(ses):
+                nass.append(f"{saison} {gp}")
+                continue
+            d = f1lab.qualifying_track_evolution(ses)
+            if not d.empty:
+                d = d.copy()
+                d["gp"] = f"{saison} {gp}"
+                alle.append(d)
     return (pd.concat(alle, ignore_index=True) if alle else pd.DataFrame(),
             nass)
 
@@ -365,6 +425,19 @@ def main():
              f"{kuehlt_ab}/{len(sub)}, Pearson r={r:+.3f} (p={p:.3f})")
         print(f"        Rennen mit Erwaermung trotzdem schneller: "
              f"{erwaermt_aber_schneller}/{erwaermt}")
+
+    print("\nDRITTE AUSBAUSTUFE: gilt das auch fuer Sprint Qualifying "
+         "(SS 2023 / SQ 2024)? ...")
+    sq_deltas, sq_nass = sprint_quali_scan(SPRINT_QUALI_IDENT.keys())
+    print(f"      {sq_deltas['gp'].nunique()} trockene Sprint-Qualifyings, "
+         f"{len(sq_nass)} wegen Regen raus: {sq_nass}")
+    for seg in ("Q1->Q2", "Q2->Q3"):
+        sub = sq_deltas[sq_deltas["segment"] == seg]
+        w = wilcoxon(sub["delta_s"])
+        je_r = sub.groupby("gp")["delta_s"].median()
+        print(f"      {seg}: n={len(sub)}, median={sub['delta_s'].median():+.3f}s, "
+             f"positiv={(sub['delta_s'] > 0).mean():.1%}, p={w.pvalue:.2e}, "
+             f"Rennen positiv={(je_r > 0).sum()}/{len(je_r)}")
 
     print("\nGrafiken speichern ...")
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(11, 17),
