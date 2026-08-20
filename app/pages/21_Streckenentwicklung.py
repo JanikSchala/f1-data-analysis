@@ -12,6 +12,7 @@ Zeiteffekt hat als das reine "Gummi einfahren".
 """
 from __future__ import annotations
 
+import fastf1
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -210,3 +211,61 @@ else:
            "signifikanter Zusammenhang, und in Rennen mit Erwaermung wird "
            "die Pace trotzdem besser - staerkt die Gummi-Interpretation, "
            "statt sie zu widerlegen (siehe P43, zweite AUSBAUSTUFE).")
+
+
+st.markdown("##### DRITTE AUSBAUSTUFE: gilt das auch fuer Sprint Qualifying?")
+
+SPRINT_QUALI_IDENT = {2023: "SS", 2024: "SQ"}  # FIA-Umbenennung, siehe P43
+
+
+@st.cache_data(persist="disk", show_spinner="Sprint-Qualifyings werden "
+                                            "ausgewertet ...")
+def _sprint_quali_deltas(cache_pfad: str) -> tuple[pd.DataFrame, list[str]]:
+    alle, nass = [], []
+    for jahr, ident in SPRINT_QUALI_IDENT.items():
+        sched = fastf1.get_event_schedule(jahr, include_testing=False)
+        sprint_namen = sched[sched["EventFormat"].str.contains(
+            "sprint", case=False, na=False)]["EventName"].tolist()
+        for gp in sprint_namen:
+            try:
+                ses = f1lab.load(jahr, gp, ident, telemetry=False)
+            except Exception:
+                continue
+            if ses.laps["Compound"].isin(["INTERMEDIATE", "WET"]).any():
+                nass.append(f"{jahr} {gp}")
+                continue
+            d_ = f1lab.qualifying_track_evolution(ses)
+            if not d_.empty:
+                d_ = d_.copy()
+                d_["gp"] = f"{jahr} {gp}"
+                alle.append(d_)
+    return (pd.concat(alle, ignore_index=True) if alle else pd.DataFrame(),
+            nass)
+
+
+sq_deltas, sq_nass = _sprint_quali_deltas(str(pfad))
+if sq_deltas.empty:
+    st.info("Keine auswertbaren trockenen Sprint-Qualifyings im Cache.")
+else:
+    sq_q12 = sq_deltas.loc[sq_deltas["segment"] == "Q1->Q2", "delta_s"]
+    sq_q23 = sq_deltas.loc[sq_deltas["segment"] == "Q2->Q3", "delta_s"]
+    kx = st.columns(3)
+    kx[0].metric("Trockene Sprint-Qualifyings", sq_deltas["gp"].nunique())
+    kx[1].metric("Q1->Q2 Median", f"{sq_q12.median():+.3f} s",
+                help=f"n={len(sq_q12)}, {(sq_q12 > 0).mean():.0%} positiv, "
+                     f"p={wilcoxon(sq_q12).pvalue:.1e}")
+    kx[2].metric("Q2->Q3 Median", f"{sq_q23.median():+.3f} s",
+                help=f"n={len(sq_q23)}, {(sq_q23 > 0).mean():.0%} positiv, "
+                     f"p={wilcoxon(sq_q23).pvalue:.1e}")
+    hinweis("Der Session-Name wechselte zwischen den Saisons: 2023 "
+           "\"Sprint Shootout\" (Identifier SS), 2024 \"Sprint Qualifying\" "
+           "(SQ) - ein echter FastF1-Fund, `f1lab.load(..., \"SQ\")` "
+           "scheitert fuer 2023er Events mit einer klaren Fehlermeldung "
+           "statt eines leeren Ergebnisses. Ueber beide Formate hinweg "
+           f"({', '.join(f'{j} {SPRINT_QUALI_IDENT[j]}' for j in SPRINT_QUALI_IDENT)}) "
+           "zeigt sich dieselbe Streckenentwicklung wie bei der normalen "
+           "Qualifikation, tendenziell sogar etwas staerker - obwohl Sprint "
+           "Qualifying insgesamt kuerzer ist (siehe P43, dritte "
+           "AUSBAUSTUFE).")
+    if sq_nass:
+        st.caption(f"Wegen Regen ausgeschlossen: {', '.join(sq_nass)}")
