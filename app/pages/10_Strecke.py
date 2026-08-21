@@ -1,7 +1,7 @@
-"""Streckenkarte mit Kurven und Marshal-Sektoren, Kurvengeschwindigkeit je
-Fahrer, und derselbe Rundkurs ueber Jahre verglichen.
+"""streckenkarte mit kurven und marshal-sektoren, kurvengeschwindigkeit je
+fahrer und derselbe rundkurs ueber jahre verglichen.
 
-Drei Reiter aus P11/P12/P33 - gerechnet wird nirgends hier, jede Kennzahl
+drei reiter aus P11/P12/P33. gerechnet wird nirgends hier. jede kennzahl
 kommt aus f1lab.corner_labels()/corner_speeds()/marshal_sector_labels().
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ tab_karte, tab_speed, tab_jahre = st.tabs(
     ["Streckenkarte", "Kurvengeschwindigkeit", "Ueber Jahre verglichen"])
 
 
-# ==================================================================== Karte
+# ==================================================================== karte
 with tab_karte:
     geo = f1lab.circuit_geometry(ses)
 
@@ -89,8 +89,8 @@ with tab_karte:
                 textfont={"color": d.FG, "size": 10}, hoverinfo="skip",
                 showlegend=False))
 
-        # ZWEITE AUSBAUSTUFE: Gelbflaggen-Lichttafeln (CircuitInfo.
-        # marshal_lights, bislang im ganzen Repo ungenutzt), siehe P11.
+        # zweite AUSBAUSTUFE: gelbflaggen-lichttafeln aus
+        # CircuitInfo.marshal_lights, bislang im ganzen repo ungenutzt. siehe P11.
         licht_idx = [int(np.argmin(np.abs(dist - lp.distance)))
                     for lp in lichter.itertuples()]
         fig.add_trace(go.Scatter(
@@ -119,7 +119,7 @@ with tab_karte:
                 "v_min_kmh": "v min [km/h]"}), height=300)
 
 
-# ============================================================== Kurvenspeed
+# ============================================================== kurvenspeed
 with tab_speed:
     st.markdown("##### Kurvengeschwindigkeit im Feld, relativ zum Schnellsten")
     mat = f1lab.corner_speeds(ses)
@@ -157,7 +157,7 @@ with tab_speed:
                 "Kurventyp.")
 
 
-# ============================================================= Jahresvergleich
+# ============================================================= jahresvergleich
 with tab_jahre:
     st.markdown("##### Pole-Runde derselben Strecke, verschiedene Jahre")
     inv = f1lab.cached_sessions(str(pfad))

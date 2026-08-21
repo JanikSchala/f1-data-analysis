@@ -1,10 +1,10 @@
-"""Rundenzeit-Simulation (P37): ein Punktmassenmodell aus Streckenkruemmung
-und vier Fahrzeugparametern, kalibriert gegen die echte Geschwindigkeitsspur
-einer Referenzrunde - dieselben Parameter unveraendert auf andere Strecken
-uebertragen, und (zweite AUSBAUSTUFE) auf einen ganzen Stint mit sinkender
-Kraftstoffmasse angewendet.
+"""rundenzeit-simulation (P37): ein punktmassenmodell aus streckenkruemmung
+und vier fahrzeugparametern, kalibriert gegen die echte
+geschwindigkeitsspur einer referenzrunde. dieselben parameter unveraendert
+auf andere strecken uebertragen und (zweite AUSBAUSTUFE) auf einen ganzen
+stint mit sinkender kraftstoffmasse angewendet.
 
-Gerechnet wird nirgends hier: jede Zahl kommt aus f1lab.lap_speed_profile()/
+gerechnet wird nirgends hier: jede zahl kommt aus f1lab.lap_speed_profile()/
 calibrate_lap_model()/simulate_lap()/simulate_stint().
 """
 from __future__ import annotations

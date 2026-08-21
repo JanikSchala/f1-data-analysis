@@ -1,9 +1,8 @@
-"""Gemeinsame Bausteine der Oberflaeche.
+"""gemeinsame bausteine der oberflaeche.
 
-Die App rechnet nichts selbst. Jede Kennzahl kommt aus :mod:`f1lab`, jede
-Farbe aus :mod:`f1lab.design` - hier steht nur, was Anordnung ist. Sobald in
-einer Seite eine Formel oder ein Farbwert auftaucht, gehoert er dorthin und
-nicht hierher, sonst driften Skripte und Oberflaeche auseinander.
+die app rechnet nichts selbst. jede kennzahl kommt aus :mod:`f1lab`, jede
+farbe aus :mod:`f1lab.design`. hier steht nur anordnung, sonst driften
+skripte und oberflaeche auseinander.
 """
 from __future__ import annotations
 
@@ -11,9 +10,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# "streamlit run" legt nur den Ordner des Startskripts auf den Pfad. Die App
-# liegt in app/, das Paket eine Ebene darueber - ohne diese Zeilen scheitert
-# "import f1lab" aus einem frischen Checkout heraus.
+# "streamlit run" legt nur den ordner des startskripts auf den pfad. die app
+# liegt in app/, das paket eine ebene darueber. ohne diese zeilen scheitert
+# "import f1lab" aus einem frischen checkout.
 REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
@@ -28,12 +27,12 @@ from f1lab import design as d  # noqa: E402
 # Reihenfolge eines Rennwochenendes, nicht alphabetisch.
 IDENT_ORDER = ["R", "S", "Q", "SQ", "FP3", "FP2", "FP1"]
 
-# Futuristische Telemetrie-Optik: Farben ausschliesslich aus f1lab.design
-# (ACCENT/TELEMETRY sind reine Chrome-Deko, siehe dort - Diagrammfarben
-# bleiben unberuehrt). Fonts kommen primaer aus .streamlit/config.toml
-# (Orbitron/Rajdhani/Share Tech Mono); das @import hier sichert nur die
-# Verfuegbarkeit fuer Selektoren, die Streamlits eigene Font-Zuweisung nicht
-# erreicht (z.B. ::before-Pseudoelemente).
+# futuristische telemetrie-optik: farben ausschliesslich aus f1lab.design
+# (ACCENT/TELEMETRY sind reine chrome-deko, diagrammfarben bleiben
+# unberuehrt). fonts kommen primaer aus .streamlit/config.toml
+# (Orbitron/Rajdhani/Share Tech Mono). das @import hier sichert nur die
+# verfuegbarkeit fuer selektoren, die Streamlits eigene font-zuweisung nicht
+# erreicht (z.B. ::before-pseudoelemente).
 _CSS = f"""<style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Share+Tech+Mono&display=swap');
 
@@ -109,7 +108,7 @@ _CSS = f"""<style>
 
 @dataclass(frozen=True)
 class Auswahl:
-    """Die in der Seitenleiste gewaehlte Session."""
+    """die in der seitenleiste gewaehlte session."""
     season: int
     event: str
     ident: str
@@ -121,13 +120,13 @@ class Auswahl:
                f"{d.IDENT_NAME.get(self.ident, self.ident)}"
 
 
-# --- Aufbau ---------------------------------------------------------------
+# --- aufbau ---------------------------------------------------------------
 def setup(titel: str, beschreibung: str = "") -> Path | None:
-    """Seitenkonfiguration, Stil, Cache - der immer gleiche Seitenkopf.
+    """seitenkonfiguration, stil, cache: der immer gleiche seitenkopf.
 
-    Der Cache wird im Offline-Modus aktiviert: die App zieht nie selbst Daten
-    nach. Was fehlt, holt der Warmup aus p01 - dort gehoert es hin, weil es
-    Stunden dauern kann und ins Rate-Limit der API laeuft.
+    der cache laeuft im offline-modus, die app zieht nie selbst daten nach.
+    das erledigt der warmup aus p01, weil es stunden dauern kann und ins
+    rate-limit der API laeuft.
     """
     st.set_page_config(page_title=f"F1 Analyse - {titel}", page_icon="\N{CHEQUERED FLAG}",
                        layout="wide")
@@ -145,20 +144,20 @@ def setup(titel: str, beschreibung: str = "") -> Path | None:
 
 @st.cache_data(show_spinner=False)
 def inventar(cache_pfad: str) -> pd.DataFrame:
-    """Was liegt im Cache? Liest nur Ordnernamen, braucht also kein Netz.
+    """was liegt im cache? liest nur ordnernamen, braucht also kein netz.
 
-    Der Pfad steht im Argument, damit Streamlit den Zwischenspeicher verwirft,
-    sobald ein anderer Ordner angebunden wird.
+    der pfad steht im argument, damit Streamlit den zwischenspeicher
+    verwirft, sobald ein anderer ordner angebunden wird.
     """
     return f1lab.cached_sessions(cache_pfad)
 
 
 def kein_cache_hinweis(pfad: Path | None) -> bool:
-    """True, wenn nichts auswertbar ist - die Seite bricht dann ab.
+    """true, wenn nichts auswertbar ist, die seite bricht dann ab.
 
-    Ein leerer Cache ist kein Fehler, sondern der Zustand vor dem ersten
-    Warmup. Die Meldung sagt deshalb in einem Satz, was zu tun ist, und nicht,
-    was schiefgegangen ist.
+    ein leerer cache ist kein fehler, sondern der zustand vor dem ersten
+    warmup. die meldung sagt in einem satz, was zu tun ist, nicht was
+    schiefgegangen ist.
     """
     if pfad is not None and not inventar(str(pfad)).empty:
         return False
@@ -178,13 +177,13 @@ def kein_cache_hinweis(pfad: Path | None) -> bool:
     return True
 
 
-# --- Auswahl --------------------------------------------------------------
+# --- auswahl --------------------------------------------------------------
 def _wahl(label, optionen, state_key, hilfe=None, formatierer=str):
-    """Auswahlfeld, das seinen Wert ueber Seitenwechsel behaelt.
+    """auswahlfeld, das seinen wert ueber seitenwechsel behaelt.
 
-    Bewusst ohne Streamlits ``key=``: die Listen haengen voneinander ab, und
-    ein gespeicherter Wert, der in der neuen Liste nicht mehr vorkommt, wuerde
-    dort einen Fehler ausloesen statt einfach zurueckzufallen.
+    bewusst ohne Streamlits ``key=``: die listen haengen voneinander ab. ein
+    gespeicherter wert, der in der neuen liste nicht mehr vorkommt, wuerde
+    sonst einen fehler ausloesen statt zurueckzufallen.
     """
     vorher = st.session_state.get(state_key)
     index = optionen.index(vorher) if vorher in optionen else 0
@@ -195,12 +194,12 @@ def _wahl(label, optionen, state_key, hilfe=None, formatierer=str):
 
 
 def sidebar_session(pfad: Path, nur_mit_telemetrie: bool = False) -> Auswahl | None:
-    """Session-Auswahl in der Seitenleiste, allein aus dem Cache-Bestand.
+    """session-auswahl in der seitenleiste, allein aus dem cache-bestand.
 
-    Angeboten wird ausschliesslich, was auch auswertbar ist. Der Umweg ueber
-    die Bestandsaufnahme ist noetig, weil FastF1 im Offline-Modus nicht
-    scheitert, wenn Daten fehlen - der Fehler faellt erst beim Zugriff auf die
-    Runden an, und dann steht die Oberflaeche schon.
+    angeboten wird nur, was auch auswertbar ist. der umweg ueber die
+    bestandsaufnahme ist noetig, weil FastF1 im offline-modus nicht
+    scheitert, wenn daten fehlen. der fehler faellt erst beim zugriff auf
+    die runden an, wenn die oberflaeche schon steht.
     """
     inv = inventar(str(pfad))
     inv = inv[inv["timing"]]
@@ -245,22 +244,22 @@ def sidebar_session(pfad: Path, nur_mit_telemetrie: bool = False) -> Auswahl | N
 
 
 def lade(auswahl: Auswahl, telemetrie: bool = False):
-    """Session aus dem Cache holen.
+    """session aus dem cache holen.
 
-    ``f1lab.load`` haelt die zuletzt geladenen Sessions im Speicher, ein
-    Seitenwechsel kostet also nichts.
+    ``f1lab.load`` haelt die zuletzt geladenen sessions im speicher, ein
+    seitenwechsel kostet also nichts.
     """
     try:
         with st.spinner(f"{auswahl.titel} wird geladen ..."):
             ses = f1lab.load(auswahl.season, auswahl.event, auswahl.ident,
                              telemetry=telemetrie)
-            _ = ses.laps          # erzwingt den Zugriff, siehe unten
+            _ = ses.laps          # erzwingt den zugriff, siehe unten
             return ses
     except Exception as exc:
-        # Im Offline-Modus laedt FastF1 klaglos eine leere Session; der Fehler
-        # faellt erst beim Zugriff auf die Runden an. Deshalb oben der
-        # erzwungene Zugriff - lieber hier eine klare Meldung als spaeter eine
-        # Seite voller Ausnahmen.
+        # im offline-modus laedt FastF1 klaglos eine leere session, der fehler
+        # faellt erst beim zugriff auf die runden an. deshalb oben der
+        # erzwungene zugriff, lieber hier eine klare meldung als spaeter eine
+        # seite voller ausnahmen.
         st.error("**Diese Session laesst sich nicht oeffnen.**\n\n"
                  "Meist fehlt ein Teil der Daten im Speicher. Waehle links "
                  "eine andere Session, oder lade sie mit p01 nach.")
@@ -269,7 +268,7 @@ def lade(auswahl: Auswahl, telemetrie: bool = False):
 
 
 def kopfzeile(ses, auswahl: Auswahl) -> None:
-    """Ueberschrift und vier Eckdaten - auf jeder Session-Seite gleich."""
+    """ueberschrift und vier eckdaten, auf jeder session-seite gleich."""
     st.subheader(auswahl.titel)
     laps = ses.laps
     k = st.columns(4)
@@ -289,7 +288,7 @@ def kopfzeile(ses, auswahl: Auswahl) -> None:
 
 
 def nur_rennen(auswahl: Auswahl, was: str) -> bool:
-    """Manche Auswertungen ergeben nur im Rennen oder Sprint einen Sinn."""
+    """manche auswertungen ergeben nur im rennen oder sprint einen sinn."""
     if auswahl.ident in ("R", "S"):
         return False
     st.info(f"{was} braucht ein Rennen oder einen Sprint - "
@@ -298,19 +297,19 @@ def nur_rennen(auswahl: Auswahl, was: str) -> bool:
     return True
 
 
-# --- Darstellung ----------------------------------------------------------
+# --- darstellung ----------------------------------------------------------
 def zeige(fig: go.Figure, hoehe: int = 420, **layout) -> None:
-    """Diagramm im Hausstil rendern.
+    """diagramm im hausstil rendern.
 
-    Das Grundlayout kommt aus :func:`f1lab.design.plotly_layout`, damit App
-    und die von den Skripten erzeugten Grafiken zusammenpassen.
+    das grundlayout kommt aus :func:`f1lab.design.plotly_layout`, damit app
+    und die von den skripten erzeugten grafiken zusammenpassen.
     """
     fig.update_layout(**d.plotly_layout(hoehe=hoehe, **layout))
     st.plotly_chart(fig, width="stretch")
 
 
 def achse(titel: str | None = None, **kw) -> dict:
-    """Achsendefinition im Hausstil, fuer die Uebergabe an :func:`zeige`."""
+    """achsendefinition im hausstil, fuer die uebergabe an :func:`zeige`."""
     achse = {"title": titel or "", "gridcolor": d.GRID, "zeroline": False,
              "linecolor": d.GRID, "tickfont": {"color": d.MUTED}}
     achse.update(kw)
@@ -318,20 +317,20 @@ def achse(titel: str | None = None, **kw) -> dict:
 
 
 def namensachse(titel: str | None = None, **kw) -> dict:
-    """Achse fuer Beschriftungen statt Zahlen - kein Gitter, heller Text."""
+    """achse fuer beschriftungen statt zahlen, kein gitter, heller text."""
     return achse(titel, gridcolor="rgba(0,0,0,0)",
                  tickfont={"color": d.FG}, **kw)
 
 
 def hinweis(text: str) -> None:
-    """Eine Zeile darunter, die erklaert, wie die Zahlen zu lesen sind.
+    """eine zeile darunter, die erklaert, wie die zahlen zu lesen sind.
 
-    Steht bewusst unter jeder Auswertung: eine Zahl ohne ihre Grenzen ist in
-    diesem Datensatz regelmaessig irrefuehrend.
+    steht bewusst unter jeder auswertung: eine zahl ohne ihre grenzen ist in
+    diesem datensatz regelmaessig irrefuehrend.
     """
     st.markdown(f'<p class="hinweis">{text}</p>', unsafe_allow_html=True)
 
 
 def tabelle(df: pd.DataFrame, **kw) -> None:
-    """DataFrame in voller Breite, ohne Index."""
+    """dataframe in voller breite, ohne index."""
     st.dataframe(df, width="stretch", hide_index=True, **kw)

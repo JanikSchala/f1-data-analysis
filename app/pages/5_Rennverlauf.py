@@ -1,9 +1,9 @@
-"""Positionsverlauf vor dem Hintergrund der Flaggenphasen.
+"""positionsverlauf vor dem hintergrund der flaggenphasen.
 
-Safety Car und VSC sind der groesste einzelne Stoerfaktor jeder Pace-Analyse.
-Hier stehen sie deshalb nicht als Fussnote, sondern als Hintergrund hinter dem
-Rennverlauf - so ist zu sehen, welche Positionswechsel dem Feld und welche der
-Rennleitung zuzuschreiben sind.
+safety car und VSC sind der groesste einzelne stoerfaktor jeder pace-analyse,
+deshalb stehen sie hier nicht als fussnote, sondern als hintergrund hinter
+dem rennverlauf: so ist zu sehen, welche positionswechsel dem feld und
+welche der rennleitung zuzuschreiben sind.
 """
 from __future__ import annotations
 
@@ -37,14 +37,14 @@ kopfzeile(ses, auswahl)
 if nur_rennen(auswahl, "Der Positionsverlauf"):
     st.stop()
 
-# --- Flaggenphasen --------------------------------------------------------
+# --- flaggenphasen --------------------------------------------------------
 try:
     phasen = f1lab.track_status_phases(ses)
 except Exception:
     phasen = pd.DataFrame()
     st.info("Fuer diese Session liegen keine Flaggendaten vor.")
 
-# Gruene Phasen sind der Normalfall und wuerden das Bild nur zustellen.
+# gruene phasen sind der normalfall und wuerden das bild nur zustellen.
 stoerungen = (phasen[phasen["label"] != "gruen"] if not phasen.empty
               else pd.DataFrame())
 
@@ -56,7 +56,7 @@ if not stoerungen.empty:
     k[2].metric("Zeit unter Neutralisation",
                 f"{neutral['duration_s'].sum() / 60:.1f} min")
 
-# --- Positionsverlauf -----------------------------------------------------
+# --- positionsverlauf -----------------------------------------------------
 st.markdown("##### Positionen ueber die Renndistanz")
 
 laps = ses.laps[["Driver", "LapNumber", "Position"]].dropna(subset=["Position"])
@@ -71,7 +71,7 @@ zeigen = st.multiselect(
 
 fig = go.Figure()
 
-# Neutralisationen zuerst, damit sie hinter den Linien liegen.
+# neutralisationen zuerst, damit sie hinter den linien liegen.
 for zeile in stoerungen.itertuples():
     if zeile.lap_end < zeile.lap_start:
         continue
@@ -80,8 +80,8 @@ for zeile in stoerungen.itertuples():
                   fillcolor=d.PHASE.get(zeile.label, d.MUTED), opacity=0.18,
                   line_width=0, layer="below")
 
-# Alle anderen Fahrer bleiben als graue Linien im Hintergrund: sie geben dem
-# Bild seinen Zusammenhang, ohne eine eigene Farbe zu beanspruchen.
+# alle anderen fahrer bleiben als graue linien im hintergrund, ohne eine
+# eigene farbe zu beanspruchen.
 for fahrer, teil in laps.groupby("Driver"):
     if fahrer in zeigen:
         continue
@@ -113,7 +113,7 @@ else:
     hinweis("Durchgehend gruen: alle Positionswechsel sind auf der Strecke "
             "oder in der Box entstanden.")
 
-# --- Phasentabelle --------------------------------------------------------
+# --- phasentabelle --------------------------------------------------------
 if not stoerungen.empty:
     with st.expander("Flaggenphasen im Detail"):
         t = stoerungen[["label", "lap_start", "lap_end", "duration_s"]].copy()

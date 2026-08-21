@@ -1,106 +1,4 @@
-"""
-P25 - Anomalie-Erkennung: Technische Probleme aus Telemetrie erkennen
-=====================================================================
-
-Isolation Forest auf Rundenprofilen, um Runden zu markieren, in denen etwas nicht stimmte - noch bevor der Fahrer funkt.
-
-Kategorie:   Machine Learning
-Niveau:      Profi
-Aufwand:     5 h
-Schwerpunkt: Datenanalyse, Engineering
-Zusaetzliche Pakete: scikit-learn
-
-WARUM DAS LOHNT
-Predictive Maintenance in F1-Kontext. Anomalieerkennung ohne Labels ist genau das Problem, das Teams bei Zuverlaessigkeit tatsaechlich haben.
-
-VORGEHEN
-  1. Fuer jede Runde eines Fahrers ein Feature-Profil bauen
-  2. Isolation Forest auf allen Runden trainieren
-  3. Auffaellige Runden markieren und mit Race-Control-Messages abgleichen
-  4. Anomalie-Score ueber den Rennverlauf plotten
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Lap.get_car_data
-  - Telemetry RPM/Speed/Throttle
-  - sklearn IsolationForest
-
-AUSBAUSTUFE  [umgesetzt]
-Vergleiche die Flags mit den Ausfallgruenden aus Session.results['Status'] -
-wie frueh haette das Modell gewarnt?
-
-Baku 2024 R hat vier Ausfaelle (PER, SAI, STR, TSU) - genug, um die
-AUSBAUSTUFE tatsaechlich zu pruefen statt nur zu behaupten. Dabei zeigt sich
-sofort, warum `pick_wo_box().pick_accurate()` aus der Vorlage (VORGEHEN 1)
-die interessanteste Runde regelmaessig wegfiltert: Strolls letzte Runde vor
-dem Ausfall (Runde 45, 2:02 statt der ueblichen 1:48-1:49) traegt
-IsAccurate=False UND eine gesetzte PitInTime - beides Kriterien, unter denen
-die Vorlage sie ausgeschlossen haette. Ohne Boxenrunden zu filtern, faengt
-das Modell diese Runde jedoch sofort (Score 0.66, Rang 13 von 922 sauberen
-Runden).
-
-Zweiter Fund beim Entfernen des Filters: viele der hoechsten Scores waren
-gar keine Einzelfahrzeug-Probleme, sondern die VSC nach der PER/SAI-Kollision
-in Runde 51 - jede einzige Runde 50 im Feld wird dadurch fuer JEDEN Fahrer
-"anomal", nicht weil am Auto etwas kaputt war, sondern weil das ganze Feld
-gleichzeitig abbremste. Eine feldweite Neutralisation sieht in einer
-pro-Fahrer-z-Normalisierung genauso aus wie ein individueller Defekt - beides
-sind grosse Abweichungen vom eigenen Normalverhalten. Deshalb werden
-Runden unter Gelb/VSC/SC (via f1lab.track_status_phases(), siehe P18) jetzt
-explizit ausgeschlossen, bevor das Modell trainiert wird - sonst waeren die
-Top-Flags fast ausschliesslich Rennleitungs-Artefakte, keine Telemetrie-
-Befunde.
-
-Ehrliches Ergebnis der AUSBAUSTUFE: fuer PER/SAI (Kollision) gibt es
-erwartungsgemaess keine Vorwarnung - eine Kollision kuendigt sich nicht in
-der eigenen Telemetrie an. Fuer STR und TSU, die tatsaechlichen technischen
-Probleme, liefert das Modell auf sauberen (nicht boxen-, nicht
-neutralisationsbetroffenen) Runden VOR dem finalen Stopp praktisch keine
-Vorwarnung - die auffaelligen Werte erscheinen erst in genau der Runde, in
-der ohnehin schon in die Box gefahren wird. Das Modell bestaetigt also eher,
-was Team und Fahrer in dem Moment bereits wissen, als dass es fruehzeitig
-warnt. Fuer eine echte Fruehwarnung braeuchte es Signale INNERHALB einer
-Runde (z. B. einen drifenden Sensorwert mitten auf der Geraden), nicht
-Rundenaggregate.
-
-ZWEITE AUSBAUSTUFE: ein kleiner 1D-Conv-Autoencoder (PyTorch) auf den rohen
-Telemetriespuren (Speed/RPM/Throttle/Brake, auf 96 Distanzpunkte
-interpoliert) statt auf den acht aggregierten Rundenkennzahlen oben -
-Rekonstruktionsfehler als Anomalie-Score. Die Frage: erfasst ein Modell, das
-den ganzen Rundenverlauf sieht statt nur Mittelwert/Maximum, etwas, das der
-IsolationForest auf den Aggregaten verpasst? Trainiert auf derselben
-"sauberen" Grundgesamtheit (keine Neutralisation, keine erste Runde,
-Boxenrunden bleiben drin - siehe oben), damit beide Verfahren auf denselben
-Runden verglichen werden.
-
-Ergebnis ueberrascht staerker als erwartet: die beiden Anomalie-Scores
-korrelieren praktisch nicht (Spearman r=0.061, 3 von 71 Top-Flags in der
-Vereinigung stimmen ueberein) - ein Rekonstruktionsfehler auf der ganzen
-Kurvenform misst etwas ganz anderes als ein Ausreisser in
-Rundenmittelwerten. Anders als IsolationForest (0 Vorwarnungen auf der
-Strecke fuer alle vier Ausfaelle) flaggt der Autoencoder bei allen vieren
-saubere Runden VOR dem finalen Stopp - PER 45, SAI 33, STR 17, TSU 8 Runden
-Vorlauf. Das liest sich zunaechst nach einem klaren Sieg fuer die rohe
-Telemetriespur.
-
-Ist es nicht, und das ist der eigentliche Befund: PER und SAI schieden
-durch eine Kollision aus (siehe oben, "keine Vorwarnung erwartungsgemaess"),
-ein Unfall kuendigt sich mechanisch nicht 45 Runden vorher an. Dass der
-Autoencoder ausgerechnet dort die groessten "Vorlaufzeiten" zeigt, ist ein
-Warnsignal ueber die Methode, kein Fund ueber die Fahrzeuge. Der
-wahrscheinlichste Grund steht schon oben in der Docstring des Modells
-selbst: die globale Kanal-Normalisierung (nicht je Fahrer wie beim
-IsolationForest) laesst das Netz eher Strecken-/Verkehrsmuster lernen als
-individuelle Fahrzeugabweichungen - ein Fahrer im dichten Feld oder in einer
-bestimmten Streckenzone sieht anders aus als einer frei fahrend, unabhaengig
-vom Auto-Zustand. Fuer STR/TSU (echte technische Probleme) sind 17 bzw. 8
-Runden Vorlauf immerhin plausibler, aber angesichts des PER/SAI-Befunds
-nicht als verlaessliche Fruehwarnung zu werten, ohne es gegenzupruefen -
-wofuer in dieser einen Session schlicht keine zweite unabhaengige
-Bestaetigung existiert. Die Lehre ist damit weniger "Autoencoder findet mehr"
-als "ein Modell, das mehr sieht, braucht eine Normalisierung, die zur
-Fragestellung passt (individuelle Abweichung, nicht Streckenmuster) - sonst
-misst es die falsche Sache mit ueberzeugend aussehenden Zahlen."
-"""
+"""flaggt technische probleme aus telemetrie-rundenprofilen per isolation forest und vergleicht das mit einem 1d-conv-autoencoder auf rohen telemetriespuren"""
 from __future__ import annotations
 
 import sys
@@ -134,7 +32,7 @@ CONTAMINATION = 0.04
 FEAT = ["lap_time", "vmax", "vmean", "rpm_max", "rpm_mean", "throttle_mean",
        "brake_pct", "gear_mean"]
 
-# ZWEITE AUSBAUSTUFE: Autoencoder auf rohen Telemetriespuren
+# Autoencoder auf rohen Telemetriespuren
 TRACE_KANAELE = ["Speed", "RPM", "Throttle", "Brake"]
 TRACE_PUNKTE = 96      # durch 4 teilbar: zwei Halbierungen im Encoder passen exakt
 AE_BOTTLENECK = 8
@@ -144,11 +42,9 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def rundenprofile(ses) -> pd.DataFrame:
-    """VORGEHEN 1: Feature-Profil je Runde, ALLE Runden (nicht
-    pick_wo_box().pick_accurate() wie in der Vorlage - siehe Docstring,
-    das filtert die interessantesten Faelle regelmaessig weg). Box- und
-    Neutralisations-Zugehoerigkeit bleiben als Metadaten erhalten, um sie
-    gezielt statt blind auszuschliessen."""
+    """Feature-Profil je Runde für ALLE Runden, nicht nur pick_wo_box().pick_accurate().
+    Diese übliche Filterung würde die interessantesten Fälle regelmäßig wegfiltern.
+    Box- und Neutralisations-Zugehörigkeit bleiben als Metadaten erhalten, um gezielt statt blind auszuschließen."""
     phasen = f1lab.track_status_phases(ses)
     neutral_laps = set()
     for p in phasen[phasen["label"] != "gruen"].itertuples():
@@ -180,14 +76,13 @@ def rundenprofile(ses) -> pd.DataFrame:
 
 
 class LapAutoencoder(nn.Module):
-    """1D-Conv-Autoencoder fuer Telemetriespuren (ZWEITE AUSBAUSTUFE).
+    """1D-Conv-Autoencoder für Telemetriespuren.
 
     Zwei Halbierungen im Encoder (96 -> 48 -> 24 Punkte), symmetrisch
-    rueckgaengig gemacht im Decoder. Der schmale Flaschenhals (8 Zahlen fuer
-    4x96=384 Eingabewerte) zwingt das Netz, eine "normale" Rundenform zu
-    komprimieren statt sie auswendig zu lernen - bei nur einigen hundert
-    Trainingsrunden waere ein groesseres Netz reine Speicherung, kein
-    gelerntes Muster.
+    rückgängig gemacht im Decoder. Der schmale Flaschenhals (8 Zahlen für
+    4x96=384 Eingabewerte) erzwingt eine komprimierte Repräsentation der
+    "normalen" Rundenform. Bei nur einigen hundert Trainingsrunden würde
+    ein größeres Netz nur auswendig lernen.
     """
 
     def __init__(self, n_channels: int = len(TRACE_KANAELE),
@@ -217,11 +112,10 @@ class LapAutoencoder(nn.Module):
 
 
 def lap_traces(ses, laps_index) -> tuple[np.ndarray, list]:
-    """Rohe Telemetriespuren je Runde, auf TRACE_PUNKTE gleich verteilte
-    Distanzpunkte interpoliert - Input fuer den Autoencoder, im Gegensatz zu
-    rundenprofile()s aggregierten Rundenkennzahlen. Gibt (Spuren, Index)
-    zurueck; Index nennt die Runden, fuer die Telemetrie verfuegbar war -
-    kann kuerzer sein als ``laps_index``."""
+    """Rohe Telemetriespuren je Runde, interpoliert auf TRACE_PUNKTE gleich verteilte Distanzpunkte.
+    Input für den Autoencoder statt rundenprofile()s aggregierter Kennzahlen.
+    Gibt (Spuren, Index) zurück. Index kann kürzer sein als ``laps_index``.
+    Nicht für jede Runde ist Telemetrie verfügbar."""
     spuren, index = [], []
     for idx in laps_index:
         try:
@@ -239,13 +133,11 @@ def lap_traces(ses, laps_index) -> tuple[np.ndarray, list]:
 
 
 def autoencoder_scores(spuren: np.ndarray, seed: int = 0) -> np.ndarray:
-    """ZWEITE AUSBAUSTUFE: Autoencoder auf allen ``spuren`` trainieren,
-    Rekonstruktionsfehler je Runde als Anomalie-Score zurueckgeben.
+    """trainiert den Autoencoder auf allen ``spuren`` und gibt den Rekonstruktionsfehler je Runde als Anomalie-Score zurück.
 
-    Global je Kanal z-normalisiert (nicht je Fahrer wie bei den Pedal-
-    Features oben) - eine bewusste Vereinfachung: das Netz soll lernen, wie
-    eine normale Runde auf dieser Strecke ueberhaupt aussieht, nicht nur
-    individuelle Abweichungen vom eigenen Mittel.
+    Global je Kanal z-normalisiert, nicht je Fahrer wie bei den Pedal-Features
+    oben. Bewusste Vereinfachung: das Netz soll eine normale Runde auf dieser
+    Strecke lernen, nicht nur individuelle Abweichungen vom eigenen Mittel.
     """
     torch.manual_seed(seed)
     mean = spuren.mean(axis=(0, 2), keepdims=True)
@@ -271,10 +163,8 @@ def autoencoder_scores(spuren: np.ndarray, seed: int = 0) -> np.ndarray:
 
 def anomalien_autoencoder(sauber: pd.DataFrame, ses,
                           contamination: float = CONTAMINATION) -> pd.DataFrame:
-    """Dieselbe 'sauber'-Grundgesamtheit wie ``anomalien_finden()``, aber mit
-    dem Autoencoder-Score statt IsolationForest - liefert dieselben Spalten
-    (u.a. 'anomalie', 'score'), damit ``ausfall_analyse()`` unveraendert auf
-    beide Ergebnisse anwendbar ist."""
+    """Dieselbe 'sauber'-Grundgesamtheit wie ``anomalien_finden()``, aber mit dem Autoencoder-Score statt IsolationForest.
+    Liefert dieselben Spalten (u.a. 'anomalie', 'score'). So bleibt ``ausfall_analyse()`` unverändert auf beide Ergebnisse anwendbar."""
     spuren, index = lap_traces(ses, sauber.index)
     fehler = autoencoder_scores(spuren)
     out = sauber.loc[index].copy()
@@ -285,9 +175,8 @@ def anomalien_autoencoder(sauber: pd.DataFrame, ses,
 
 
 def anomalien_finden(df: pd.DataFrame) -> pd.DataFrame:
-    """VORGEHEN 2: IsolationForest auf sauberen Runden (kein Feld-Ereignis,
-    keine Startrunde - beides strukturell anders, kein Defekt). Boxenrunden
-    bleiben drin, das ist genau der Fall aus dem Docstring."""
+    """IsolationForest auf sauberen Runden: kein Feld-Ereignis, keine Startrunde, beide strukturell anders und kein Defekt.
+    Boxenrunden bleiben bewusst drin."""
     sauber = df[~df["neutralisiert"] & ~df["erste_runde"]].copy()
     z = sauber.groupby("driver")[FEAT].transform(
         lambda s: (s - s.mean()) / (s.std() + 1e-9))
@@ -299,8 +188,7 @@ def anomalien_finden(df: pd.DataFrame) -> pd.DataFrame:
 
 def mit_race_control_abgleichen(flags: pd.DataFrame, rcm: pd.DataFrame,
                                 fenster: int = 2) -> pd.DataFrame:
-    """VORGEHEN 3: passende Race-Control-Meldung je Flag suchen (Fahrer-
-    kuerzel im Text, Rundennummer +/- Fenster)."""
+    """sucht die passende Race-Control-Meldung je Flag: Fahrerkürzel im Text, Rundennummer +/- Fenster."""
     treffer = []
     for r in flags.itertuples():
         nahe = rcm[(rcm["Lap"] >= r.lap - fenster) & (rcm["Lap"] <= r.lap + fenster)]
@@ -313,12 +201,11 @@ def mit_race_control_abgleichen(flags: pd.DataFrame, rcm: pd.DataFrame,
 
 def ausfall_analyse(df: pd.DataFrame, anomalien: pd.DataFrame,
                     ses) -> pd.DataFrame:
-    """AUSBAUSTUFE: je Ausfall die letzte(n) Runde(n) und ob vorher eine
-    Anomalie geflaggt wurde - getrennt nach Boxenrunden (die sind fast immer
-    statistisch auffaellig, weil Boxengasse, unabhaengig vom Auto-Zustand)
-    und echten Runden auf der Strecke. Nur Letztere zaehlen als echte
-    Fruehwarnung; sonst wuerde jeder planmaessige Reifenwechsel frueh im
-    Rennen faelschlich als "Warnung" durchgehen."""
+    """je Ausfall die letzte(n) Runde(n) und ob vorher eine Anomalie geflaggt wurde.
+    Getrennt nach Boxenrunden (fast immer statistisch auffällig durch die
+    Boxengasse selbst, unabhängig vom Auto-Zustand) und echten Runden auf der
+    Strecke. Nur Letztere zählen als echte Frühwarnung. Sonst würde jeder
+    planmäßige Reifenwechsel früh im Rennen fälschlich als "Warnung" durchgehen."""
     ausfaelle = ses.results[ses.results["Status"].isin(["Retired"])]
     zeilen = []
     for r in ausfaelle.itertuples():
@@ -341,9 +228,8 @@ def ausfall_analyse(df: pd.DataFrame, anomalien: pd.DataFrame,
 
 def zeichne_verlauf(ax, df: pd.DataFrame, anomalien: pd.DataFrame,
                     phasen: pd.DataFrame) -> None:
-    """VORGEHEN 4."""
     # lap_start==0 sind Meldungen vor dem eigentlichen Renn-Beginn
-    # (Formationsrunde etc.) - fuer den Rennverlauf ohne Aussagekraft.
+    # (Formationsrunde etc.). Für den Rennverlauf ohne Aussagekraft.
     for p in phasen[(phasen["label"] != "gruen") & (phasen["lap_start"] > 0)].itertuples():
         ax.axvspan(p.lap_start, max(p.lap_end, p.lap_start + 0.3),
                   color=PHASE.get(p.label, MUTED), alpha=0.3, lw=0)
@@ -368,9 +254,8 @@ def zeichne_verlauf(ax, df: pd.DataFrame, anomalien: pd.DataFrame,
 
 
 def zeichne_ausfaelle(ax, df: pd.DataFrame, ausfaelle: list[str]) -> None:
-    """AUSBAUSTUFE: Rundenzeitverlauf der Ausfaller, letzte Runde markiert.
-    Vier Fahrer > MAX_SERIEN=3 Hausfarben - qualitatives Colormap statt
-    Wiederholung, sonst faerben zwei Fahrer identisch (siehe P24)."""
+    """Rundenzeitverlauf der Ausfaller, letzte Runde markiert. Vier Fahrer > MAX_SERIEN=3 Hausfarben.
+    Qualitatives Colormap statt Wiederholung, sonst färben zwei Fahrer identisch wie in P24."""
     farben = plt.get_cmap("tab10")
     for i, drv in enumerate(ausfaelle):
         g = df[df["driver"] == drv].sort_values("lap")
@@ -392,9 +277,7 @@ def zeichne_ausfaelle(ax, df: pd.DataFrame, ausfaelle: list[str]) -> None:
 
 def zeichne_score_vergleich(ax, anomalien: pd.DataFrame, anomalien_ae: pd.DataFrame,
                             gemeinsam, korr: float) -> None:
-    """ZWEITE AUSBAUSTUFE: IsolationForest- gegen Autoencoder-Score, je
-    Runde ein Punkt. Farbe zeigt, welches Verfahren (keins/eins/beide)
-    diese Runde geflaggt hat."""
+    """IsolationForest- gegen Autoencoder-Score, je Runde ein Punkt. Farbe zeigt welches Verfahren (keins/eins/beide) diese Runde geflaggt hat."""
     iso = anomalien.loc[gemeinsam, "score"]
     ae = anomalien_ae.loc[gemeinsam, "score"]
     iso_flag = anomalien.loc[gemeinsam, "anomalie"] == -1

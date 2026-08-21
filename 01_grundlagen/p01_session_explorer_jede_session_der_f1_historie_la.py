@@ -1,42 +1,4 @@
-"""
-P01 - Session-Explorer: Jede Session der F1-Historie laden
-==========================================================
-
-Das Fundament. Cache aufsetzen, beliebige Session laden, verstehen was load() eigentlich holt.
-
-Kategorie:   Grundlagen & Datenzugriff
-Niveau:      Einsteiger
-Aufwand:     1-2 h
-Schwerpunkt: Datenanalyse, Engineering
-
-WARUM DAS LOHNT
-Ohne sauberes Caching wartest du bei jeder Analyse Minuten. Und wer den Datenfluss einmal durchschaut hat - Live-Timing-API, Parser, DataFrame - weiss bei jedem spaeteren Problem, wo er suchen muss.
-
-VORGEHEN
-  1. Cache-Ordner anlegen und global aktivieren
-  2. Session ueber (Jahr, GP, Identifier) laden - 'R', 'Q', 'FP1', 'S', 'SQ'
-  3. Selektiv laden: laps/telemetry/weather/messages einzeln steuern
-  4. session_info, drivers und results inspizieren
-  5. Ladezeiten mit und ohne Cache messen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - fastf1.Cache.enable_cache
-  - fastf1.get_session
-  - Session.load
-  - Session.session_info
-
-AUSBAUSTUFE  [umgesetzt]
-Ganze Saison in einem Rutsch in den Cache ziehen, mit Fortschrittsanzeige,
-Neustartsicherheit (bereits geladene Sessions werden uebersprungen statt
-erneut angefragt) und automatischem Backoff bei FastF1s Rate-Limit
-(500 Anfragen/Stunde, rollierendes Fenster).
-
-Nachgetragen gegenueber der urspruenglichen Fassung: VORGEHEN Punkt 5
-(Ladezeit mit/ohne Cache) war zwar angekuendigt, aber nirgends eingeloest -
-demo_ladezeiten() unten misst es tatsaechlich, an einem frischen, isolierten
-Cache-Ordner (der Hauptcache bleibt unberuehrt). Gemessener Wert: ein
-Kaltstart uebers Netz dauert rund das Zehnfache eines Cache-Treffers.
-"""
+"""lädt f1-sessions aus dem cache und zieht bei bedarf eine ganze saison hinein"""
 from __future__ import annotations
 
 import csv
@@ -49,7 +11,7 @@ from pathlib import Path
 import fastf1
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -78,7 +40,7 @@ def load_session(year, gp, ident, **kw):
     return ses
 
 
-# Volles Rennen inkl. Telemetrie
+# laedt standardmaessig auch telemetrie mit
 race = load_session(2024, "Monza", "R")
 
 print("Event:      ", race.event["EventName"])
@@ -87,7 +49,7 @@ print("Runden:     ", race.total_laps)
 print("Fahrer:     ", len(race.drivers))
 print("Lap-Zeilen: ", len(race.laps))
 
-# Nur Timing, ohne Telemetrie -> deutlich schneller
+# nur timing ist deutlich schneller als telemetrie mitzuladen
 quali = load_session(2024, "Monza", "Q",
                      telemetry=False, weather=False, messages=False)
 
@@ -96,14 +58,9 @@ print(quali.results[["Abbreviation", "TeamName", "Position", "Q1", "Q2", "Q3"]])
 
 def demo_ladezeiten(year: int = 2023, gp: str = "Monza",
                     ident: str = "Q") -> None:
-    """VORGEHEN Punkt 5: Kaltstart gegen Cache-Treffer, gemessen statt nur
-    behauptet.
-
-    Laeuft in einem frischen, temporaeren Cache-Ordner - CACHE (der
-    Hauptcache) bleibt unberuehrt, und am Ende liegt hier nichts doppelt auf
-    der Platte. Ohne Netzzugriff bricht die Demo sauber ab statt das ganze
-    Skript zu stoppen: die restlichen Demos brauchen kein frisches Netz.
-    """
+    """misst kaltstart gegen cache-treffer in einem temporaeren cache-ordner.
+    der hauptcache bleibt dabei unberuehrt. bricht ohne netzzugriff sauber ab
+    statt das ganze skript zu stoppen."""
     tmp = Path(tempfile.mkdtemp(prefix="f1_cache_demo_"))
     try:
         fastf1.Cache.enable_cache(str(tmp))
@@ -126,7 +83,7 @@ def demo_ladezeiten(year: int = 2023, gp: str = "Monza",
         print(f"\nLadezeiten-Demo uebersprungen (kein Netz oder Rate-Limit): "
              f"{type(exc).__name__}: {exc}")
     finally:
-        f1lab.enable_cache(CACHE)             # zurueck auf den Hauptcache
+        f1lab.enable_cache(CACHE)             # zurueck auf den hauptcache
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -134,10 +91,8 @@ demo_ladezeiten()
 
 
 def _log_row(path, row):
-    """Haengt einen Datensatz an die CSV an - auch bei Abbruch bleibt der
-    bisherige Fortschritt erhalten, ein Neustart faengt dank FastF1s
-    eigenem Cache nicht von vorne an (bereits geladene Sessions kommen
-    beim naechsten Versuch sofort von der Platte statt aus dem Netz)."""
+    """haengt einen datensatz an die csv an. so bleibt der fortschritt auch
+    bei abbruch erhalten."""
     is_new = not path.exists()
     with open(path, "a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=LOG_FIELDS)
@@ -147,11 +102,8 @@ def _log_row(path, row):
 
 
 def _with_retry(fn, *args, base_wait=30, max_wait=600, **kwargs):
-    """FastF1 begrenzt sich selbst auf 500 API-Calls/h (rollierendes
-    Fenster) und wirft dann RateLimitExceededError, statt den Server zu
-    riskieren. Bei einem mehrstuendigen Warmup ist das kein Fehler,
-    sondern der Normalfall - also abwarten und denselben Call erneut
-    versuchen, mit wachsender Pause statt fixer Sleeps."""
+    """faengt fastf1s RateLimitExceededError ab und wiederholt den call mit
+    wachsender wartezeit statt fixer sleeps."""
     wait = base_wait
     while True:
         try:
@@ -163,9 +115,8 @@ def _with_retry(fn, *args, base_wait=30, max_wait=600, **kwargs):
 
 
 def _done_set(log_path):
-    """(year, round, ident)-Kombinationen, die laut Log bereits mit
-    status=ok geladen wurden - macht den Warmup neustartsicher, ohne
-    Sessions doppelt zu zaehlen oder erneut anzufragen."""
+    """(year, round, ident)-kombinationen die laut log bereits erfolgreich
+    geladen wurden."""
     if not log_path.exists():
         return set()
     log = pd.read_csv(log_path)
@@ -175,19 +126,10 @@ def _done_set(log_path):
 
 def warm_season_cache(year, sessions=DEFAULT_SESSIONS, log_path=CACHE_LOG,
                       telemetry=False, weather=False, messages=False, **kw):
-    """Zieht eine ganze Saison in den Cache, mit Fortschrittsanzeige.
-
-    Laeuft einmal durch den Kalender und laedt jede angegebene Session-
-    Kennung fuer jedes Event. Nicht existierende Kombinationen (z.B.
-    FP2/FP3 an einem Sprint-Wochenende, oder S/SQ an einem konventionellen)
-    werden uebersprungen statt das Skript abzubrechen. Standardmaessig nur
-    Timing/Ergebnisse (siehe VORGEHEN Punkt 3: selektiv laden ist deutlich
-    schneller und schont das Rate-Limit) - volle Telemetrie geht per
-    telemetry=True. Bereits erfolgreich geladene Kombinationen aus einem
-    frueheren Lauf werden uebersprungen. Jeder neue Versuch landet als
-    Zeile in log_path, damit sich der Fortschritt spaeter auswerten und
-    plotten laesst.
-    """
+    """zieht eine ganze saison in den cache. nicht existierende kombinationen
+    (z.b. FP2/FP3 an einem sprint-wochenende) werden uebersprungen statt das
+    skript abzubrechen. bereits geladene kombinationen werden nicht erneut
+    angefragt."""
     schedule = _with_retry(fastf1.get_event_schedule, year, include_testing=False)
     already = _done_set(log_path)
     total = len(schedule) * len(sessions)
@@ -234,12 +176,8 @@ def warm_season_cache(year, sessions=DEFAULT_SESSIONS, log_path=CACHE_LOG,
 
 def warm_all_seasons(start_year=2018, end_year=None, sessions=DEFAULT_SESSIONS,
                       log_path=CACHE_LOG, **kw):
-    """Zieht jede Saison der Telemetrie-Aera (ab 2018, siehe README/Grenzen)
-    in den Cache - Jahr fuer Jahr, damit ein Fehler in einer Saison nicht
-    die anderen mitreisst. Dank _done_set() und dem Retry auf Rate-Limits
-    ist ein Neustart (nach Abbruch, oder um die naechste Cache-Traeger zu
-    holen) jederzeit gefahrlos - vollstaendig geladene Sessions werden
-    nicht erneut angefragt."""
+    """zieht jede saison ab start_year jahr fuer jahr in den cache. ein
+    fehler in einer saison bricht die anderen nicht ab."""
     end_year = end_year or datetime.now().year
     for yr in range(start_year, end_year + 1):
         print(f"\n=== Saison {yr} ===")
@@ -249,17 +187,13 @@ def warm_all_seasons(start_year=2018, end_year=None, sessions=DEFAULT_SESSIONS,
             print(f"Saison {yr} abgebrochen: {exc}")
 
 
-# Wiederverwendung derselben Bedeutung wie ueberall sonst im Projekt: gruen =
-# gelungen, grau = neutral uebersprungen, orange = misslungen. Keine neuen
-# Hex-Werte, nur die drei allgemeinen Wertungsfarben aus f1lab.design.
+# gruen = gelungen. grau = uebersprungen. orange = misslungen.
 STATUS_FARBE = {"ok": POSITIV, "skipped": MUTED, "failed": NEGATIV}
 
 
 def plot_cache_warmup(log_path=CACHE_LOG):
-    """Visualisiert den Fortschritt aus warm_all_seasons(): wie viele
-    Sessions sind je Saison schon im Cache, und welcher Session-Typ ist
-    am teuersten zu laden? Laesst sich jederzeit aufrufen, auch waehrend
-    ein warm_all_seasons()-Lauf im Hintergrund noch weiterlaeuft."""
+    """visualisiert cache-abdeckung je saison und ladezeit je session-typ.
+    laesst sich auch aufrufen waehrend warm_all_seasons() noch laeuft."""
     if not log_path.exists():
         print(f"Noch kein Log unter {log_path} - erst warm_season_cache() "
               f"oder warm_all_seasons() laufen lassen.")
@@ -282,11 +216,9 @@ def plot_cache_warmup(log_path=CACHE_LOG):
     ax[0].set_axisbelow(True)
     ax[0].tick_params(axis="x", rotation=0)
 
-    # Median statt Mittelwert: ein einzelner Rate-Limit-Retry zaehlt seine
-    # Wartezeit (bis zu 600s Backoff) mit in die gemessene Dauer - bei den
-    # seltenen Session-Typen (SQ, S) reicht ein solcher Ausreisser, um den
-    # Mittelwert um ein Vielfaches zu verzerren. Derselbe Grund wie bei
-    # bootstrap_median() in f1lab.core: robust gegen genau solche Ausreisser.
+    # median statt mittelwert. ein einzelner rate-limit-retry zaehlt seine
+    # wartezeit mit in die gemessene dauer und wuerde den mittelwert bei
+    # den seltenen session-typen (SQ, S) stark verzerren.
     ok = log[log["status"] == "ok"]
     med_dur = ok.groupby("ident")["duration_s"].median().reindex(DEFAULT_SESSIONS).dropna()
     ax[1].bar(med_dur.index, med_dur.to_numpy(), color=SERIEN[0])

@@ -1,22 +1,15 @@
 """Fixtures gegen einen mitgelieferten FastF1-Cache-Ausschnitt, ohne
-Netzzugriff (VORGEHEN 4).
+Netzzugriff.
 
-offline=True laesst jede Session scheitern, die nicht bereits im Cache
-liegt - schnell und eindeutig statt einer minutenlangen haengenden
-Netzanfrage, wenn das Fixture-Rennen einmal fehlt (siehe
-f1lab.session.enable_cache()).
+offline=True laesst eine Session ohne vorhandenen Cache-Eintrag scheitern.
+das ist schnell und eindeutig statt einer minutenlangen haengenden
+Netzanfrage. siehe f1lab.session.enable_cache().
 
-FIXTURE_CACHE zeigt bewusst auf tests/fixtures/f1_cache_bahrain2024/ (im
-Repo committet, ~147 MB: car_data/position_data lassen sich nicht weiter
-verkleinern, siehe CLAUDE.md) statt auf den Standardpfad ``~/f1_cache`` -
-zwei Gruende. Erstens: das war lange Zeit der eigentliche Bug hinter einem
-CI-Fehlschlag, der nie auffiel, weil die CI-Workflow-Datei am falschen Ort
-lag (siehe CLAUDE.md) - ein frischer GitHub-Actions-Runner hat keinen
-warmen ``~/f1_cache`` und nicht einmal den Saisonkalender, `offline=True`
-scheiterte dort komplett. Zweitens, unabhaengig von CI: Tests, die vom
-Zufall abhaengen, was gerade zufaellig im eigenen ``~/f1_cache`` liegt,
-sind keine echten Fixtures - der committete Ausschnitt ist deterministisch
-fuer jeden, der das Repo klont.
+FIXTURE_CACHE zeigt bewusst auf tests/fixtures/f1_cache_bahrain2024/ statt
+auf den Standardpfad ``~/f1_cache``. ein frischer Runner hat keinen warmen
+Cache. Tests gegen den eigenen ``~/f1_cache`` haengen sonst vom Zufall ab
+und sind keine echten Fixtures. der committete Ausschnitt ist
+deterministisch fuer jeden, der das Repo klont.
 """
 from __future__ import annotations
 
@@ -47,8 +40,8 @@ def quali_session():
 
 @pytest.fixture(scope="session")
 def race_session_tel():
-    """Wie race_session, aber mit Telemetrie - fuer P37/P39-Bausteine
-    (lap_simulation, overtake_summary), die ohne nicht auskommen."""
+    """wie race_session, aber mit Telemetrie. fuer lap_simulation/
+    overtake_summary, die ohne nicht auskommen."""
     f1lab.enable_cache(path=FIXTURE_CACHE, offline=True)
     return f1lab.load(FIXTURE_SEASON, FIXTURE_EVENT, "R", telemetry=True)
 

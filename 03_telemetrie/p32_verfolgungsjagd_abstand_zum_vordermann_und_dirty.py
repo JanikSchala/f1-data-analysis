@@ -1,70 +1,4 @@
-"""
-P32 - Verfolgungsjagd: Abstand zum Vordermann und Dirty Air
-===========================================================
-
-DistanceToDriverAhead auswerten: Wie viel Pace kostet es, im Windschatten zu haengen?
-
-Kategorie:   Telemetrie
-Niveau:      Profi
-Aufwand:     4-5 h
-Schwerpunkt: Strategie, Datenanalyse
-
-WARUM DAS LOHNT
-Dirty Air ist DAS Thema seit der Regelaenderung 2022. Der add_driver_ahead()-Kanal ist rechenintensiv - dass du ihn nutzt, zeigt Tiefe.
-
-VORGEHEN
-  1. Telemetrie eines Fahrers mit add_driver_ahead() anreichern
-  2. Je Runde den Medianabstand zum Vordermann berechnen
-  3. Rundenzeit gegen Abstand regressieren (nur gruene Runden)
-  4. Schwellenwert finden, ab dem Dirty Air spuerbar wird
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Telemetry.add_driver_ahead
-  - DistanceToDriverAhead
-  - DriverAhead
-  - Laps.get_telemetry
-  - f1lab.fuel_correct / f1lab.fit_degradation (Bereinigung vor der Regression)
-
-AUSBAUSTUFE  [umgesetzt]
-Dieselbe Analyse fuer mehrere Strecken wiederholen und pruefen, wo Dirty Air
-am staerksten wirkt - Highspeed- gegen Winkelkurse.
-
-Zwei Korrekturen an der urspruenglichen Fassung - die erste aendert das
-Ergebnis nicht nur spuerbar, sondern komplett:
-
-Erstens fehlte die Treibstoffkorrektur komplett - nur Reifenalter wurde
-herausgerechnet (per Hand mit np.linalg.lstsq), Sprit nicht. Der Unterschied
-ist nicht klein: fuer SAI in Spanien 2024 findet die urspruengliche Rechnung
-einen Zusammenhang von +0.026 s je 1 Prozentpunkt Zeit unter 50 m, mit
-R^2 = 0.41 - ein scheinbar klares Ergebnis. Sobald fuel_correct() (P04) vor
-der Degradations-Bereinigung laeuft, bricht der Zusammenhang auf
-+0.001 s (R^2 = 0.002) zusammen: praktisch nichts. Die urspruengliche Fassung
-hatte den Treibstoffeffekt (~0.03 s/Runde/kg) gemessen, nicht Dirty Air -
-beides korreliert ueber eine Renndistanz, weil beide mit der Rundenzahl
-laufen. Statt der Handrechnung fuer die Degradation uebernimmt jetzt
-f1lab.fit_degradation() - dieselbe, getestete Funktion wie in P13/Dashboard.
-
-Zweitens lief die urspruengliche Fassung add_driver_ahead() einzeln pro
-Runde in einer Schleife - bei ~55 Runden ~55 Einzelaufrufe. Wie in P20/P05
-bemerkt: einmal auf die *gesamte* Renntelemetrie eines Fahrers angewendet,
-ist dieselbe Funktion um ein Vielfaches schneller (ein Aufruf statt
-Rundenzahl-viele) und liefert identische Werte - die Kosten stecken im
-Funktionsaufruf selbst, nicht in der Datenmenge pro Aufruf.
-
-Ergebnis ueber drei Strecken (je 8 Fahrer, gruene Runden, treibstoff- und
-degradationsbereinigt): Bahrain +0.005 s je 1 Prozentpunkt Zeit unter 50 m
-(R^2 = 0.07), Monaco +0.007 s (R^2 = 0.05), Monza -0.002 s (R^2 = 0.01). Das
-widerspricht der ueblichen Annahme "Dirty Air trifft Winkelkurse haerter"
-eher, als sie zu bestaetigen - mit dem Vorbehalt, dass alle drei R^2-Werte
-niedrig sind: der Effekt ist (nach Korrektur) real, aber schwach gegenueber
-der uebrigen Streuung einer Rundenzeit (Fahrfehler, Verkehr,
-Streckenentwicklung).
-
-Beide Bausteine (Abstandsermittlung, Regression) sitzen seit der
-App-Integration in f1lab.close_following()/f1lab.dirty_air_effect() -
-dieselben Funktionen wie der Verfolgung-Reiter der Renndynamik-Seite im
-Dashboard.
-"""
+"""regressiert bereinigte rundenzeit gegen abstand zum vordermann und vergleicht den dirty-air-effekt ueber mehrere strecken"""
 from __future__ import annotations
 
 import sys
@@ -75,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import numpy as np

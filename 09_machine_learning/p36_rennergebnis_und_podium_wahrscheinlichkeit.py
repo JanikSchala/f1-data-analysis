@@ -1,89 +1,4 @@
-"""
-P36 - Rennergebnis- und Podium-Wahrscheinlichkeit vorhersagen
-===============================================================
-
-Aus Startplatz, Form und Zuverlaessigkeit: wie wahrscheinlich ist ein Podium, und auf welcher Position landet ein Fahrer voraussichtlich?
-
-Kategorie:   Machine Learning
-Niveau:      Profi
-Aufwand:     6-7 h
-Schwerpunkt: Datenanalyse
-Zusaetzliche Pakete: scikit-learn
-
-WARUM DAS LOHNT
-P23 sagt die Quali-Position voraus - dieses Projekt geht den Schritt weiter
-zum Rennergebnis selbst, mit einer echten Wahrscheinlichkeitsangabe statt
-nur einer Punktschaetzung ("wie wahrscheinlich Podium", nicht nur "welcher
-Platz"). Startplatz ist in der Formel 1 ein extrem starker Praediktor - der
-eigentliche Test ist, ob Form und Zuverlaessigkeit ueber den reinen
-Startplatz hinaus etwas beitragen, und ob die Wahrscheinlichkeitsangabe
-kalibriert ist (eine Vorhersage "70% Podium" muss auch ueber viele Faelle
-in etwa 70% der Zeit eintreffen, sonst ist sie keine echte Wahrscheinlichkeit).
-
-VORGEHEN
-  1. Rennergebnisse ueber mehrere Saisons sammeln (Grid, Zielposition, Status)
-  2. Features: Grid, rollierende Fahrer-/Team-Form, rollierende DNF-Quote
-     (alle um eine Runde verschoben, damit das aktuelle Rennen nicht in die
-     eigene Formkurve einfliesst - derselbe Kunstgriff wie in P23)
-  3. Zwei Modelle: Podium-Wahrscheinlichkeit (Klassifikation) und
-     Zielposition (Regression, nur klassifizierte/gefinishte Ergebnisse)
-  4. TimeSeriesSplit-Validierung gegen die Baseline "Startplatz bleibt
-     Zielplatz"
-  5. Kalibrierung der Podium-Wahrscheinlichkeit pruefen (Reliability-Kurve)
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Session.results (GridPosition/Position/Status/Points), konsequent aus
-    der FastF1-Session statt Ergast - wie in P23 begruendet
-  - sklearn HistGradientBoostingClassifier/Regressor, calibration_curve
-
-AUSBAUSTUFE  [umgesetzt]
-Kalibrierung der Podium-Wahrscheinlichkeit: die Vorhersagen in Bins sortiert
-(0-10%, 10-20%, ...) und je Bin die tatsaechliche Podium-Quote gegen die
-mittlere vorhergesagte Wahrscheinlichkeit verglichen (Brier Score als
-Gesamtmass). Ergebnis siehe Docstring-Ergaenzung nach dem ersten echten Lauf
-weiter unten - Zahlen werden erst nach der Verifikation gegen echte Daten
-eingetragen, nicht vorher behauptet.
-
-ERGEBNIS (Saisons 2022-2024, 1359 Fahrer-Rennen/68 Rennen, TimeSeriesSplit,
-5 Folds; Basisrate Podium 15.0%, DNF-Quote 20.7%):
-
-Podium-Klassifikation: ROC-AUC 0.905 - deutlich ueber 0.5 (Zufall), das
-Modell trennt Podium/Nicht-Podium klar. Brier Score 0.093 gegen 0.127 fuer
-die Baseline (immer die Basisrate 15%) - eine echte Verbesserung. Die
-Grid<=3-Heuristik als zweite, haerter geschnittene Baseline kommt auf 0.884
-Accuracy - hoch, aber nicht direkt mit dem ROC-AUC vergleichbar (andere
-Metrik, kein gemeinsamer Schwellenwert); der eigentliche Mehrwert des
-Modells ist die abgestufte Wahrscheinlichkeit, nicht ein hartes Ja/Nein.
-
-Permutation Importance ueberrascht gegenueber der Erwartung "Grid dominiert
-alles": grid (0.101) fuehrt knapp vor team_form (0.075) - die aktuelle
-Team-/Auto-Form traegt fast so viel zur Podium-Vorhersage bei wie der
-Startplatz selbst. driver_form (0.006) und dnf_rate (-0.004, im Rahmen des
-Rauschens) tragen dagegen praktisch nichts bei - plausibel, weil grid
-bereits die aktuelle Form des Fahrer-Auto-Pakets fuer DIESES Wochenende
-einpreist, waehrend driver_form nur die (schwaechere) individuelle
-Fahrerkomponente separat erfasst.
-
-Kalibrierung ist der ehrlichste Teil des Befunds: das Modell ist NICHT
-gleichmaessig gut kalibriert, sondern systematisch ueberkonfident im oberen
-Wahrscheinlichkeitsbereich - bei vorhergesagten 45-95% Podium-Chance liegt
-die tatsaechliche Quote durchgaengig 10-30 Prozentpunkte darunter (z.B.
-vorhergesagt 85.5%, beobachtet nur 53.6%). Nur am unteren Ende (<15%
-vorhergesagt) ist die Kalibrierung sauber. Mit ~270 Testfaellen je Bin-Satz
-sind einzelne Bins duenn besetzt, aber der Trend ist ueber alle oberen Bins
-konsistent genug, um kein reines Rauschen zu sein: das Modell tut sich
-schwer, "sehr wahrscheinlich Podium" von "ziemlich wahrscheinlich Podium"
-zuverlaessig zu unterscheiden - fuer eine ehrliche Wahrscheinlichkeitsangabe
-braeuchte es entweder mehr Daten oder eine explizite Kalibrierungsstufe
-(Platt-Scaling/Isotonic Regression), die hier bewusst nicht nachtraeglich
-draufgesetzt wird, um das ungeschoente Rohergebnis zu zeigen.
-
-Positions-Regression (nur gefinishte Ergebnisse): MAE 2.42 Positionen gegen
-Baseline (Grid=Ziel) 2.87 - eine spuerbare, nicht nur kosmetische
-Verbesserung (~16% relativ). Anders als bei der urspruenglichen Annahme
-"Startplatz erklaert fast alles" tragen Form und Team-Staerke hier
-sichtbar zur Genauigkeit bei, nicht nur zur Feinabstimmung.
-"""
+"""sagt podium-wahrscheinlichkeit und zielposition per gradient boosting aus startplatz, form und dnf-quote vorher und prüft die kalibrierung"""
 from __future__ import annotations
 
 import sys
@@ -125,9 +40,8 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def sammle_rennen(jahre: range) -> pd.DataFrame:
-    """VORGEHEN 1: Grid/Ziel/Status je Fahrer und Rennen, direkt aus der
-    FastF1-Session (Session.results) - wie in P23 begruendet, konsequent
-    ohne Ergast fuer Daten, die FastF1 selbst schon liefert."""
+    """Grid/Ziel/Status je Fahrer und Rennen, direkt aus der FastF1-Session (Session.results).
+    Konsequent ohne Ergast für Daten, die FastF1 selbst schon liefert."""
     rows = []
     for jahr in jahre:
         sched = fastf1.get_event_schedule(jahr, include_testing=False)
@@ -155,10 +69,8 @@ def sammle_rennen(jahre: range) -> pd.DataFrame:
 
 
 def form_anhaengen(races: pd.DataFrame, fenster: int = FORM_FENSTER) -> pd.DataFrame:
-    """VORGEHEN 2: rollierende Fahrer-/Team-Form (mittlere Zielposition) und
-    rollierende DNF-Quote je Fahrer, alle um ein Rennen verschoben (shift(1)) -
-    derselbe Kunstgriff wie P23s team_form, damit das aktuelle Rennen nicht
-    in die eigene Formkurve einfliesst."""
+    """rollierende Fahrer-/Team-Form (mittlere Zielposition) und rollierende DNF-Quote je Fahrer, alle um ein Rennen verschoben (shift(1)).
+    Derselbe Kunstgriff wie P23s team_form, damit das aktuelle Rennen nicht in die eigene Formkurve einfließt."""
     races = races.sort_values(["season", "round"]).copy()
 
     races["driver_form"] = (races.groupby(["season", "driver"])["position"]
@@ -179,15 +91,13 @@ def form_anhaengen(races: pd.DataFrame, fenster: int = FORM_FENSTER) -> pd.DataF
 
 def kalibrierung(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10
                  ) -> pd.DataFrame:
-    """VORGEHEN 5/AUSBAUSTUFE: Reliability-Kurve - vorhergesagte gegen
-    tatsaechliche Podium-Quote je Wahrscheinlichkeits-Bin."""
+    """Reliability-Kurve: vorhergesagte gegen tatsächliche Podium-Quote je Wahrscheinlichkeits-Bin."""
     beob, vorh = calibration_curve(y_true, y_prob, n_bins=n_bins, strategy="uniform")
     return pd.DataFrame({"vorhergesagt": vorh, "beobachtet": beob})
 
 
 def zeichne_modellvergleich(ax, mae: float, mae_baseline: float,
                             auc: float, acc_baseline: float) -> None:
-    """VORGEHEN 4."""
     labels = ["Position\n(Modell)", "Position\n(Grid=Ziel)"]
     werte = [mae, mae_baseline]
     ax.bar(labels, werte, color=[SERIEN[0], MUTED], width=0.5)
@@ -205,7 +115,6 @@ def zeichne_modellvergleich(ax, mae: float, mae_baseline: float,
 
 def zeichne_kalibrierung(ax, kal: pd.DataFrame, brier: float,
                          brier_baseline: float) -> None:
-    """AUSBAUSTUFE."""
     ax.plot([0, 1], [0, 1], color=MUTED, lw=1, ls="--", label="perfekt kalibriert")
     ax.plot(kal["vorhergesagt"], kal["beobachtet"], marker="o", ms=6,
            color=SERIEN[1], lw=2, label="Modell")
@@ -221,7 +130,6 @@ def zeichne_kalibrierung(ax, kal: pd.DataFrame, brier: float,
 
 
 def zeichne_importance(ax, imp_s: pd.Series) -> None:
-    """VORGEHEN 4/5."""
     farben = [SERIEN[0] if v == imp_s.max() else MUTED for v in imp_s.to_numpy()]
     ax.barh(imp_s.index, imp_s.to_numpy(), color=farben, height=0.6)
     ax.set_xlabel("Permutation Importance (AUC-Abfall)")

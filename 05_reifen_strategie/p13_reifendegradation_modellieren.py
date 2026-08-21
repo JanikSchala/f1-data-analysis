@@ -1,74 +1,4 @@
-"""
-P13 - Reifendegradation modellieren
-===================================
-
-Pro Stint eine Regression Rundenzeit ~ TyreLife. Die Steigung ist die Degradation in s pro Runde.
-
-Kategorie:   Reifen & Strategie
-Niveau:      Fortgeschritten
-Aufwand:     4-5 h
-Schwerpunkt: Strategie, Datenanalyse
-
-WARUM DAS LOHNT
-Degradation ist die zentrale Groesse jeder Strategieentscheidung. Wenn du sie sauber schaetzt und Fuel-Effekt trennst, denkst du wie ein Strategie-Ingenieur.
-
-VORGEHEN
-  1. Stints ueber Driver+Stint gruppieren, In-/Out-Laps entfernen
-  2. Fuel-Korrektur anwenden (ca. 0.03 s/Runde/kg, ~1.8 kg Verbrauch/Runde)
-  3. Lineare Regression je Stint, Steigung = Degradation
-  4. Aggregation je Compound und Vergleich der Teams
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps Compound/TyreLife/Stint/FreshTyre
-  - Laps.pick_compounds
-  - numpy polyfit
-
-AUSBAUSTUFE  [umgesetzt]
-Ersetze die lineare Regression durch ein Modell mit Cliff-Effekt (stueckweise
-linear) und finde den Knickpunkt je Compound.
-
-VORGEHEN 1-3 laufen ueber f1lab.clean_laps()/fuel_correct() (Punkt 1-2) und
-f1lab.degradation() (Punkt 3, ruft intern fit_degradation() je Stint) -
-dieselben Bausteine wie die Reifen-Seite im Dashboard, hier zusaetzlich mit
-den Rohdaten fuer die Kurven-Grafik. Bahrain 2024 R: 62 Stints mit
-mindestens 6 Runden (59 belastbar), Degradation im Median 0.095 s/Runde auf
-Hard, 0.124 auf Soft - McLaren im Team-Mittel am flachsten (0.091), Williams
-am staerksten betroffen (0.140).
-
-AUSBAUSTUFE als f1lab.find_cliff(): stueckweise lineare Anpassung mit einer
-Modellwahl ueber die Fehlerquadratsumme (nur akzeptiert, wenn die zweite
-Steigung die erste deutlich uebertrifft). Von 50 Stints mit mindestens 10
-Runden zeigen 19 (38 %) einen echten Knick - kein Nischenfall, aber auch
-nicht die Mehrheit: der Reifen degradiert in Bahrain meistens durchgehend
-linear genug, dass ein einfacher Fit ausreicht. Deutlichstes Beispiel:
-Alonsos zweiter Stint (Hard, 24 Runden) laeuft bis Reifenalter 22 mit
-0.07 s/Runde, danach mit 0.50 s/Runde - der Reifen bricht in den letzten
-drei Runden sichtbar ein.
-
-ZWEITE AUSBAUSTUFE: ``Laps.FreshTyre`` stand im urspruenglichen Docstring
-schon als "genutzter Baustein", wurde aber nie tatsaechlich gelesen -
-``f1lab.degradation()`` traegt es jetzt als eigene Spalte (zweiter
-Konsument: dieselbe Tabelle auf der Reifen-Seite im Dashboard). Bahrain
-2024 R, nur belastbare Fits: frische Hard-Reifen degradieren mit 0.097
-s/Runde (n=36, keine wiederverwendeten Hard-Stints in den belastbaren
-Fits), bei Soft dagegen degradieren wiederverwendete Saetze LANGSAMER
-(0.111 s/Runde, n=10) als frische (0.150 s/Runde, n=13) - das Gegenteil der
-naheliegenden Erwartung "abgefahrener Reifen baut schneller ab". Plausibler Grund ist kein Reifeneffekt, sondern ein
-Auswahleffekt: wiederverwendete Saetze sind meist die zweitbesten aus dem
-Training, gezielt fuer kuerzere, konservativer gefahrene Stints eingesetzt
-(oft ein Boxenfenster unter Safety Car) statt gepusht - der Vergleich misst
-also eher Einsatzmuster als Gummizustand. Ohne eine zweite, unabhaengige
-Session waere dieser Unterschied zwischen echtem Reifeneffekt und
-Strategieauswahl nicht aufzuloesen.
-
-``Laps.IsPersonalBest`` (ebenfalls ungenutzt) markiert in der
-Degradationskurve jetzt sichtbar, auf welchem Reifenalter die persoenliche
-Bestzeit eines Fahrers faellt - in Bahrain 2024 R faellt sie fast durchgehend
-frueh im Stint (Median Reifenalter 3, Mittel 4.0 - ein paar spaete
-Ausreisser ziehen den Mittelwert nach oben, siehe Max 22), plausibel:
-frischer Reifen und weniger Sprit sind stark genug, dass eine spaete Runde
-selten die eigene Bestzeit noch schlaegt.
-"""
+"""schätzt die reifendegradation je stint per regression und sucht nach cliff-effekten im abbau"""
 from __future__ import annotations
 
 import sys
@@ -79,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -101,7 +31,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def cliffs_suchen(laps: pd.DataFrame) -> list[dict]:
-    """AUSBAUSTUFE: f1lab.find_cliff() je Stint mit genug Runden."""
+    """sucht cliffs per f1lab.find_cliff() je stint mit genug runden."""
     treffer = []
     for (drv, stint), g in laps.groupby(["Driver", "Stint"]):
         g = g.sort_values("TyreLife")
@@ -119,7 +49,7 @@ def cliffs_suchen(laps: pd.DataFrame) -> list[dict]:
 
 
 def zeichne_kurven(ax, laps: pd.DataFrame) -> None:
-    """VORGEHEN 3: alle Stints, Fuel-korrigiert, eingefaerbt nach Mischung."""
+    """zeichnet alle stints fuel-korrigiert, eingefärbt nach mischung."""
     for (_, _), g in laps.groupby(["Driver", "Stint"]):
         if len(g) < MIN_RUNDEN:
             continue
@@ -132,8 +62,6 @@ def zeichne_kurven(ax, laps: pd.DataFrame) -> None:
         if mischung in vorhanden:
             ax.plot([], [], color=COMPOUND[mischung], lw=2, label=mischung.title())
 
-    # ZWEITE AUSBAUSTUFE: IsPersonalBest (bislang ungenutzt) - auf welchem
-    # Reifenalter faellt die eigene Bestzeit im Stint?
     pb = laps[laps["IsPersonalBest"]]
     ax.scatter(pb["TyreLife"], pb["corrected"], marker="*", s=90,
               facecolors="none", edgecolors=FG, linewidths=1.1, zorder=3,
@@ -151,8 +79,7 @@ def zeichne_kurven(ax, laps: pd.DataFrame) -> None:
 
 
 def zeichne_teams(ax, deg: pd.DataFrame) -> None:
-    """VORGEHEN 4: mittlere Degradation je Team, nur belastbare Fits, die
-    drei Teams mit der staerksten Degradation hervorgehoben."""
+    """zeigt die mittlere degradation je team nur für belastbare fits. die drei teams mit der stärksten degradation sind hervorgehoben."""
     rel = deg[deg["reliable"]]
     je_team = rel.groupby("team")["deg_s_per_lap"].mean().sort_values()
     farben = [SERIEN[1] if i >= len(je_team) - 3 else MUTED
@@ -168,8 +95,7 @@ def zeichne_teams(ax, deg: pd.DataFrame) -> None:
 
 
 def zeichne_cliff(ax, beispiel: dict) -> None:
-    """AUSBAUSTUFE: staerkstes Cliff-Beispiel, zwei Geraden ueber den echten
-    Runden."""
+    """zeichnet das stärkste cliff-beispiel als zwei geraden über die echten runden."""
     g = beispiel["laps"]
     ax.scatter(g["TyreLife"], g["corrected"], s=26, color=MUTED, zorder=2)
     knick = beispiel["knick_tyrelife"]
@@ -197,9 +123,7 @@ def zeichne_cliff(ax, beispiel: dict) -> None:
 
 
 def zeichne_frischevergleich(ax, deg: pd.DataFrame) -> None:
-    """ZWEITE AUSBAUSTUFE: Degradation frischer gegen wiederverwendeter
-    Reifen, je Mischung getrennt (Compound ist ein starker Konfundierer -
-    nur belastbare Fits, nur Mischungen mit Faellen in beiden Gruppen)."""
+    """vergleicht degradation frischer gegen wiederverwendeter reifen je mischung getrennt weil compound sonst als konfundierer wirkt. nur belastbare fits und nur mischungen mit fällen in beiden gruppen."""
     rel = deg[deg["reliable"]]
     tab = rel.groupby(["compound", "fresh"])["deg_s_per_lap"].agg(
         ["mean", "count"])

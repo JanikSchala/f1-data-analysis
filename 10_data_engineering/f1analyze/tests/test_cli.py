@@ -57,19 +57,15 @@ def test_traffic_command_rejects_impossible_stop_count(race_session):
 
 
 def test_garbage_event_name_is_fuzzy_matched_not_rejected(race_session):
-    """Kein sauberer Fehlerfall, sondern ein echter Fund: FastF1 lehnt einen
-    unbekannten Streckennamen nicht ab, sondern korrigiert ihn per
-    Fuzzy-Matching auf die naechstliegende echte Strecke - stillschweigend,
-    nur als WARNING geloggt. Ein Tippfehler in der CLI analysiert damit ohne
-    Fehlermeldung das falsche Rennen. Der Test haelt das aktuelle Verhalten
-    fest statt einen Fehlerfall zu behaupten, der so nicht eintritt.
+    """FastF1 lehnt einen unbekannten Streckennamen nicht ab. es korrigiert
+    ihn still per Fuzzy-Matching auf die naechstliegende echte Strecke, nur
+    als WARNING geloggt. ein Tippfehler in der CLI analysiert damit ohne
+    Fehlermeldung das falsche Rennen. der Test haelt dieses Verhalten fest.
 
-    Absichtlich auf "Bahrain" gemuenzt (statt eines beliebigen Garbage-
-    Strings): der Fixture-Cache (tests/fixtures/f1_cache_bahrain2024/)
-    deckt nur dieses eine Event ab, seit load_session() eine von aussen
-    gesetzte Offline-Cache-Konfiguration nicht mehr stillschweigend
-    ueberschreibt (siehe f1lab.cache_ready(), CLAUDE.md-Nachtrag) - ein
-    Fuzzy-Match auf ein nicht gecachtes Event wuerde jetzt korrekt mit
-    DataNotLoadedError statt eines stillen Netzzugriffs scheitern."""
+    absichtlich auf "Bahrain" gemuenzt statt eines beliebigen Garbage-Strings:
+    der Fixture-Cache deckt nur dieses eine Event ab, und load_session()
+    ueberschreibt eine von aussen gesetzte Offline-Cache-Konfiguration nicht
+    mehr stillschweigend. ein Fuzzy-Match auf ein nicht gecachtes Event
+    wuerde sonst mit DataNotLoadedError scheitern."""
     result = runner.invoke(app, ["pace", "2024", "komplett falsche Strecke Bahrain"])
     assert result.exit_code == 0

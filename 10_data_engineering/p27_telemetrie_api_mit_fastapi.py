@@ -1,81 +1,4 @@
-"""
-P27 - Telemetrie-API mit FastAPI
-================================
-
-Ein REST-Service, der aufbereitete F1-Daten ausliefert: Endpunkte fuer Sessions, Runden, Telemetrie und Vergleiche.
-
-Kategorie:   Data Engineering
-Niveau:      Profi
-Aufwand:     6-8 h
-Schwerpunkt: Engineering
-Zusaetzliche Pakete: fastapi, uvicorn, pydantic
-
-WARUM DAS LOHNT
-Zeigt, dass du nicht nur Notebooks schreibst, sondern Datenprodukte baust. Mit Pydantic-Modellen, Caching und OpenAPI-Doku ist es sofort vorzeigbar.
-
-VORGEHEN
-  1. Pydantic-Response-Modelle definieren
-  2. Session-Loader mit lru_cache, damit nicht jede Anfrage neu laedt
-  3. Endpunkte: /sessions, /laps, /telemetry, /compare
-  4. Downsampling der Telemetrie fuer die Antwortgroesse
-  5. Mit uvicorn starten, Swagger unter /docs pruefen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - fastf1 Session/Laps/Telemetry
-  - FastAPI
-  - pydantic
-  - functools.lru_cache
-
-AUSBAUSTUFE  [umgesetzt]
-Setz Redis als zweite Cache-Ebene davor und miss die p95-Latenz mit locust
-unter Last.
-
-VORGEHEN 3 nannte vier Endpunkte, gebaut waren nur drei - /compare fehlte
-komplett. Ergaenzt mit fastf1.utils.delta_time() (derselbe Baustein wie
-P07), Distanz/Speed beider Fahrer plus die kontinuierliche Zeitdifferenz.
-
-VORGEHEN 2 ("Session-Loader mit lru_cache") ist bereits erledigt, ohne dass
-hier neu gebaut werden muss: f1lab.load() traegt selbst schon
-@lru_cache(maxsize=32). Ein zweiter Loader-Cache waere eine dritte Kopie
-derselben Idee - stattdessen direkt f1lab.load() verwendet, wie im Rest des
-Projekts.
-
-AUSBAUSTUFE: weder redis noch locust stehen in requirements.txt, und ein
-lokaler Redis-Server ist in dieser Umgebung nicht installiert (gilt
-vermutlich fuer die meisten Rechner, auf denen das Projekt entwickelt wuerde,
-ohne dass extra Infrastruktur hochgefahren wird). Umgesetzt ist deshalb die
-Idee dahinter, nicht die konkreten Tools: eine simple TTL-Antwort-Cache-
-Ebene VOR den teuren Endpunkten (/telemetry, /compare) - das ist genau,
-wofuer Redis in Produktion stehen wuerde, nur ohne Persistenz und ohne
-geteilten Zustand ueber mehrere Prozesse. Die Lastmessung ersetzt locust
-durch einen kleinen Benchmark mit stdlib (ThreadPoolExecutor +
-urllib.request): echte HTTP-Anfragen gegen einen echten, lokal gestarteten
-uvicorn-Prozess, p50/p95/p99 kalt (erster Aufruf, Cache-Miss) gegen warm
-(Cache-Hit) gemessen. Das erledigt nebenbei auch VORGEHEN 5 ("mit uvicorn
-starten, Swagger pruefen") automatisiert statt als manueller Schritt.
-
-Gemessen gegen /telemetry/2024/Spain/R/VER (lokal, gegen den gefuellten
-FastF1-Cache): kalter Aufruf 1846 ms, warme Aufrufe (40x, 8 parallel) p50
-4.1 ms / p95 5.5 ms - Faktor 446 fuer den p50. Zum Einordnen, was allein
-f1lab.load()s Sessioncache (ohne die Antwort-Cache-Ebene) bringt: /laps auf
-derselben Strecke liegt bei p50 304 ms, p95 aber bei 3794 ms - unter 8
-parallelen Anfragen ohne Antwort-Cache dominiert die pandas-Filterung pro
-Request und die Formulierung der Response neu, mit deutlich hoeherer
-Streuung als mit der Cache-Ebene davor.
-
-Nachtrag (2026-08-17): drei neue Endpunkte fuer P35/P39/P41 -
-/strategy (exakter Boxenstopp-Plan), /overtakes (Ueberholorte gegen
-DRS-Zonen), /traffic (Verkehrs-Simulation gegen eine Alternative).
-/overtakes und /traffic teilen sich dieselbe TTL-Antwort-Cache-Ebene wie
-/telemetry und /compare - beide sind teuer genug (Telemetrie-Auswertung
-bzw. Monte-Carlo-Simulation), dass sich das lohnt. /strategy dagegen
-nicht: braucht keine Telemetrie und ist schon aus dem
-f1lab.load()-Sessioncache heraus schnell genug. P38 (Ueberholschwierigkeit
-je Strecke) und P40 (Startplatz-Paritaet) bewusst OHNE Endpunkt - beide
-brauchen einen Season-Scan ueber Dutzende bis hunderte Sessions (Minuten),
-das wuerde jede HTTP-Anfrage blockierend genauso lange haengen lassen,
-kein Fall fuer einen synchronen GET-Endpunkt.
-"""
+"""liefert aufbereitete F1-Daten als REST-API mit FastAPI aus, inklusive einer TTL-Antwort-Cache-Ebene."""
 from __future__ import annotations
 
 import json
@@ -102,16 +25,15 @@ import f1lab
 warnings.filterwarnings("ignore")
 fastf1.set_log_level("ERROR")
 
-# Modulweit statt nur in __main__, damit auch "uvicorn p27_...:app" (der
-# reguläre Produktionsstart, siehe Kopfzeile) einen aktiven Cache vorfindet.
+# modulweit statt nur in __main__. so findet auch "uvicorn p27_...:app"
+# als regulaerer produktionsstart einen aktiven cache vor.
 f1lab.enable_cache()
 
 app = FastAPI(title="F1 Telemetry API", version="1.0")
 
-# --- AUSBAUSTUFE: zweite Cache-Ebene vor den teuren Endpunkten -----------
-# Was Redis in Produktion waere: ein Antwort-Cache mit TTL, unabhaengig vom
-# f1lab.load()-Sessioncache darunter. Hier in-process statt extern, siehe
-# Docstring fuer die Begruendung.
+# zweite cache-ebene vor den teuren endpunkten: ein antwort-cache mit TTL,
+# unabhaengig vom f1lab.load()-sessioncache darunter. steht hier in-process
+# statt extern (Redis) zur vermeidung zusaetzlicher infrastruktur.
 _ANTWORT_CACHE: dict[str, tuple[float, object]] = {}
 CACHE_TTL_S = 300.0
 
@@ -152,7 +74,7 @@ class ComparePoint(BaseModel):
     distance: float
     speed_a: float
     speed_b: float
-    delta_s: float     # positiv = Fahrer B liegt zu diesem Zeitpunkt vorn
+    delta_s: float     # positiv: fahrer B liegt zu diesem zeitpunkt vorn
 
 
 class OvertakeOut(BaseModel):
@@ -276,8 +198,8 @@ def compare(year: int, gp: str, ident: str, driver_a: str, driver_b: str,
 
 @app.get("/strategy/{year}/{gp}", response_model=StrategyOut)
 def strategy(year: int, gp: str):
-    """Exakt bester Boxenstopp-Plan (P35). Keine Telemetrie noetig, kein
-    Antwort-Cache - schon aus dem f1lab.load()-Sessioncache heraus schnell."""
+    """exakt bester Boxenstopp-Plan. keine Telemetrie noetig. kein Antwort-Cache:
+    schon aus dem f1lab.load()-Sessioncache heraus schnell genug."""
     try:
         s = f1lab.load(year, gp, "R", telemetry=False)
         cfg = f1lab.race_config_from_session(s)
@@ -292,10 +214,9 @@ def strategy(year: int, gp: str):
 
 @app.get("/overtakes/{year}/{gp}/{ident}", response_model=list[OvertakeOut])
 def overtakes(year: int, gp: str, ident: str):
-    """Ueberholungen dieser Session, lokalisiert und gegen DRS-Zonen
-    geprueft (P39). Braucht Telemetrie fuer Rennen UND Qualifying - siehe
-    f1lab.overtake_locations()-Docstring fuer den Grund (im Rennen selbst
-    oft keine offene DRS-Zone messbar)."""
+    """ueberholungen dieser Session, lokalisiert und gegen DRS-Zonen geprueft.
+    braucht Telemetrie fuer Rennen und Qualifying: im Rennen selbst ist oft
+    keine offene DRS-Zone messbar, siehe f1lab.overtake_locations()."""
     key = f"ov:{year}:{gp}:{ident}"
     cached = cache_get(key)
     if cached is not None:
@@ -317,10 +238,10 @@ def overtakes(year: int, gp: str, ident: str):
 @app.get("/traffic/{year}/{gp}", response_model=TrafficOut)
 def traffic(year: int, gp: str, alt_stops: int,
            delta: float = 0.15, gap: float = 3.0, p_overtake: float = 0.15):
-    """Verkehrs-Simulation (P41): DAG-Optimum gegen eine Alternative mit
-    ``alt_stops`` Stopps, beide gegen einen Rivalen simuliert. Rivalen-
-    Tempo/Startabstand/Ueberholwahrscheinlichkeit sind Szenario-Annahmen,
-    keine Messwerte - siehe P41."""
+    """Verkehrs-Simulation: DAG-Optimum gegen eine Alternative mit
+    ``alt_stops`` Stopps, beide gegen einen Rivalen simuliert. Rivalen-Tempo,
+    Startabstand und Ueberholwahrscheinlichkeit sind Szenario-Annahmen,
+    keine Messwerte."""
     key = f"tr:{year}:{gp}:{alt_stops}:{delta}:{gap}:{p_overtake}"
     cached = cache_get(key)
     if cached is not None:
@@ -399,8 +320,8 @@ def _perzentile(werte: list[float]) -> dict:
 
 
 def smoke_test_und_benchmark():
-    """VORGEHEN 5 + AUSBAUSTUFE: echte HTTP-Anfragen gegen einen echten
-    lokalen Server, dann p50/p95/p99 kalt gegen warm."""
+    """echte HTTP-Anfragen gegen einen echten lokalen Server. misst dann
+    p50/p95/p99 kalt gegen warm."""
     print("[1/3] uvicorn lokal starten und Endpunkte pruefen (VORGEHEN 5) ...")
     server, basis = _server_starten()
     try:
@@ -438,7 +359,7 @@ def smoke_test_und_benchmark():
              "(AUSBAUSTUFE) ...")
         kalte_url = (f"{basis}/telemetry/2024/Spain/R/VER?points=300")
         _ANTWORT_CACHE.clear()
-        kalt = [_request_dauer(kalte_url)]         # erster Aufruf: echte Arbeit
+        kalt = [_request_dauer(kalte_url)]         # erster aufruf: echte arbeit
         with ThreadPoolExecutor(max_workers=8) as ex:
             warm = list(ex.map(lambda _: _request_dauer(kalte_url), range(40)))
 

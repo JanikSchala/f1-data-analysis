@@ -1,58 +1,4 @@
-"""
-P04 - Race Pace Ranking: Wer war wirklich am schnellsten?
-=========================================================
-
-Endergebnis != Pace. Rangliste nach bereinigter Median-Pace pro Fahrer und Team, mit Konfidenzintervall.
-
-Kategorie:   Timing & Rundenanalyse
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Genau diese Frage stellt sich an der Boxenmauer nach jedem Rennen. Ein Ranking ohne Unsicherheitsangabe ist nur eine Meinung mit Nachkommastellen.
-
-VORGEHEN
-  1. Saubere Runden filtern
-  2. Median-Pace je Fahrer berechnen, Delta zum Schnellsten
-  3. Bootstrap-Konfidenzintervall (1000 Resamples)
-  4. Horizontaler Barplot in Team-Farben
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Session.laps
-  - Laps.pick_quicklaps
-  - Laps.groupby
-
-AUSBAUSTUFE  [umgesetzt]
-Treibstoffeffekt herausrechnen (0.03 s/Runde/kg, siehe f1lab.core.fuel_correct)
-und alle Runden auf leeren Tank normieren.
-
-Steckt jetzt in f1lab.race_pace() selbst statt nur in diesem Skript - Grund:
-pace_table() ist bereits die Grundlage der Pace-Seite im Dashboard, und eine
-unkorrigierte Pace ist keine Fussnote, sondern schlicht falsch: der Median
-haengt sonst nicht nur vom Tempo ab, sondern zusaetzlich davon, *wann* im
-Rennen die sauberen Runden eines Fahrers liegen. race_pace(kg_per_lap=0)
-schaltet die Korrektur ab und liefert damit exakt das alte, unkorrigierte
-Verhalten - der Vergleich unten nutzt genau das.
-
-Silverstone 2024 zeigt, warum das mehr als Kosmetik ist: unkorrigiert fuehrt
-Hamilton, korrigiert fuehrt Russell - beide Mercedes-Piloten desselben
-Rennens, das Ranking dreht sich an der Spitze allein durch die Korrektur.
-Der Grund liegt nicht in unterschiedlichem Tempo, sondern darin, wann die
-jeweils sauberen (nicht durch Verkehr, Undercut oder Ausreisser verzerrten)
-Runden im Rennen liegen - bei vollerem oder leererem Tank.
-
-Eine zweite, bewusste Abweichung von VORGEHEN Punkt 4: der Barplot faerbt
-nicht nach Team, sondern danach, ob sich ein Fahrer vom Schnellsten
-statistisch absetzt (Intervall ueberlappt nicht). 20 Fahrer brauchen 10
-Teamfarben - das sprengt die CVD-geprueften drei Kategoriefarben aus
-f1lab.design (MAX_SERIEN, siehe dortige Dokumentation) und waere an dieser
-Stelle auch die schwaechere Information: die Farbe der Pace-Seite im
-Dashboard beantwortet dieselbe Frage genauso, und genau die - nicht die
-Teamzugehoerigkeit - ist die eigentliche Aussage dieses Diagramms. Team-
-Farben zeigt stattdessen assets/race_pace.png (make_assets.py), wo die
-Zuordnung selbst die Aussage ist.
-"""
+"""rankt fahrer nach treibstoffkorrigierter median-pace mit konfidenzintervall"""
 from __future__ import annotations
 
 import sys
@@ -63,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -82,7 +28,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def zeichne_ranking(ax, tab: pd.DataFrame) -> None:
-    """Horizontaler Barplot der korrigierten Pace, wie auf der Pace-Seite."""
+    """horizontaler barplot der korrigierten pace wie auf der pace-seite."""
     p = tab.iloc[::-1]
     bester_hi = tab["ci_hi"].iloc[0]
     farben = [POSITIV if lo > bester_hi else SERIEN[0] for lo in p["ci_lo"]]
@@ -101,12 +47,8 @@ def zeichne_ranking(ax, tab: pd.DataFrame) -> None:
 
 
 def zeichne_rangwechsel(ax, roh: pd.DataFrame, korr: pd.DataFrame) -> None:
-    """Slope-Chart: Platzierung roh gegen korrigiert, verbunden je Fahrer.
-
-    Die Reihenfolge einer Rangliste allein zeigt nicht, *wie viel* sich
-    verschiebt - zwei benachbarte Linien, die sich kreuzen, sagen mehr als
-    die Zahl daneben.
-    """
+    """slope-chart: platzierung roh gegen korrigiert je fahrer. zeigt auch
+    wie stark sich der platz verschiebt, nicht nur die neue reihenfolge."""
     r = roh.reset_index(drop=True)
     k = korr.reset_index(drop=True)
     platz_roh = {d: i for i, d in enumerate(r["driver"])}

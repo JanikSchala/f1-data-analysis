@@ -1,87 +1,4 @@
-"""
-P35 - Rennstrategie-Optimierer: exakt statt geraten
-===================================================
-
-Der beste Boxenstopp-Plan eines Rennens, exakt berechnet statt aus Kandidaten
-ausgewaehlt - und daneben die Frage, was die Unsicherheit ueber Safety Cars kostet.
-
-Kategorie:   Reifen & Strategie
-Niveau:      Profi
-Aufwand:     6-8 h
-Schwerpunkt: Strategie, Optimierung
-
-WARUM DAS LOHNT
-P15 rechnet den Undercut zwischen zwei Autos aus, P13 liefert die Degradation.
-Was fehlt, ist die Klammer: welcher Plan ueber das ganze Rennen ist der beste?
-Der uebliche Weg waere, eine Handvoll Plaene (Einstopp, Zweistopp, ...)
-durchzurechnen und den schnellsten zu nehmen. Das ist unnoetig - das Problem
-hat eine Struktur, die den exakten Rundenplan in Millisekunden hergibt, ueber
-allen legalen Strategien statt ueber einer Auswahl.
-
-Der Kern: die Kosten eines Stints haengen nur von Mischung und Laenge ab, nicht
-davon, wo im Rennen er liegt. Damit ist die Aufgabe ein kuerzester Pfad in einem
-gerichteten azyklischen Graphen. Knoten j heisst "Runde j steht an", eine Kante
-s -> e+1 ist ein Stint ueber die Runden s..e. Jeder Pfad ist genau eine
-Strategie, seine Laenge genau die Rennzeit.
-
-Der zweite Teil beantwortet, was ein Plan ueberhaupt wert ist, wenn man den
-Rennverlauf nicht kennt. Ein Safety Car macht Boxenstopps billig; wann er kommt,
-weiss vorher niemand. Deshalb ist das richtige Objekt kein Plan, sondern eine
-Politik: eine Regel, was pro Runde zu tun ist, abhaengig von Reifen, Alter und
-aktueller Flagge. Die faellt aus derselben Rueckwaertsrechnung.
-
-VORGEHEN
-  1. Rundenzeitmodell je Mischung: Basiszeit + Degradation ueber Reifenalter
-  2. Alle legalen Stints als Kanten eines DAG aufzaehlen
-  3. Kuerzester Pfad mit Mischungs-Bitmaske (fuer die Zweimischungs-Regel)
-  4. Bester Plan je Stoppzahl und Sensitivitaet gegen den Pitloss
-  5. Safety Car als Markow-Kette, optimale Politik per Rueckwaertsinduktion
-  6. Zerlegung: was kostet Nichtwissen, was bringt Reagieren
-
-GENUTZTE FASTF1-BAUSTEINE
-  - keine fuer das Modell selbst (core.py, ohne Netz testbar).
-  - fuer die AUSBAUSTUFE: f1lab.race_config_from_session() speist die
-    Mischungsparameter aus echter Degradation (P13) und echtem Pitloss.
-
-AUSBAUSTUFE  [umgesetzt]
-Verkehr. Bisher faehrt genau ein Auto gegen die Uhr - keine Position, kein
-Ueberholen, kein Herauskommen hinter einem Langsameren. Genau das bricht die
-Trennbarkeit der Stintkosten und damit den kuerzesten Pfad. Wer das angeht,
-braucht ein anderes Verfahren (Simulation oder ein ganzzahliges Programm) und
-bekommt dafuer das erste Modell, in dem Reagieren wirklich viel wert ist -
-bewusst nicht umgesetzt, das waere ein eigenes Projekt.
-
-Nachtrag (2026-08-17): P38/P39 liefern inzwischen echte, quantifizierte
-Bausteine genau fuer dieses "eigene Projekt" - Ueberholschwierigkeit je
-Strecke (P38, Kurven/km korreliert mit r=-0.71 gegen Ueberholzahlen) und wo
-Ueberholungen tatsaechlich stattfinden (P39, ~76% in der DRS-Zone). Bewusst
-NICHT hier eingebaut: der naheliegende Versuch, daraus einen einzelnen
-"Verkehrs-Zuschlag" auf ``pit_loss`` zu rechnen, wuerde P32s Dirty-Air-Slope
-(R^2=0.01-0.07, siehe dort - real, aber schwach gegenueber der uebrigen
-Streuung) mit einer in diesem Modell gar nicht vorhandenen Groesse
-verknuepfen: der Wahrscheinlichkeit, nach einem Stopp ueberhaupt hinter
-einem Auto herauszukommen. Diese Zahl gibt es hier nicht (das Modell kennt
-keine anderen Autos), sie zu erfinden waere keine Kalibrierung, sondern eine
-Annahme mit Kalibrierungs-Anstrich. P38/P39 sind trotzdem die richtigen
-Eingaben, sobald die Simulation/das ganzzahlige Programm oben tatsaechlich
-gebaut wird - genau dafuer hier vermerkt, statt spekulativ vorwegzunehmen.
-
-Die zwei im urspruenglichen Docstring offen gelassenen Ausbauten sind jetzt
-da: die Optimierungslogik (TyreModel bis hindsight_value) steckt seit der
-App-Integration in f1lab.core neben undercut_gain (kein FastF1 noetig, siehe
-Test test_core_functions_are_numpy_only), und
-f1lab.session.race_config_from_session() baut eine RaceConfig aus echter
-Degradation und echtem Pitloss statt von Hand gesetzter Zahlen. Gegenprobe
-gegen Bahrain 2024 R: die geschaetzte Degradation (Hard 0.095 s/Runde, Soft
-0.124 s/Runde) trifft P13s dort unabhaengig ermittelte Werte praktisch exakt
-- derselbe zugrundeliegende Fit, nur diesmal als Eingabe fuer eine Optimierung
-statt als Tabellenzeile. Das echte Rennen zeigt dabei etwas, das das
-synthetische Beispiel nicht zeigen kann: mit nur zwei belastbaren Mischungen
-(Medium fehlt in den zuverlaessigen Fits) schrumpft der Loesungsraum
-gegenueber der Referenz mit drei Mischungen spuerbar - weniger Kandidaten,
-nicht weil das Modell schwaecher waere, sondern weil die Saison diese
-Session so gefahren wurde.
-"""
+"""berechnet den optimalen boxenstopp-plan eines rennens als kürzesten pfad und eine safety-car-politik per rückwärtsinduktion"""
 from __future__ import annotations
 
 import sys
@@ -112,11 +29,10 @@ REAL_EVENT = (2024, "Bahrain", "R")
 
 
 def reference_race() -> RaceConfig:
-    """Ein plausibles Einstopp-bis-Zweistopp-Rennen, 66 Runden.
+    """ein plausibles einstopp-bis-zweistopp-rennen, 66 runden.
 
-    Die Zahlen sind gesetzt, nicht geschaetzt - fuer echte Werte siehe
-    ``real_race()`` unten, das dieselbe RaceConfig aus f1lab.
-    race_config_from_session() gegen eine echte Session baut.
+    die zahlen sind von hand gesetzt, nicht geschätzt. für echte werte
+    siehe ``real_race()`` unten.
     """
     return RaceConfig(
         n_laps=66,
@@ -132,8 +48,7 @@ def reference_race() -> RaceConfig:
 
 
 def real_race():
-    """AUSBAUSTUFE: dieselbe RaceConfig, aber aus echter Degradation (P13)
-    und echtem Pitloss statt von Hand gesetzter Zahlen."""
+    """dieselbe RaceConfig, aber aus echter degradation und echtem pitloss statt von hand gesetzter zahlen."""
     f1lab.enable_cache()
     ses = f1lab.load(*REAL_EVENT, telemetry=False)
     return ses, f1lab.race_config_from_session(ses)

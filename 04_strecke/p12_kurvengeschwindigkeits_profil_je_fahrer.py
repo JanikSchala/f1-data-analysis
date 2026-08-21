@@ -1,51 +1,4 @@
-"""
-P12 - Kurvengeschwindigkeits-Profil je Fahrer
-=============================================
-
-Apex-Speed in jeder einzelnen Kurve, fuer alle Fahrer, als Heatmap. Zeigt Abtriebs- vs. Topspeed-Setups.
-
-Kategorie:   Strecke & Position
-Niveau:      Profi
-Aufwand:     4 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Aus Kurvenspeeds liest ein Aerodynamiker das Setup ab. Die Verbindung Circuit-Info x Telemetrie ist genau die Art Feature-Engineering, die F1-Teams suchen.
-
-VORGEHEN
-  1. Kurvenpositionen in Distanz entlang der Runde umrechnen
-  2. Fuer jede Kurve ein Distanzfenster definieren
-  3. Minimalgeschwindigkeit im Fenster je Fahrer bestimmen
-  4. Heatmap Fahrer x Kurve, normiert auf den Schnellsten
-
-GENUTZTE FASTF1-BAUSTEINE
-  - CircuitInfo.corners
-  - Lap.get_telemetry
-  - Telemetry.add_distance
-  - numpy searchsorted
-
-AUSBAUSTUFE  [umgesetzt]
-Fahrer per k-Means anhand ihres Kurvenprofils clustern.
-
-VORGEHEN 1-3 dupliziert nicht mehr die Kurven-Projektion, sondern ruft
-f1lab.corner_labels()/f1lab.corner_speeds() - dieselben Funktionen wie in
-P11, dort mit derselben Begruendung dokumentiert (eine Zuordnung, zwei
-Abnehmer statt zwei Implementationen).
-
-Die Hypothese "langsame gegen schnelle Kurven trennt Setups sauber" haelt
-der Nachpruefung nicht stand: die Korrelation zwischen dem eigenen Profil
-(Delta zum Feld, um den eigenen Mittelwert bereinigt) und der Kurven-
-geschwindigkeit ist fuer 19 von 20 Fahrern in Budapest 2024 negativ (Median
--0.50, Spanne -0.81 bis +0.23) - eine kontinuierliche Verteilung, kein
-Bruch, an dem sich zwei Gruppen sauber trennen liessen. Nur Verstappen
-faellt mit positivem Vorzeichen heraus, als einziger relativ staerker in
-schnellen als in langsamen Kurven. k-Means mit k=2 trennt entsprechend
-nicht nach Kurventyp, sondern nach Streuung: die eine Gruppe (16 Fahrer) hat
-ein gleichmaessigeres Profil ueber alle Kurven (mittlere absolute Abweichung
-vom eigenen Schnitt 4.9 km/h), die andere (BOT/RUS/PER/ZHO) ein unruhigeres
-(6.4 km/h) - Konsistenz, nicht Abtriebsphilosophie. Das ist die ehrlichere
-Lesart der zwei gefundenen Cluster, nicht die im Vorschlag unterstellte.
-"""
+"""baut eine heatmap der apex-speed je fahrer und kurve und clustert fahrer per k-means nach ihrem kurvenprofil"""
 from __future__ import annotations
 
 import sys
@@ -56,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -78,14 +31,8 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def zeichne_heatmap(ax, rel) -> None:
-    """VORGEHEN 4: Heatmap Fahrer x Kurve, normiert auf den Schnellsten je
-    Kurve (0 = Kurvenbester, negativ = Rueckstand).
-
-    Auf dem 10.-Perzentil gekappt statt auf das absolute Minimum: eine
-    einzelne unruhige Kurve (hier T1A, mit Deltas bis -35 km/h) wuerde sonst
-    allein die Farbskala strecken und die Unterschiede in allen anderen
-    Kurven flach erscheinen lassen.
-    """
+    """zeigt das apex-speed-delta zum kurvenbesten. faerbung ist auf dem 10. perzentil gekappt statt auf dem minimum.
+    eine einzelne unruhige kurve wuerde sonst allein die farbskala strecken."""
     vmin = float(np.percentile(rel.to_numpy(), 10))
     im = ax.imshow(rel.to_numpy(), cmap=RAMPE_CMAP, aspect="auto",
                    vmin=vmin, vmax=0)
@@ -102,9 +49,8 @@ def zeichne_heatmap(ax, rel) -> None:
 
 
 def zeichne_cluster(ax, profil, labels: np.ndarray) -> None:
-    """AUSBAUSTUFE: mittlere absolute Abweichung vom eigenen Kurvenschnitt
-    je Fahrer, eingefaerbt nach Cluster - der Wert, der die zwei Cluster
-    tatsaechlich trennt (siehe Docstring)."""
+    """zeigt die mittlere abweichung vom eigenen kurvenschnitt eingefaerbt nach cluster.
+    das ist der wert der die cluster tatsaechlich trennt."""
     streuung = profil.abs().mean(axis=1).sort_values()
     farbe = {0: SERIEN[0], 1: SERIEN[1]}
     labels_je_fahrer = dict(zip(profil.index, labels, strict=True))

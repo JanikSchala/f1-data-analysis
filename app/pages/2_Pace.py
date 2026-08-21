@@ -1,8 +1,8 @@
-"""Race Pace mit Konfidenzintervallen.
+"""race pace mit konfidenzintervallen.
 
-Die Aussage steht nicht im Ranking, sondern in den Intervallen: ueberlappen
-sich zwei, ist der Unterschied mit diesen Daten nicht belegbar. Genau deshalb
-traegt hier jeder Balken seine Fehlergrenzen mit.
+die aussage steht nicht im ranking, sondern in den intervallen: ueberlappen
+sich zwei, ist der unterschied mit diesen daten nicht belegbar. deshalb
+traegt hier jeder balken seine fehlergrenzen mit.
 """
 from __future__ import annotations
 
@@ -51,9 +51,9 @@ if tab.empty:
                "Mindestrunden senken.")
     st.stop()
 
-# --- Wo ist der Unterschied belegbar? -------------------------------------
-# Das Intervall des Schnellsten ist der Massstab: wessen Intervall sich damit
-# ueberschneidet, ist von ihm nicht unterscheidbar.
+# --- wo ist der unterschied belegbar? --------------------------------------
+# das intervall des schnellsten ist der massstab, wessen intervall sich damit
+# ueberschneidet ist von ihm nicht unterscheidbar.
 bester = tab.iloc[0]
 abgesetzt = tab[tab["ci_lo"] > bester["ci_hi"]]
 
@@ -65,15 +65,15 @@ k[1].metric("Nicht unterscheidbar", f"{len(tab) - len(abgesetzt)} Fahrer",
                  "belegbar.")
 k[2].metric("Ausgewertete Runden", int(tab["laps"].sum()))
 
-# --- Diagramm -------------------------------------------------------------
-# Sortiertes Balkendiagramm mit einer Farbe: die Identitaet haengt an der
-# Achse, nicht an der Farbe - damit traegt es beliebig viele Fahrer, ohne die
-# Drei-Serien-Grenze der Kategoriepalette zu verletzen. Die zweite Farbe ist
-# keine Kategorie, sondern eine Wertung: abgesetzt oder nicht.
+# --- diagramm -------------------------------------------------------------
+# sortiertes balkendiagramm mit einer farbe: die identitaet haengt an der
+# achse, nicht an der farbe, damit traegt es beliebig viele fahrer ohne die
+# drei-serien-grenze der kategoriepalette zu verletzen. die zweite farbe ist
+# keine kategorie, sondern eine wertung: abgesetzt oder nicht.
 p = tab.iloc[::-1]
 farben = [d.POSITIV if lo > bester["ci_hi"] else d.SERIEN[0]
           for lo in p["ci_lo"]]
-farben[-1] = d.FG                       # der Schnellste selbst
+farben[-1] = d.FG                       # der schnellste selbst
 
 fig = go.Figure(go.Bar(
     x=p["delta_s"], y=p["driver"], orientation="h",

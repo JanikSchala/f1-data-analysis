@@ -1,80 +1,5 @@
-"""
-P44 - Sprint gegen Rennen: wird im Sprint wirklich weniger ueberholt?
-========================================================================
-
-Sprints gelten im Kommentatoren-Jargon als das "verrueckte kurze Rennen"
-ohne Strategie, mit vollem Risiko von der ersten Runde an. Zeigt sich das
-in den Ueberholzahlen, oder ist ein Sprint tatsaechlich das ereignisaermere
-der beiden Formate am selben Wochenende?
-
-Kategorie:   Timing & Rundenanalyse
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Statistik
-
-WARUM DAS LOHNT
-Ein Sprint-Wochenende liefert einen eingebauten, paarweisen Vergleich, den
-sonst kein Rennformat hat: dieselbe Strecke, dasselbe Wochenende, zwei
-Renndistanzen auf demselben Asphalt. f1lab.overtakes_matrix() (P20) zaehlt
-in beiden Sessions identisch (nur gruene Flagge, ohne Boxenstopp-Effekt) -
-keine neue f1lab-Logik noetig, nur eine neue Gegenueberstellung eines
-bereits vorhandenen Bausteins.
-
-VORGEHEN
-  1. Alle Sprint-Wochenenden aus dem Schedule finden (`EventFormat`
-     enthaelt "sprint") - 2023 (neues Sprint-Shootout-Format) und 2024
-  2. Ueberholungen je Runde in Sprint (S) und Rennen (R) desselben
-     Wochenendes zaehlen, f1lab.overtakes_matrix()
-  3. Nasse Sessions ausschliessen (INTERMEDIATE/WET-Reifen in Sprint ODER
-     Rennen) - wie P43, ein trockenes/nasses Ungleichgewicht zwischen den
-     beiden Sessions eines Wochenendes waere kein Formatunterschied mehr
-  4. Gepaarter Vergleich (Wilcoxon, wie P42/P43) statt gepoolter Mittelwerte
-     - haelt Strecke und Saison konstant, jedes Wochenende ist sein eigener
-     Kontrollfall
-  5. Je-Wochenende-Konsistenz: gilt der Unterschied bei JEDEM trockenen
-     Sprint-Wochenende, oder nur im Schnitt?
-
-GENUTZTE FASTF1-BAUSTEINE
-  - session.laps (Positions-/Boxenstopp-/Flaggendaten), keine Telemetrie
-  - EventSchedule["EventFormat"]
-  - Laps.Compound (Regen-Erkennung, wie P43)
-  - scipy.stats.wilcoxon
-
-Ein erster Blick auf 2023 allein war irrefuehrend: Oesterreich und Belgien
-2023 zeigten hoehere Ueberholraten im SPRINT als im Rennen - das
-Gegenteil der spaeter bestaetigten Regel. Vor dem Verwerfen genauer
-hingeschaut (wie beim P39-Bremszonen-Fund): beide Sprints liefen auf
-INTERMEDIATE/WET, die zugehoerigen Rennen trocken - derselbe
-Regen-Fallstrick wie in P43, hier zwischen den beiden Sessions eines
-Wochenendes statt zwischen Rennen einer Saison. Ausgeschlossen statt die
-Grundfrage zu verwerfen.
-
-AUSBAUSTUFE  [umgesetzt]
-Wo im Rennverlauf passieren die Ueberholungen - fruehe Startrunden-Action
-oder spaetes Reifenabbau-Ueberholen? f1lab.overtake_events() (P39) liefert
-die Rundennummer je Vorgang, als Anteil der Renndistanz vergleichbar
-zwischen unterschiedlich langen Sessions.
-
-Saison 2023+2024, **9 von 9 trockenen Sprint-Wochenenden** (Oesterreich
-und Belgien 2023 sowie Sao Paulo 2024 wegen Regen in mindestens einer der
-beiden Sessions ausgeschlossen): das Rennen ueberholt in JEDEM einzelnen
-Fall haeufiger pro Runde als der Sprint desselben Wochenendes (Median
-2.04 gegen 0.79 Ueberholungen/Runde, Faktor ~2.6x, Wilcoxon p=0.0039). Die
-Spannweite reicht von knapp (Aserbaidschan 2023, 1.08x) bis extrem
-(Oesterreich 2024, 6.96x) - aber nie in die andere Richtung.
-
-Die AUSBAUSTUFE zeigt eine plausible Teilerklaerung: im Rennen passieren
-41.9% aller Ueberholungen im ersten Renndrittel (Startrunden-Chaos mit vollem
-Feld), im Sprint nur 20.6% - dafuer verschiebt sich das Sprint-Uberholen
-deutlich staerker ins letzte Drittel (39.7% gegen 18.8% im Rennen). Eine
-plausible Lesart: das Rennen hat sowohl den vollen Start-Chaos-Effekt
-(grosses Feld, enge erste Kurven) als auch reifenabbaubedingtes
-Spaet-Ueberholen, waehrend der kurze Sprint (meist ohne Pflichtstopp, ein
-Stint) den Start-Effekt zwar auch hat, aber kaum Zeit fuer eine zweite
-Ueberholwelle durch Reifenabbau uebrig laesst, bevor die Flagge faellt -
-das erklaert die verschobene relative Verteilung, aber nicht vollstaendig
-den absoluten Faktor 2.6x, der ueber beide Drittel hinweg besteht.
-"""
+"""vergleicht ueberholraten zwischen sprint und rennen desselben
+wochenendes und wann im rennverlauf sie passieren"""
 from __future__ import annotations
 
 import sys
@@ -85,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import fastf1
 import matplotlib.pyplot as plt
@@ -107,14 +32,14 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def ist_nass(session) -> bool:
-    """VORGEHEN 3: Regen ist ein eigener, viel groesserer Zeit-/Chaos-Effekt
-    als das Rennformat selbst (wie P43)."""
+    """regen ist ein eigener, viel groesserer zeit-/chaos-effekt als das
+    rennformat selbst."""
     return session.laps["Compound"].isin(["INTERMEDIATE", "WET"]).any()
 
 
 def sprint_namen_im_schedule(saison: int) -> list[str]:
-    """VORGEHEN 1: Sprint-Wochenenden ueber EventFormat finden - das steht
-    nur im rohen fastf1-Schedule, nicht in f1lab.event_dimension()."""
+    """findet sprint-wochenenden ueber EventFormat. das steht nur im rohen
+    fastf1-schedule, nicht in f1lab.event_dimension()."""
     sched_roh = fastf1.get_event_schedule(saison, include_testing=False)
     return sched_roh[sched_roh["EventFormat"]
                      .str.contains("sprint", case=False,
@@ -122,8 +47,7 @@ def sprint_namen_im_schedule(saison: int) -> list[str]:
 
 
 def sprint_wochenenden(saisons) -> pd.DataFrame:
-    """VORGEHEN 1-3: alle trockenen Sprint-Wochenenden ueber mehrere
-    Saisons sammeln."""
+    """sammelt alle trockenen sprint-wochenenden ueber mehrere saisons."""
     zeilen, nass = [], []
     for saison in saisons:
         for gp in sprint_namen_im_schedule(saison):
@@ -148,8 +72,8 @@ def sprint_wochenenden(saisons) -> pd.DataFrame:
 
 
 def ueberholzeitpunkte(saisons) -> tuple[pd.Series, pd.Series]:
-    """AUSBAUSTUFE: Anteil der Renndistanz, zu dem Ueberholungen passieren,
-    gepoolt ueber alle trockenen Sprint-Wochenenden."""
+    """anteil der renndistanz zu dem ueberholungen passieren. gepoolt ueber
+    alle trockenen sprint-wochenenden."""
     anteile_s, anteile_r = [], []
     for saison in saisons:
         for gp in sprint_namen_im_schedule(saison):
@@ -171,7 +95,7 @@ def ueberholzeitpunkte(saisons) -> tuple[pd.Series, pd.Series]:
 
 
 def zeichne_vergleich(ax, df: pd.DataFrame) -> None:
-    """VORGEHEN 4-5: gepaarter Vergleich je Wochenende, sortiert nach Faktor."""
+    """gepaarter vergleich je wochenende, sortiert nach faktor."""
     df = df.copy()
     df["faktor"] = df["rate_rennen"] / df["rate_sprint"]
     df = df.sort_values("faktor")
@@ -201,7 +125,7 @@ def zeichne_vergleich(ax, df: pd.DataFrame) -> None:
 
 
 def zeichne_zeitpunkte(ax, anteile_s: pd.Series, anteile_r: pd.Series) -> None:
-    """AUSBAUSTUFE: wann im Rennverlauf passieren die Ueberholungen?"""
+    """zeigt wann im rennverlauf die ueberholungen passieren."""
     bins = np.linspace(0, 1, 11)
     ax.hist(anteile_s, bins=bins, density=True, alpha=0.6, color=SERIEN[0],
            label=f"Sprint (n={len(anteile_s)})")

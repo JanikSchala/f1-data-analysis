@@ -1,13 +1,13 @@
-"""Vier ML-Bausteine aus P23-P25/P36: Quali-Vorhersage, Fahrstil-Clustering,
-Anomalie-Erkennung, Rennergebnis-/Podium-Vorhersage.
+"""vier ML-bausteine aus P23-P25/P36: quali-vorhersage, fahrstil-clustering,
+anomalie-erkennung, rennergebnis-/podium-vorhersage.
 
-Alle vier sind auf einen festen Datensatz zugeschnitten (mehrere Saisons
-bzw. eine bestimmte Session mit dokumentiertem Befund), nicht auf eine in
-der Seitenleiste waehlbare Session - anders als der Rest der App, aber wie
-11_Boxenstopps.py/14_Historie.py aus demselben Grund: das Training braucht
-entweder mehrere hundert Session-Ladevorgaenge oder eine Session mit einer
-bekannten, interessanten Antwort (Baku 2024 mit vier Ausfaellen). Alle vier
-Datensaetze liegen dauerhaft im Diskcache - nur der erste Aufruf dauert.
+alle vier sind auf einen festen datensatz zugeschnitten (mehrere saisons
+bzw. eine bestimmte session), nicht auf eine in der seitenleiste waehlbare
+session. anders als der rest der app, aber wie
+11_Boxenstopps.py/14_Historie.py aus demselben grund: das training braucht
+entweder mehrere hundert session-ladevorgaenge oder eine session mit einer
+bekannten, interessanten antwort (Baku 2024 mit vier ausfaellen). alle vier
+datensaetze liegen dauerhaft im diskcache, nur der erste aufruf dauert.
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ tab_quali, tab_stil, tab_anom, tab_renn = st.tabs(
     ["Quali-Vorhersage", "Fahrstil-Clustering", "Anomalie-Erkennung",
      "Renn-/Podium-Vorhersage"])
 
-# ========================================================== Quali-Vorhersage
+# ========================================================== quali-vorhersage
 JAHRE = (2022, 2023, 2024)
 TEAMFORM_FENSTER = 3
 
@@ -150,8 +150,9 @@ def _positions_mae_aus_zeit(data: pd.DataFrame, pred_zeit: np.ndarray) -> float:
 
 
 def _mlp_pipeline():
-    """Imputation (Median) + Skalierung + kleines Netz - anders als der
-    Baum kann ein MLP weder NaN noch unskalierte Features nativ (siehe P23)."""
+    """imputation (median) und skalierung noetig, weil ein MLP anders als
+    der baum weder NaN noch unskalierte features nativ verarbeiten kann
+    (siehe P23)."""
     return make_pipeline(
         SimpleImputer(strategy="median"), StandardScaler(),
         MLPRegressor(hidden_layer_sizes=(32, 16), max_iter=2000,
@@ -268,7 +269,7 @@ with tab_quali:
                     "verschoben) draengt die einzelne FP-Trainingsrunde "
                     "deutlich in den Hintergrund (siehe P23).")
 
-# ======================================================== Fahrstil-Clustering
+# ======================================================== fahrstil-clustering
 STIL_SEASON = 2024
 STIL_STRECKEN = ("Bahrain", "Spain", "Monza", "Suzuka")
 DTW_STRECKE = "Suzuka"
@@ -439,7 +440,7 @@ with tab_stil:
                 "nicht ueberein (Adjusted Rand Index nahe 0, siehe Metrik "
                 "oben) - beide Verfahren erfassen etwas anderes (siehe P24).")
 
-# ======================================================== Anomalie-Erkennung
+# ======================================================== anomalie-erkennung
 ANOM_SEASON, ANOM_EVENT, ANOM_IDENT = 2024, "Baku", "R"
 CONTAMINATION = 0.04
 FEAT_ANOM = ["lap_time", "vmax", "vmean", "rpm_max", "rpm_mean", "throttle_mean",
@@ -451,9 +452,9 @@ AE_EPOCHS = 80
 
 
 class LapAutoencoder(nn.Module):
-    """1D-Conv-Autoencoder fuer Telemetriespuren (siehe P25 ZWEITE
-    AUSBAUSTUFE) - schmaler Flaschenhals, damit das Netz eine "normale"
-    Rundenform komprimiert statt sie auswendig zu lernen."""
+    """1D-Conv-Autoencoder fuer telemetriespuren (siehe P25 zweite
+    AUSBAUSTUFE). schmaler flaschenhals, damit das netz eine "normale"
+    rundenform komprimiert statt sie auswendig zu lernen."""
 
     def __init__(self, n_channels=None, n_points=TRACE_PUNKTE,
                 bottleneck=AE_BOTTLENECK):
@@ -586,7 +587,7 @@ def _anomalie_daten():
     phasen = f1lab.track_status_phases(ses)
     ausfall_tab = _ausfall_analyse(df, sauber, ses)
 
-    # ZWEITE AUSBAUSTUFE: derselbe Vergleich wie im P25-Skript
+    # zweite AUSBAUSTUFE: derselbe vergleich wie im P25-skript
     spuren, index = _lap_traces(ses, sauber.index)
     fehler = _autoencoder_scores(spuren)
     sauber_ae = sauber.loc[index].copy()
@@ -716,7 +717,7 @@ with tab_anom:
                 "Normalisierung, kein bestaetigter Fund ueber die Autos "
                 "(siehe P25).")
 
-# =================================================== Renn-/Podium-Vorhersage
+# =================================================== renn-/podium-vorhersage
 RENN_JAHRE = (2022, 2023, 2024)
 RENN_FORM_FENSTER = 5
 

@@ -1,6 +1,6 @@
-"""Safety-Car-Chronik und Race-Control-Meldungen (Strafen, Track Limits).
+"""safety-car-chronik und race-control-meldungen (strafen, track limits).
 
-Zwei Reiter aus P18/P19 - gerechnet wird nirgends hier, jede Kennzahl kommt
+zwei reiter aus P18/P19. gerechnet wird nirgends hier. jede kennzahl kommt
 aus f1lab.track_status_phases()/field_spread()/sc_compaction() bzw.
 f1lab.parse_penalties()/parse_track_limits()/track_limit_crosscheck().
 """
@@ -35,7 +35,7 @@ st.subheader(auswahl.titel)
 
 tab_sc, tab_rcm = st.tabs(["Safety-Car-Chronik", "Strafen & Track Limits"])
 
-# ============================================================ Safety-Car
+# ============================================================ safety-car
 with tab_sc:
     if nur_rennen(auswahl, "Die Safety-Car-Chronik"):
         pass

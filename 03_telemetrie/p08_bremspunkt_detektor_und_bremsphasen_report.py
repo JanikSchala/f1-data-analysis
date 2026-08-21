@@ -1,49 +1,4 @@
-"""
-P08 - Bremspunkt-Detektor und Bremsphasen-Report
-================================================
-
-Aus dem Brake-Kanal automatisch alle Bremszonen extrahieren: Einsatzpunkt, Dauer, Delta-v, Verzoegerung.
-
-Kategorie:   Telemetrie
-Niveau:      Profi
-Aufwand:     4-5 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Bremspunkte sind die wertvollste Einzelinformation im Fahrervergleich. Signal-Segmentierung ist echte Engineering-Arbeit, nicht nur Plotting.
-
-VORGEHEN
-  1. Brake-Kanal als bool auslesen, Flanken per diff finden
-  2. Zusammenhaengende Bremszonen zu Intervallen gruppieren
-  3. Je Zone Eintrittsspeed, Minimalspeed, Laenge, mittlere Verzoegerung berechnen
-  4. Zonen zweier Fahrer nebeneinanderstellen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Telemetry Brake/Speed/Distance
-  - Telemetry.add_distance
-  - f1lab.braking_zones (Flankenerkennung, siehe unten)
-  - f1lab.match_by_distance (Zonen-Zuordnung, AUSBAUSTUFE)
-
-AUSBAUSTUFE  [umgesetzt]
-Zonen beider Fahrer ueber die Distanz matchen und ausgeben, wer wo wie viele
-Meter spaeter bremst.
-
-Die Flankenerkennung selbst (VORGEHEN 1-3) dupliziert nicht mehr die eigene
-Funktion aus der urspruenglichen Fassung, sondern ruft
-f1lab.driver_braking_zones() - exakt dieselbe Funktion, die auch die
-Telemetrie-Seite des Dashboards und P07 verwenden. Zwei eigene
-Implementationen desselben Flanken-Algorithmus waeren genau die Art
-Duplikat, die in diesem Projekt schon einmal zur Bug-Quelle wurde (siehe
-CLAUDE.md). Die Zonen-Zuordnung (AUSBAUSTUFE) nutzt f1lab.match_by_distance
-- P07 nutzt dieselbe Funktion fuer sein eigenes Zonen-Overlay.
-
-Oesterreich 2024 Q, VER gegen LEC: Verstappen bremst in 4 von 5 gematchten
-Zonen spaeter (bis zu 25.9 m) - und ist am Ende 0.730s schneller. Leclerc hat
-dabei in allen fuenf Zonen die staerkere Verzoegerung (z.B. 3.59 g gegen
-2.71 g in Zone 1), bremst aber jeweils frueher: der spaetere Bremspunkt zaehlt
-hier mehr als die haertere Bremsung selbst - wer spaeter bremst, kommt
-schneller in die Kurve, auch mit schwaecherer Verzoegerung.
-"""
+"""extrahiert bremszonen aus dem brake-kanal und vergleicht bremspunkte sowie verzoegerung zweier fahrer"""
 from __future__ import annotations
 
 import sys
@@ -54,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import fastf1.plotting as f1plt
 import matplotlib.pyplot as plt
@@ -78,9 +33,7 @@ f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
 
 
 def bremsphasen_report(ses, driver: str) -> pd.DataFrame:
-    """VORGEHEN 1-3: Bremszonen einer Runde, ueber f1lab.driver_braking_zones
-    (dieselbe Funktion wie P07 und der Bremszonen-Reiter im Dashboard) - hier
-    nur um Fahrerkuerzel und Zonennummer fuer den Report ergaenzt."""
+    """ergaenzt f1lab.driver_braking_zones() um fahrerkuerzel und zonennummer."""
     zonen = f1lab.driver_braking_zones(ses, driver)
     zonen.insert(0, "driver", driver)
     zonen.insert(1, "zone", range(1, len(zonen) + 1))
@@ -89,7 +42,7 @@ def bremsphasen_report(ses, driver: str) -> pd.DataFrame:
 
 def vergleiche(z1: pd.DataFrame, z2: pd.DataFrame,
               toleranz_m: float = TOLERANZ_M) -> pd.DataFrame:
-    """VORGEHEN 4 + AUSBAUSTUFE: Zonen nebeneinanderstellen und matchen."""
+    """paart bremszonen beider fahrer ueber die naechstgelegene distanz."""
     paare = f1lab.match_by_distance(z1["start_m"], z2["start_m"], toleranz_m)
     zeilen = []
     for i, j in paare:

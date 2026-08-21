@@ -1,14 +1,14 @@
-"""Streckenentwicklung uebers Qualifying-Wochenende (P43): wird die Strecke
-von Q1 zu Q3 wirklich schneller?
+"""streckenentwicklung uebers qualifying-wochenende (P43): wird die
+strecke von Q1 zu Q3 wirklich schneller?
 
-Wie 18_Ueberholschwierigkeit.py/19_Startplatz_Paritaet.py an eine ganze
-Saison gebunden statt an eine einzelne Session, `persist="disk"`-gecacht.
-Gerechnet wird nirgends hier: f1lab.qualifying_track_evolution() liefert
-die paarweisen Fahrer-Deltas zwischen Q1/Q2/Q3 (nur Fahrer, die in beiden
-Segmenten eine Zeit gesetzt haben - haelt Auto-/Fahrerqualitaet konstant,
-siehe P43-Docstring). Nasse Qualifyings (INTERMEDIATE/WET-Reifen) werden
-ausgeschlossen, weil eine trocknende Strecke einen eigenen, viel groesseren
-Zeiteffekt hat als das reine "Gummi einfahren".
+wie 18_Ueberholschwierigkeit.py/19_Startplatz_Paritaet.py an eine ganze
+saison gebunden statt an eine einzelne session, `persist="disk"`-gecacht.
+gerechnet wird nirgends hier: f1lab.qualifying_track_evolution() liefert
+die paarweisen fahrer-deltas zwischen Q1/Q2/Q3, nur fuer fahrer die in
+beiden segmenten eine zeit gesetzt haben (haelt so auto-/fahrerqualitaet
+konstant). nasse qualifyings (INTERMEDIATE/WET-reifen) werden
+ausgeschlossen, weil eine trocknende strecke einen eigenen, viel groesseren
+zeiteffekt hat als das reine "gummi einfahren".
 """
 from __future__ import annotations
 
@@ -215,7 +215,7 @@ else:
 
 st.markdown("##### DRITTE AUSBAUSTUFE: gilt das auch fuer Sprint Qualifying?")
 
-SPRINT_QUALI_IDENT = {2023: "SS", 2024: "SQ"}  # FIA-Umbenennung, siehe P43
+SPRINT_QUALI_IDENT = {2023: "SS", 2024: "SQ"}  # FIA-umbenennung. siehe P43
 
 
 @st.cache_data(persist="disk", show_spinner="Sprint-Qualifyings werden "

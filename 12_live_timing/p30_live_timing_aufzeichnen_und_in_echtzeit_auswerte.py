@@ -1,82 +1,4 @@
-"""
-P30 - Live-Timing aufzeichnen und in Echtzeit auswerten
-=======================================================
-
-Waehrend einer laufenden Session den Live-Timing-Stream mitschneiden und anschliessend wie eine normale Session laden.
-
-Kategorie:   Live Timing
-Niveau:      Profi
-Aufwand:     6-8 h
-Schwerpunkt: Engineering, Strategie
-
-WARUM DAS LOHNT
-Echtzeitdatenverarbeitung ist technisch anspruchsvoll und macht Spass: waehrend das Rennen laeuft, entsteht dein eigenes Timing-Board. Wer das gebaut hat, hat den F1-Datenstack wirklich verstanden.
-
-VORGEHEN
-  1. Recorder per CLI starten: python -m fastf1.livetiming save output.txt
-  2. Alternativ SignalRClient programmatisch mit asyncio starten
-  3. Aufzeichnung in LiveTimingData laden
-  4. Session mit livedata=... laden und normal analysieren
-  5. Rolling-Auswertung: Pace der letzten 5 Runden je Fahrer
-
-GENUTZTE FASTF1-BAUSTEINE
-  - fastf1.livetiming.client.SignalRClient
-  - fastf1.livetiming.data.LiveTimingData
-  - Session.load(livedata=...)
-
-AUSBAUSTUFE  [umgesetzt]
-Schreibe die Live-Daten in eine Zeitreihen-DB (InfluxDB oder TimescaleDB) und
-baue ein Grafana-Board, das waehrend des Rennens aktualisiert.
-
-Dieses Projekt ist anders als die 29 davor: es gibt keine Cache-Datei, gegen
-die man testen kann - Live-Timing existiert nur waehrend eine Session
-laeuft. Am 2026-08-10 (Sommerpause, naechstes Rennen erst am 23.08.) laeuft
-keine. Deshalb wurde, statt das zu ignorieren, tatsaechlich probiert:
-
-VORGEHEN 1 real ausgefuehrt (`python -m fastf1.livetiming save
-/tmp/live_test.txt`, 30s laufen lassen): der Client verbindet sich
-("Starting FastF1 live timing client") und blockiert korrekt auf die
-Verbindung, schreibt aber 0 Bytes - erwartbar ausserhalb eines Sessionfensters,
-jetzt tatsaechlich beobachtet statt nur behauptet. Dabei zwei echte,
-versionsbedingte Bugs in der Vorlage gefunden:
-
-  - `debug=False` an SignalRClient() zu uebergeben laeuft noch, aber ein
-    `--debug`-Flag ueber die CLI oder debug=True direkt wirft
-    `ValueError: Debug mode is no longer supported.` - der Modus wurde aus
-    fastf1 entfernt.
-  - VORGEHEN 2 ("mit asyncio starten") ist mit der installierten fastf1-
-    Version (3.8.3) nicht mehr moeglich: `SignalRClient.async_start()`
-    wirft `NotImplementedError("... no longer uses asyncio! Please use
-    .start instead.")`. Die Vorlage importierte `asyncio`, benutzte es aber
-    nirgends - vermutlich ein Rest aus einer aelteren fastf1-Version, in der
-    async_start() der empfohlene Weg war. `record()` nutzt deshalb
-    ausschliesslich das synchrone `.start()`.
-
-VORGEHEN 3-5 (LiveTimingData laden, rollierende Pace) lassen sich ohne
-laufende Session nicht ueber den echten Pfad testen. Um trotzdem gegen
-echte Daten zu pruefen: die Rechenlogik (`rolling_pace()`) ist von der
-Ladefunktion getrennt und wird gegen eine ECHTE, bereits geladene Session
-(Bahrain 2024 R) verifiziert - `ses.laps` hat nach dem Laden dieselbe Form,
-egal ob die Runden aus dem Live-Feed oder aus dem historischen Archiv
-stammen. Das prueft die Berechnung ehrlich, nicht das Laden selbst.
-
-AUSBAUSTUFE: weder influxdb-client noch psycopg2/sqlalchemy stehen in
-requirements.txt, kein lokaler InfluxDB/TimescaleDB/Grafana-Prozess laeuft.
-Umgesetzt mit stdlib sqlite3 als Zeitreihen-Speicher (append-only, ein
-Datenpunkt je Fahrer und Runde) und einem PNG-"Board" statt eines
-Grafana-Dashboards - dieselbe Idee, ohne Infrastruktur, die hier niemand
-betreiben wuerde. Gefuellt wird die Zeitreihe per Replay: dieselbe echte
-Bahrain-2024-R-Session, Runde fuer Runde in ihrer tatsaechlichen
-Startzeit-Reihenfolge eingespielt (nicht die fertige Endauswertung auf
-einen Schlag) - genau der Verarbeitungsablauf, den ein echter Live-Feed
-Runde fuer Runde erzeugen wuerde, nur mit echten historischen statt echten
-Live-Daten gefuettert. Der erste Entwurf des Replays baute den
-"bisher eingetroffenen" Datensatz per wiederholtem pd.concat() auf ein
-leeres DataFrame auf - dabei degradiert LapTime von timedelta64 zu object,
-und der .dt-Accessor in rolling_pace() bricht ("Can only use .dt accessor
-with datetimelike values"). Gefixt durch Slicing der schon korrekt
-typisierten Originaltabelle (laps.iloc[:i+1]) statt inkrementellem Konkat.
-"""
+"""zeichnet den fastf1 live-timing-stream auf und wertet ihn wie eine normale session aus, inklusive sqlite-zeitreihe und png-board"""
 from __future__ import annotations
 
 import sqlite3
@@ -105,29 +27,27 @@ fastf1.set_log_level("ERROR")
 OUT = Path(__file__).parent / "out"
 OUT.mkdir(exist_ok=True)
 
-FENSTER = 5     # Runden fuer die rollierende Pace, VORGEHEN 5
+FENSTER = 5     # Runden fuer die rollierende Pace
 
 plt.rcParams.update(matplotlib_stil())
 
 
-# --------------------------------------------------------------- VORGEHEN 1-2
+# --------------------------------------------------------------- Aufzeichnen
 def record(path: str = "saved_data.txt", timeout_min: int = 120) -> None:
-    """Waehrend einer laufenden Session aufrufen. Blockiert bis zum Ende der
-    Session oder Ctrl+C - kein Rueckgabewert, das File waechst waehrenddessen.
+    """Während einer laufenden Session aufrufen. Blockiert bis zum Ende der Session oder Ctrl+C.
+    Kein Rückgabewert, das File wächst währenddessen.
 
-    Nur .start() (synchron) - async_start() wirft seit fastf1 3.x
-    NotImplementedError, siehe Docstring. debug bleibt bewusst weg: der
-    Parameter existiert noch, aber jeder Wert ausser False wirft seit
-    Kurzem einen ValueError.
+    Nur .start() (synchron). async_start() wirft seit fastf1 3.x NotImplementedError.
+    debug bleibt bewusst weg. Der Parameter existiert noch, aber jeder Wert außer False
+    wirft seit Kurzem einen ValueError.
     """
     client = SignalRClient(filename=path, timeout=timeout_min * 60)
     client.start()
 
 
-# ------------------------------------------------------------------ VORGEHEN 5
+# ------------------------------------------------------------------ Rolling-Pace
 def rolling_pace(laps: pd.DataFrame, fenster: int = FENSTER) -> pd.DataFrame:
-    """Rollierende Median-Pace je Fahrer - unabhaengig davon, ob `laps` aus
-    einem Live-Feed oder einem historischen Archiv stammt (siehe Docstring)."""
+    """rollierende Median-Pace je Fahrer. Funktioniert unabhängig davon ob `laps` aus einem Live-Feed oder einem historischen Archiv stammt."""
     df = laps.copy()
     df["sec"] = df["LapTime"].dt.total_seconds()
     df = df.sort_values(["Driver", "LapNumber"])
@@ -137,15 +57,15 @@ def rolling_pace(laps: pd.DataFrame, fenster: int = FENSTER) -> pd.DataFrame:
 
 
 def aktuelle_rangliste(df_mit_rolling: pd.DataFrame) -> pd.DataFrame:
-    """Neuester Rolling-Wert je Fahrer, schnellster zuerst."""
+    """neuester Rolling-Wert je Fahrer, schnellster zuerst."""
     return (df_mit_rolling.dropna(subset=["rolling"])
            .sort_values("LapNumber").groupby("Driver").tail(1)
            .sort_values("rolling"))
 
 
-# ------------------------------------------------------------------ VORGEHEN 3-4
+# ------------------------------------------------------------------ Auswertung
 def analyse(path: str, year: int, gp: str, ident: str) -> pd.DataFrame:
-    """Aufzeichnung laden und wie eine normale Session behandeln."""
+    """lädt die Aufzeichnung und behandelt sie wie eine normale Session."""
     live = LiveTimingData(path)
     live.load()
 
@@ -160,7 +80,7 @@ def analyse(path: str, year: int, gp: str, ident: str) -> pd.DataFrame:
     return df
 
 
-# ------------------------------------------------------------------- AUSBAUSTUFE
+# ------------------------------------------------------------------- Zeitreihen-Board
 def zeitreihe_anlegen(db_pfad: Path) -> sqlite3.Connection:
     con = sqlite3.connect(db_pfad)
     con.execute("""CREATE TABLE IF NOT EXISTS pace_snapshots(
@@ -170,18 +90,16 @@ def zeitreihe_anlegen(db_pfad: Path) -> sqlite3.Connection:
 
 
 def replay_als_livefeed(ses, con: sqlite3.Connection) -> None:
-    """Ersetzt den echten Live-Feed: dieselbe Session, Runde fuer Runde in
-    ihrer tatsaechlichen Reihenfolge eingespielt, nicht als fertige
-    Endauswertung. Nach jeder neu "eintreffenden" Runde wird die
-    rollierende Pace neu berechnet und genau der neue Punkt geschrieben -
-    das ist der Teil, der bei einem echten Feed inkrementell passieren
-    wuerde."""
+    """ersetzt den echten Live-Feed: dieselbe Session, Runde für Runde in ihrer tatsächlichen
+    Reihenfolge eingespielt statt als fertige Endauswertung. Nach jeder neu "eintreffenden"
+    Runde wird die rollierende Pace neu berechnet und genau der neue Punkt geschrieben.
+    Das simuliert, was bei einem echten Feed inkrementell passieren würde."""
     laps = ses.laps.dropna(subset=["LapStartTime", "LapTime"]).copy()
     laps = laps.sort_values("LapStartTime").reset_index(drop=True)
 
     for i in range(len(laps)):
-        # Slice der schon-korrekt-typisierten Runden statt wiederholtem
-        # pd.concat() auf ein leeres DataFrame - letzteres degradiert
+        # Slice der schon korrekt typisierten Runden statt wiederholtem
+        # pd.concat() auf ein leeres DataFrame. Letzteres degradiert
         # LapTime von timedelta64 zu object (.dt-Accessor bricht dann).
         bislang = laps.iloc[:i + 1]
         neue_runde = laps.iloc[i]
@@ -201,9 +119,8 @@ def replay_als_livefeed(ses, con: sqlite3.Connection) -> None:
 
 
 def dashboard_rendern(con: sqlite3.Connection, ses, out_png: Path) -> None:
-    """"Grafana-Board" als PNG: rollierende Pace ueber die Renndistanz,
-    Podium hervorgehoben - dieselbe Zeitreihe, die ein echtes Board live
-    nachgezogen haette."""
+    """"Grafana-Board" als PNG: rollierende Pace über die Renndistanz, Podium hervorgehoben.
+    Dieselbe Zeitreihe, die ein echtes Board live nachgezogen hätte."""
     df = pd.read_sql("SELECT * FROM pace_snapshots", con)
     order = ses.results.sort_values("Position")["Abbreviation"].tolist()
     top3 = [d for d in order if d in df["driver"].unique()][:3]

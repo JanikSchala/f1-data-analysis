@@ -1,60 +1,4 @@
-"""
-P16 - Boxenstopp-Performance-Ranking der Teams
-==============================================
-
-Standzeiten ueber eine ganze Saison aus der Ergast/jolpica-API - Median, Streuung und Konsistenz je Team.
-
-Kategorie:   Reifen & Strategie
-Niveau:      Fortgeschritten
-Aufwand:     3 h
-Schwerpunkt: Datenanalyse, Engineering
-
-WARUM DAS LOHNT
-Boxenstopps sind messbare Teamleistung. Der Wechsel zwischen zwei Datenquellen (Timing-API und Ergast) zeigt, dass du mit heterogenen Quellen umgehen kannst.
-
-VORGEHEN
-  1. Ergast-Client mit result_type='pandas' aufsetzen
-  2. Pitstops aller Rennen einer Saison holen (Paging beachten)
-  3. Auf Konstrukteur joinen und Ausreisser (Reparaturen) kappen
-  4. Ranking nach Median und Interquartilsabstand
-
-GENUTZTE FASTF1-BAUSTEINE
-  - fastf1.ergast.Ergast
-  - Ergast.get_pit_stops
-  - Ergast.get_race_schedule
-
-AUSBAUSTUFE  [umgesetzt]
-Korreliere die Stopp-Zeiten mit der Position im Rennen - unter Druck sind
-Teams messbar langsamer.
-
-Der urspruengliche Ausreisser-Filter (1.5-6.0 s) verwarf beim ersten Lauf
-ausnahmslos jeden Stopp der Saison 2024 (0 von 825 blieben uebrig). Grund:
-Ergasts ``duration``-Feld ist nicht die reine Boxengassen-Standzeit (die
-Größenordnung, die als "2 Sekunden-Stopp" durch die Uebertragung geht),
-sondern die volle Boxengassen-Zeit von der Einfahrt- bis zur
-Ausfahrt-Zeitschranke - Median 23.6 s, fast exakt der Wert, den
-f1lab.pit_loss() unabhaengig aus Telemetrie fuer Barcelona schaetzt
-(23.1 s, siehe P13/App). Der Filter wurde auf 15-35 s korrigiert (Werte
-darueber sind Reparaturen oder Boxenstopp-Strafen).
-
-Direkte Folge: die Rangliste ist fast bedeutungslos fuer Boxencrew-Leistung.
-Alle zehn Teams liegen 2024 zwischen 22.7 s und 23.8 s (Spannweite 1.1 s,
-unter 5 %) - weil die Boxengassen-Zeit von der festen Tempolimit-Strecke
-dominiert wird, nicht vom eigentlichen Reifenwechsel (der macht davon nur
-rund 2 s aus und geht in dieser Kennzahl unter). Ergast liefert schlicht
-nicht die Groesse, die die Frage beantworten wuerde.
-
-Die AUSBAUSTUFE-Korrelation (Stoppzeit gegen Ergebnis-Position) ist
-entsprechend schwach: r=+0.13 - vorne klassierte Fahrer stoppen im Median
-minimal schneller (Top 5: 22.8 s; P11+: 23.4 s), aber der Effekt ist
-klein. Deutlicher zeigt sich Druck an einer anderen Stelle: Stopps, bei
-denen am selben Rennen in derselben Runde vier oder mehr Autos gleichzeitig
-an die Box kommen (typischerweise ein durch Safety Car/VSC ausgeloestes
-Boxenfenster, in dem sich die Boxengasse staut), sind im Median 1.6 s
-langsamer als isolierte Einzelstopps (24.9 s gegen 23.2 s) - eine
-messbare, wenn auch bescheidene Bestaetigung der Ausgangsthese, nur eben
-ueber Verkehr in der Box statt ueber Tabellenposition.
-"""
+"""rankt boxenstoppzeiten der teams über eine saison aus der ergast/jolpica-api und prüft den einfluss von druck und boxenfenstern"""
 from __future__ import annotations
 
 import sys
@@ -66,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -82,15 +26,13 @@ OUT = Path(__file__).parent / "out"
 OUT.mkdir(exist_ok=True)
 
 YEAR = 2024
-DAUER_MIN, DAUER_MAX = 15.0, 35.0     # volle Boxengassen-Zeit, siehe Docstring
+DAUER_MIN, DAUER_MAX = 15.0, 35.0     # volle boxengassen-zeit, nicht die reine standzeit
 
 plt.rcParams.update(matplotlib_stil())
 
 
 def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """Ergast/jolpica limitiert Anfragerate - bei Serienabfragen ueber eine
-    ganze Saison (2x 24 Requests) unvermeidlich. Exponentielles Backoff statt
-    Abbruch beim ersten 429."""
+    """ergast/jolpica limitiert die anfragerate. exponentielles backoff statt abbruch beim ersten 429."""
     for i in range(versuche):
         try:
             return fn(*args, **kwargs)
@@ -101,7 +43,7 @@ def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
 
 
 def hole_saison(erg: Ergast, jahr: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """VORGEHEN 2: Pitstops und Rennergebnisse aller Runden, mit Paging/Retry."""
+    """pitstops und rennergebnisse aller runden, mit paging und retry."""
     sched = _mit_wiederholung(erg.get_race_schedule, season=jahr)
 
     pit_frames, res_frames = [], []
@@ -119,21 +61,18 @@ def hole_saison(erg: Ergast, jahr: int) -> tuple[pd.DataFrame, pd.DataFrame]:
             r = res[0].copy()
             r["round"] = rnd
             res_frames.append(r)
-        time.sleep(0.4)     # bewusst gebremst statt in jede Runde ein 429
+        time.sleep(0.4)     # bewusst gebremst statt in jede runde ein 429
 
     return pd.concat(pit_frames, ignore_index=True), \
         pd.concat(res_frames, ignore_index=True)
 
 
 def zeichne_ranking(ax, rank: pd.DataFrame) -> None:
-    """VORGEHEN 4: Median je Team (Punkt) gegen den schnellsten Einzelstopp
-    (Strich), die drei schnellsten Mediane hervorgehoben - zehn Kategorien
-    sind mehr als die MAX_SERIEN=3 Hausfarben hergeben.
+    """median je team als punkt gegen den schnellsten einzelstopp als strich. nur die drei schnellsten mediane sind hervorgehoben weil zehn kategorien mehr sind als MAX_SERIEN=3 hausfarben hergeben.
 
-    Bewusst kein Fehlerbalken mit dem vollen IQR: der reicht teils ueber 5 s
-    und wuerde die Kernaussage - die Mediane liegen mit 1.1 s Spannweite
-    extrem dicht beieinander - auf dieser Achse unlesbar machen. Der IQR
-    steht stattdessen in der gedruckten Tabelle.
+    kein fehlerbalken mit dem vollen IQR weil der teils über 5 s reicht und
+    die enge spannweite der mediane auf dieser achse unlesbar machen würde.
+    der IQR steht stattdessen in der gedruckten tabelle.
     """
     r = rank.sort_values("Median", ascending=False)
     y = np.arange(len(r))
@@ -155,8 +94,7 @@ def zeichne_ranking(ax, rank: pd.DataFrame) -> None:
 
 
 def zeichne_druck(ax, pit: pd.DataFrame) -> None:
-    """AUSBAUSTUFE: Stopps in einem vollen Boxenfenster (>=4 Autos, gleiche
-    Runde) gegen isolierte Einzelstopps."""
+    """stopps in einem vollen boxenfenster (>=4 autos, gleiche runde) gegen isolierte einzelstopps."""
     stapel = pit.groupby(["round", "lap"]).size().rename("n_stops")
     p = pit.merge(stapel, on=["round", "lap"])
     gruppen = {
@@ -181,7 +119,7 @@ def zeichne_druck(ax, pit: pd.DataFrame) -> None:
 
 
 def zeichne_position(ax, pit: pd.DataFrame) -> None:
-    """AUSBAUSTUFE: Stoppzeit gegen Ergebnis-Position, mit Regressionsgerade."""
+    """stoppzeit gegen ergebnis-position, mit regressionsgerade."""
     ok = pit.dropna(subset=["position"])
     slope, inter = np.polyfit(ok["position"], ok["dur"], 1)
     korr = np.corrcoef(ok["position"], ok["dur"])[0, 1]

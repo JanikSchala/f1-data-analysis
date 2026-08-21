@@ -1,58 +1,4 @@
-"""
-P33 - Streckenvergleich ueber Jahre: Hat sich das Layout geaendert?
-===================================================================
-
-Dieselbe Strecke in verschiedenen Saisons: Streckenlaenge aus Telemetrie, Speed-Profile und Rundenzeitentwicklung.
-
-Kategorie:   Strecke & Position
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Engineering
-
-WARUM DAS LOHNT
-Zeigt, dass du Daten ueber Zeit hinweg vergleichbar machen kannst - Normalisierung ist eine der schwersten Aufgaben in echten Datenprojekten.
-
-VORGEHEN
-  1. Pole-Runde derselben Strecke fuer mehrere Saisons laden
-  2. Speed ueber RelativeDistance interpolieren, damit die Kurven vergleichbar sind
-  3. Speed-Profile uebereinanderlegen
-  4. Rundenzeit und Kurvenanzahl je Jahr gegenueberstellen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Telemetry.add_distance
-  - Telemetry.add_relative_distance
-  - get_circuit_info
-  - mehrere Sessions
-
-AUSBAUSTUFE  [umgesetzt]
-Die Regelaera als Kategorie ergaenzen (2018, Hochabtrieb-Ende der vorigen
-Aera, gegen 2024, Ground-Effect-Aera seit 2022) und quantifizieren, wo die
-neuen Autos schneller sind.
-
-"5 Saisons" aus der urspruenglichen Formulierung war mit dem Cache nicht
-umsetzbar: Telemetrie liegt nur fuer 2018 und 2024 vor (siehe CLAUDE.md).
-Das trifft sich mit der AUSBAUSTUFE aber gut - genau die zwei Jahre, die den
-groessten Regel-Umbruch der Telemetrie-Aera einrahmen.
-
-Fuer den Streckenvergleich (VORGEHEN) bleibt Spanien die Wahl der
-urspruenglichen Fassung - und liefert nebenbei eine Lektion in Datenkritik:
-die Delta-Kurve zeigt bei 89% der Runde einen Ausschlag von +170 km/h, kein
-Messfehler, sondern die vor 2023 entfernte Schikane vor der Start-Ziel-
-Geraden. 2018 bremste dort jeder, 2024 nicht mehr. Fuer die AUSBAUSTUFE
-("wo sind Ground-Effect-Autos schneller") ist Spanien deshalb ungeeignet -
-der Effekt waere Layout, nicht Regelwerk. Sechs Strecken ohne bekannte
-Layout-Aenderung in diesem Zeitraum (Oesterreich, Aserbaidschan, Bahrain,
-Kanada, China, Monaco) uebernehmen die Quantifizierung stattdessen.
-
-Ergebnis, gegen die naive Erwartung "neue Regeln = schnellere Autos": auf
-allen sechs unveraenderten Strecken faellt die mittlere Rundengeschwindigkeit
-2024 gegenueber 2018 (-1.7 bis -7.2 km/h), die Rundenzeit steigt an vier von
-sechs. Plausible Erklaerung, nicht in den Daten selbst belegbar: das
-Mindestgewicht stieg mit der Ground-Effect-Aera um rund 65 kg, waehrend 2018
-das Ende eines langen Entwicklungszyklus der vorigen Regeln war - beides
-wuerde in dieselbe Richtung wirken. Topspeed ist uneinheitlich (drei
-Strecken schneller, drei langsamer) und zeigt kein Muster.
-"""
+"""vergleicht speed-profil und rundenzeit derselben strecke ueber zwei saisons und quantifiziert den regelaera-effekt ueber mehrere strecken"""
 from __future__ import annotations
 
 import sys
@@ -63,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -86,7 +32,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def speed_profil(ses) -> tuple[np.ndarray, dict]:
-    """VORGEHEN 1-2: Pole-Runde, Speed ueber RelativeDistance interpoliert."""
+    """interpoliert speed ueber relativedistance der pole-runde."""
     lap = ses.laps.pick_fastest()
     tel = lap.get_telemetry().add_distance().add_relative_distance()
     rel = tel["RelativeDistance"].to_numpy()
@@ -108,7 +54,7 @@ def speed_profil(ses) -> tuple[np.ndarray, dict]:
 
 def zeichne_profile(ax_profil, ax_delta, grid: np.ndarray,
                     profile: dict[int, np.ndarray]) -> None:
-    """VORGEHEN 3: Profile uebereinander, plus Delta-Panel."""
+    """zeichnet die speed-profile uebereinander mit einem delta-panel."""
     jahre = sorted(profile)
     for i, y in enumerate(jahre):
         ax_profil.plot(grid * 100, profile[y], label=str(y), lw=1.6,
@@ -140,8 +86,7 @@ def zeichne_profile(ax_profil, ax_delta, grid: np.ndarray,
 
 
 def zeichne_regelaera(ax, vergleich: pd.DataFrame) -> None:
-    """AUSBAUSTUFE: mittlere Geschwindigkeit 2024 gegen 2018, nur Strecken
-    ohne bekannte Layout-Aenderung."""
+    """vergleicht die mittlere geschwindigkeit zwischen den jahren nur fuer strecken ohne bekannte layout-aenderung."""
     v = vergleich.sort_values("vmean_delta")
     farben = [POSITIV if x > 0 else SERIEN[1] for x in v["vmean_delta"]]
     ax.barh(v["strecke"], v["vmean_delta"], color=farben, height=0.6)

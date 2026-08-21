@@ -1,62 +1,5 @@
-"""
-P03 - Rundenzeit-Qualitaetsfilter: Was ist eine 'saubere' Runde?
-================================================================
-
-Rohdaten luegen. Out-Laps, In-Laps, Safety Car und geloeschte Runden verzerren jede Pace-Analyse.
-
-Kategorie:   Timing & Rundenanalyse
-Niveau:      Einsteiger
-Aufwand:     2-3 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Das ist der haeufigste Anfaengerfehler in F1-Analysen. Wenn du im Gespraech erklaeren kannst, warum du track_status '1' filterst, klingst du wie jemand aus dem Fach.
-
-VORGEHEN
-  1. Alle Runden eines Rennens laden
-  2. Schrittweise filtern und nach jedem Schritt zaehlen, wie viel wegfaellt
-  3. Verteilung vorher/nachher als Boxplot vergleichen
-  4. Eine wiederverwendbare clean_laps()-Funktion schreiben
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps.pick_quicklaps
-  - Laps.pick_accurate
-  - Laps.pick_wo_box
-  - Laps.pick_track_status
-  - Laps.pick_not_deleted (indirekt - siehe Hinweis unten)
-
-AUSBAUSTUFE  [umgesetzt]
-Ausreisser-Detektor auf Basis der Median Absolute Deviation (MAD), verglichen
-mit der 107%-Regel - auf denselben "Kandidaten"-Runden (nach Box/Genauigkeit/
-gruener Flagge/Streichung, vor der Breitenfilterung).
-
-Zwei Abweichungen von der urspruenglichen Formulierung:
-
-Erstens nutzt clean_laps() nicht Laps.pick_not_deleted(), sondern ein eigenes
-not_deleted_mask() aus f1lab.session. FastF1 invertiert die Spalte 'Deleted'
-direkt mit '~'; ist sie object-dtype - was passiert, sobald ein Wert fehlt -
-wirft pandas einen TypeError. Genau das tritt in diesem Rennen auf (Spanien
-2024: die komplette Spalte ist object-dtype mit lauter None). Der Fehler ist
-per Regressionstest in tests/test_session.py abgesichert.
-
-Zweitens laeuft die MAD ueber die Kandidaten je Fahrer, nicht ueber das ganze
-Feld. Global gerechnet meldet sie auf dieser Renndistanz fast keine Ausreisser
-(1 von 1206 Runden) - der Grund ist nicht, dass MAD schlecht waere, sondern
-dass Reifenabbau und Spritgewicht ueber ein ganzes Rennen eine derart grosse,
-aber voellig legitime Streuung erzeugen, dass eine einzelne langsame Runde
-darin nicht mehr auffaellt. Je Fahrer gerechnet misst MAD an der Streuung
-genau dieses einen Fahrers - ein fairer Vergleich mit der 107%-Regel, die
-ebenfalls fahrerunabhaengig eine einzige Grenze zieht.
-
-Ergebnis fuer Spanien 2024: die 107%-Regel verwirft 82 von 1206
-Kandidaten-Runden. Die MAD stimmt dem nur in einem einzigen Fall zu - die
-uebrigen 81 sind Runden, die zwar langsamer als 107% der schnellsten Runde
-des Rennens sind, aber innerhalb der normalen Streuung des jeweiligen
-Fahrers liegen (spaete, hoch beanspruchte Reifen zum Beispiel). Die
-107%-Regel misst also nicht "Ausreisser", sondern "langsamer als eine feste,
-globale Grenze" - beides faellt nur zusammen, wenn die Grenze zur Streuung
-des Fahrers passt.
-"""
+"""filtert runden auf sauberkeit und vergleicht die 107%-regel mit einem
+fahrerweisen MAD-ausreisserdetektor"""
 from __future__ import annotations
 
 import sys
@@ -67,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -88,13 +31,9 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def funnel(ses) -> tuple[list[tuple[str, int]], pd.DataFrame]:
-    """Zaehlt, wie viele Runden jeder Filterschritt kostet.
-
-    Die letzte Stufe sind die "Kandidaten": alles, was fuer eine Pace-Analyse
-    grundsaetzlich infrage kommt, aber noch nicht auf Rundenzeit-Breite
-    gefiltert ist - genau die Menge, auf der sich 107%-Regel und MAD fair
-    vergleichen lassen.
-    """
+    """zaehlt wie viele runden jeder filterschritt kostet. die letzte stufe
+    sind die "kandidaten": pace-taugliche runden vor der breitenfilterung,
+    auf denen sich 107%-regel und MAD fair vergleichen lassen."""
     stufen = []
     laps = ses.laps
     stufen.append(("roh", laps))
@@ -116,12 +55,8 @@ def funnel(ses) -> tuple[list[tuple[str, int]], pd.DataFrame]:
 
 
 def vergleiche_ausreisser(kandidaten: pd.DataFrame) -> pd.DataFrame:
-    """107%-Regel gegen fahrerweise MAD, Runde fuer Runde.
-
-    Beide Methoden liefern eine Ja/Nein-Entscheidung je Runde. Die vier
-    moeglichen Kombinationen sind die eigentliche Aussage: wo stimmen sie
-    zu, und - wichtiger - wo widersprechen sie sich und warum.
-    """
+    """vergleicht 107%-regel gegen fahrerweise MAD runde fuer runde und
+    kategorisiert jede runde nach den vier moeglichen kombinationen."""
     kand = kandidaten.reset_index(drop=True)
     sekunden = kand["LapTime"].dt.total_seconds().to_numpy()
 
@@ -174,13 +109,8 @@ def zeichne_funnel(ax_funnel, stufen) -> None:
 
 
 def zeichne_boxplot(ax, roh, sauber) -> None:
-    """VORGEHEN Punkt 3: Verteilung vorher/nachher, nicht nur die Anzahl.
-
-    Der Funnel daneben zeigt, wie viele Runden wegfallen - das hier zeigt,
-    was das mit der Verteilung macht: die Box wird schmaler (weniger
-    Streuung) und rutscht nach unten (der Median sinkt), weil Box-, VSC- und
-    Safety-Car-Runden ueberwiegend langsame Ausreisser waren.
-    """
+    """zeigt die verteilung der rundenzeiten vor und nach dem filtern,
+    nicht nur die anzahl wie der funnel daneben."""
     bp = ax.boxplot([roh, sauber], tick_labels=["roh", "sauber"],
                     patch_artist=True, widths=0.55,
                     medianprops={"color": FG, "linewidth": 1.6},

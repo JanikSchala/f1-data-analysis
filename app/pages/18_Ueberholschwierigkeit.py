@@ -1,15 +1,15 @@
-"""Ueberholschwierigkeit je Strecke (P38): Ueberholungen einer ganzen Saison
-gegen die Streckengeometrie der telemetriefaehigen Rennen.
+"""ueberholschwierigkeit je strecke (P38): ueberholungen einer ganzen
+saison gegen die streckengeometrie der telemetriefaehigen rennen.
 
-Anders als der Rest der App an keine in der Seitenleiste waehlbare Session
-gebunden, sondern an eine ganze Saison (Grund wie in 9_Teamkollegen.py/
-11_Boxenstopps.py/14_Historie.py/15_MachineLearning.py) - der Saison-Scan
-bleibt deshalb seitenlokal statt in f1lab. Gerechnet wird trotzdem nirgends
-hier ausser der Korrelation selbst: die Bausteine kommen aus
+anders als der rest der app an keine in der seitenleiste waehlbare session
+gebunden, sondern an eine ganze saison (grund wie in 9_Teamkollegen.py/
+11_Boxenstopps.py/14_Historie.py/15_MachineLearning.py). der saison-scan
+bleibt deshalb seitenlokal statt in f1lab. gerechnet wird trotzdem nirgends
+hier ausser der korrelation selbst: die bausteine kommen aus
 f1lab.overtakes_matrix() (P20), f1lab.circuit_dimension() (P02) und (zweite
-AUSBAUSTUFE) f1lab.track_status_phases() (P18) - dieselbe Streckengeometrie
-gegen eine zweite Rennverlaufs-Groesse, um zu zeigen, dass nicht jede
-Statistik automatisch eine Streckeneigenschaft ist.
+AUSBAUSTUFE) f1lab.track_status_phases() (P18). dieselbe streckengeometrie
+gegen eine zweite rennverlaufs-groesse zeigt, dass nicht jede statistik
+automatisch eine streckeneigenschaft ist.
 """
 from __future__ import annotations
 

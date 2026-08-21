@@ -1,96 +1,4 @@
-"""
-P38 - Ueberholschwierigkeit je Strecke: Saison-Scan gegen die Streckengeometrie
-================================================================================
-
-"Hier kann man nicht ueberholen" ist eine der haeufigsten Behauptungen im F1-Kommentar - stimmt das mit der Streckenform ueberein, oder ist es nur eine Geschichte?
-
-Kategorie:   Strecke & Position
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Statistik
-
-WARUM DAS LOHNT
-Kombiniert zwei bereits vorhandene Bausteine (P20s Ueberholmatrix, P02/P11s
-Streckengeometrie) zu einer neuen Frage ueber eine ganze Saison hinweg, statt
-ein einzelnes Rennen zu betrachten. Und eine Lektion in Korrelationskritik:
-mit nur 12 Strecken mit Telemetrie im Cache ist jede Korrelation empfindlich
-gegen einzelne Punkte - das gehoert offen dazu, nicht nur die Zahl selbst.
-
-VORGEHEN
-  1. Ueberholungen je Rennen ueber die ganze Saison 2024 zaehlen
-     (f1lab.overtakes_matrix, braucht keine Telemetrie)
-  2. Streckengeometrie (Kurvenzahl, Laenge) fuer die telemetriefaehigen
-     Rennen laden (f1lab.circuit_dimension, P02)
-  3. Kurven pro Kilometer als Proxy fuer "Strassenkurs-Charakter" ableiten
-     (viele enge Kurven auf kurzer Strecke gegen wenige weite auf langer)
-  4. Korrelation Ueberholungen gegen Streckenlaenge/Kurvenzahl/Kurven-pro-km
-     pruefen (Pearson, dazu Spearman als robusterer Gegencheck)
-
-GENUTZTE FASTF1-BAUSTEINE
-  - session.laps (Positions-/Boxenstopp-/Flaggendaten, keine Telemetrie noetig
-    fuer VORGEHEN 1)
-  - get_circuit_info, get_pos_data (ueber f1lab.circuit_dimension)
-  - scipy.stats.pearsonr/spearmanr
-
-AUSBAUSTUFE  [umgesetzt]
-Robustheit der Korrelation pruefen: einmal ohne den staerksten Einzelpunkt
-(Monaco), einmal mit dem ausreisserrobusten Spearman-Rangkorrelation statt
-Pearson. Zweite AUSBAUSTUFE: dieselbe Frage an Safety-Car-/VSC-Dauer statt
-Ueberholungen stellen (f1lab.track_status_phases, P18) - ist DAS eine
-Streckeneigenschaft?
-
-Alle 24 Rennen 2024 im Cache liefern Ueberholzahlen von 6 (Monaco) bis 215
-(Las Vegas). Fuer die 12 Rennen mit Telemetrie zeigt sich: die reine
-Streckenlaenge sagt nichts voraus (Pearson r=0.111, p=0.73) - eine lange
-Strecke ist nicht automatisch ueberholfreundlich. Kurvenzahl allein
-korreliert schon deutlicher negativ (r=-0.629, p=0.028), Kurven pro
-Kilometer - der eigentliche "Strassenkurs-Charakter", der auch kurze,
-enge Strecken wie Monaco von langen, offenen wie Spielberg unterscheidet -
-am staerksten (r=-0.712, p=0.009): mehr Kurven auf derselben Streckenlaenge,
-weniger Ueberholungen.
-
-Die AUSBAUSTUFE zeigt die Grenze dieser Zahl bei n=12 ehrlich: Monaco ist
-sowohl das Extrem bei Kurven/km (5.8) als auch bei Ueberholungen (6) -
-ohne diesen einen Punkt faellt die Korrelation auf r=-0.573 (p=0.065, nicht
-mehr signifikant bei alpha=0.05, aber Richtung und Groessenordnung bleiben).
-Die ausreisserrobuste Spearman-Rangkorrelation ueber alle 12 Strecken
-bestaetigt den Befund unabhaengig von der Metrik-Empfindlichkeit gegenueber
-Monaco (r=-0.643, p=0.024) - der Zusammenhang ist also nicht allein ein
-Monaco-Artefakt, aber mit einer einzigen sehr eintypischen Strecke im
-Datensatz ist Vorsicht angebracht. Drei Kandidaten-Metriken getestet: selbst
-mit einer konservativen Mehrfachtest-Korrektur (alpha/3=0.017) bleibt nur
-Kurven/km klar signifikant.
-
-Was diese Zahl NICHT erklaert: die Ueberholzahlen selbst sind stark von
-Rennverlauf gepraegt, nicht nur von Geometrie - Las Vegas (215) und Ungarn
-(193, ausserhalb der 12-Strecken-Stichprobe ohne Telemetrie) waren beide
-chaotische Rennen mit grossen Reifen-/Strategieunterschieden, waehrend ein
-sauberes Rennen auf derselben Strecke deutlich weniger Ueberholungen zeigen
-koennte. Die Korrelation misst "diese eine Saison", keine
-Streckeneigenschaft im Vakuum.
-
-ZWEITE AUSBAUSTUFE  [umgesetzt]
-Dieselbe Frage ("ist das eine Streckeneigenschaft?") an eine zweite
-Rennverlaufs-Groesse gestellt: Safety-Car-/VSC-Dauer je Rennen
-(f1lab.track_status_phases, P18), wieder gegen Kurven pro Kilometer.
-13/24 Rennen 2024 hatten mindestens eine Neutralisation (Bereich 0-1397s).
-Anders als bei Ueberholungen zeigt sich hier PRAKTISCH KEIN Zusammenhang
-(Pearson r=+0.044, p=0.89; Spearman r=+0.276, p=0.39, n=12) - eine
-kurvenreiche Strecke ueberholt schwerer, aber sie ist nicht dadurch schon
-unfallanfaelliger. Plausibel: Safety-Car-Ausloeser sind ueberwiegend
-Kollisionen, technische Ausfaelle und Wetter - Ereignisse, die eher mit
-Feldgroesse, erstem-Kurve-Chaos oder Zuverlaessigkeit zusammenhaengen als
-mit der Streckengeometrie selbst. Die zwei Rennen mit der laengsten
-Neutralisationsdauer (Katar 1397s, China 1295s) liegen bei Kurven/km nahe
-der Mitte der Stichprobe, nicht an einem Extrem.
-
-Zusammengenommen zeigen P38 und seine zweite AUSBAUSTUFE denselben
-methodischen Punkt aus zwei Richtungen: nicht jede auffaellige
-Rennstatistik ist eine Streckeneigenschaft, nur weil man sie gegen
-Streckengeometrie auftragen KANN - Ueberholschwierigkeit ist es (mit den
-oben genannten Einschraenkungen), Safety-Car-Haeufigkeit in dieser
-Stichprobe nicht.
-"""
+"""prueft ueber einen saison-scan ob ueberholzahl und safety-car-dauer mit der streckengeometrie korrelieren"""
 from __future__ import annotations
 
 import sys
@@ -101,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -122,7 +30,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def zeichne_saison(ax, ueberholungen: pd.DataFrame) -> None:
-    """VORGEHEN 1: Ueberholungen je Rennen, ganze Saison."""
+    """zeigt ueberholungen je rennen ueber die saison."""
     u = ueberholungen.sort_values("overtakes")
     farben = [SERIEN[0] if gp != "Monaco Grand Prix" else SERIEN[1]
              for gp in u["gp"]]
@@ -138,8 +46,7 @@ def zeichne_saison(ax, ueberholungen: pd.DataFrame) -> None:
 
 
 def zeichne_korrelation(ax, geo: pd.DataFrame, r: float, p: float) -> None:
-    """VORGEHEN 4 + AUSBAUSTUFE: Kurven/km gegen Ueberholungen, 12 Strecken
-    mit Telemetrie."""
+    """zeigt kurven pro kilometer gegen ueberholungen fuer die strecken mit telemetrie."""
     ax.scatter(geo["kurven_pro_km"], geo["overtakes"], s=70, color=SERIEN[0],
               zorder=3)
     for _, row in geo.iterrows():
@@ -161,8 +68,7 @@ def zeichne_korrelation(ax, geo: pd.DataFrame, r: float, p: float) -> None:
 
 
 def zeichne_sc_korrelation(ax, geo: pd.DataFrame, r: float, p: float) -> None:
-    """ZWEITE AUSBAUSTUFE: Kurven/km gegen Safety-Car-/VSC-Dauer, dieselben
-    12 Strecken."""
+    """zeigt kurven pro kilometer gegen safety-car-/vsc-dauer fuer dieselben strecken."""
     ax.scatter(geo["kurven_pro_km"], geo["sc_dauer_s"], s=70, color=SERIEN[2],
               zorder=3)
     for _, row in geo.iterrows():

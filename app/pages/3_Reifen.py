@@ -1,8 +1,8 @@
-"""Stints und Reifendegradation.
+"""stints und reifendegradation.
 
-Die Steigung je Stint ist mit herausgerechnetem Treibstoffeffekt geschaetzt.
-Ohne diese Korrektur wird die Degradation systematisch unterschaetzt: das Auto
-wird leichter, waehrend der Reifen abbaut, und beide Effekte heben sich
+die steigung je stint ist mit herausgerechnetem treibstoffeffekt geschaetzt.
+ohne diese korrektur wird die degradation systematisch unterschaetzt: das
+auto wird leichter, waehrend der reifen abbaut, beide effekte heben sich
 teilweise auf.
 """
 from __future__ import annotations
@@ -43,7 +43,7 @@ with st.sidebar:
              "ihn weg.")
     min_runden = st.slider("Mindestrunden je Stint", 4, 20, 6, 1)
 
-# --- Stints ---------------------------------------------------------------
+# --- stints ---------------------------------------------------------------
 st.markdown("##### Reifenwechsel je Fahrer")
 
 stints = f1lab.stints(ses)
@@ -72,7 +72,7 @@ hinweis("Ein Balken je Stint, eingefaerbt nach Mischung. Jeder Wechsel ist "
         "ein Boxenstopp. Auffaellig kurze Stints am Anfang sind meist "
         "Schadensbegrenzung nach einem Zwischenfall, nicht Strategie.")
 
-# --- Degradation je Stint -------------------------------------------------
+# --- degradation je stint ---------------------------------------------------
 st.markdown("##### Reifenabbau je Stint")
 
 deg = f1lab.degradation(ses, threshold=schwelle, min_laps=min_runden)
@@ -115,7 +115,7 @@ hinweis("Kreuze sind Fits, die die Plausibilitaetspruefung nicht bestanden "
         "heissen nicht, dass der Reifen besser wird: dort ist der Fit schlicht "
         "nicht identifiziert.")
 
-# --- Je Mischung ----------------------------------------------------------
+# --- je mischung -------------------------------------------------------------
 je_mischung = f1lab.degradation_by_compound(ses, threshold=schwelle,
                                             min_laps=min_runden)
 links, rechts = st.columns([1, 1])
@@ -151,7 +151,7 @@ with rechts:
         "deg_s_per_lap": "Abbau [s/Runde]", "base_s": "Basiszeit [s]",
         "r2": "R2", "reliable": "belastbar"}), height=380)
 
-# --- Frisch vs. wiederverwendet (P13 ZWEITE AUSBAUSTUFE) ------------------
+# --- frisch vs. wiederverwendet (P13 ZWEITE AUSBAUSTUFE) -------------------
 st.markdown("##### Frischer gegen wiederverwendeter Reifen")
 hinweis("`FreshTyre` stand lange nur als Docstring-Behauptung, nie als "
         "gelesene Spalte - jetzt Teil von `f1lab.degradation()`. Nur "
@@ -202,7 +202,7 @@ with st.expander("Warum die Treibstoffkorrektur noetig ist"):
         "(1,8 kg pro Runde, 0,03 s pro kg) sind Literaturwerte - die "
         "Groessenordnung stimmt, exakte Messwerte sind es nicht.")
 
-# --- Cliff-Erkennung (P13 AUSBAUSTUFE) -------------------------------------
+# --- cliff-erkennung (P13 AUSBAUSTUFE) ---------------------------------------
 st.markdown("##### Bricht der Reifen irgendwo ein? (Cliff-Erkennung)")
 hinweis("Reifen degradieren nicht immer linear - ab einem Knickpunkt kann der "
         "Abbau ploetzlich steiler werden. f1lab.find_cliff() probiert jeden "

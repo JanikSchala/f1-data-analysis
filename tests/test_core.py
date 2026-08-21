@@ -1,8 +1,7 @@
-"""Tests fuer f1lab.core.
+"""tests fuer f1lab.core.
 
-Laufen ohne Netzzugriff: alle Eingaben sind synthetisch mit bekannter
-Wahrheit. Damit ist die Rechnung pruefbar, ohne von der Verfuegbarkeit der
-F1-API abzuhaengen.
+laufen ohne netzzugriff. alle eingaben sind synthetisch mit bekannter
+wahrheit. die rechnung ist damit pruefbar ohne die F1-API.
 
     pytest -q
 """
@@ -104,8 +103,8 @@ class TestBootstrapMedian:
             bootstrap_median([90.0])
 
     def test_robust_against_single_outlier(self):
-        """Ein Ausreisser darf den Median kaum bewegen - das ist der Grund,
-        warum hier nicht der Mittelwert steht."""
+        """ein ausreisser darf den median kaum bewegen. deshalb steht hier
+        nicht der mittelwert."""
         base = [90.0, 90.1, 90.2, 90.3, 90.4]
         assert (bootstrap_median(base + [140.0]).value
                 == pytest.approx(bootstrap_median(base).value, abs=0.2))
@@ -138,7 +137,7 @@ class TestEloExpected:
         assert a + b == pytest.approx(1.0)
 
     def test_400_point_gap_is_about_91_percent(self):
-        """Definierender Referenzwert des Elo-Systems."""
+        """definierender referenzwert des Elo-Systems."""
         assert elo_expected(1900, 1500) == pytest.approx(0.909, abs=1e-3)
 
 
@@ -152,14 +151,14 @@ class TestEloUpdate:
         assert new_a < 1500
 
     def test_zero_sum(self):
-        """Elo verschiebt Punkte nur - der Pool bleibt konstant."""
+        """Elo verschiebt nur Punkte. der Pool bleibt konstant."""
         new_a, new_b = elo_update(1520, 1480, score_a=1, k=24)
         assert (new_a - 1520) == pytest.approx(-(new_b - 1480))
 
     def test_upset_moves_more_than_expected_win(self):
-        """Ein ueberraschender Sieg bewegt das Rating staerker als ein
-        erwarteter - die Ueberraschung steckt in der Differenz zur
-        erwarteten Punktzahl, nicht im Sieg selbst."""
+        """ein ueberraschender Sieg bewegt das Rating staerker als ein
+        erwarteter. die Ueberraschung steckt in der Differenz zur
+        erwarteten Punktzahl und nicht im Sieg selbst."""
         underdog_wins, _ = elo_update(1300, 1700, score_a=1, k=24)
         favorite_wins, _ = elo_update(1700, 1300, score_a=1, k=24)
         assert abs(underdog_wins - 1300) > abs(favorite_wins - 1700)
@@ -177,7 +176,7 @@ class TestEloUpdate:
 # --------------------------------------------------------------- Fuel
 class TestFuelCorrect:
     def test_last_lap_is_unchanged(self):
-        """Am Rennende ist der Tank leer - dort ist die Korrektur null."""
+        """am Rennende ist der Tank leer. dort ist die Korrektur null."""
         out = fuel_correct([90.0], [50], total_laps=50)
         assert out[0] == pytest.approx(90.0)
 
@@ -186,13 +185,13 @@ class TestFuelCorrect:
         assert out[0] < out[1] < out[2]
 
     def test_magnitude_matches_formula(self):
-        # 49 Runden Rest * 1.8 kg * 0.03 s = 2.646 s
+        # 49 runden rest * 1.8 kg * 0.03 s = 2.646 s
         out = fuel_correct([90.0], [1], total_laps=50)
         assert out[0] == pytest.approx(90.0 - 2.646, abs=1e-6)
 
     def test_removes_artificial_speedup(self):
-        """Konstante Reifen, nur Spritverbrauch: nach der Korrektur muessen
-        die Zeiten flach sein."""
+        """reifen bleiben konstant und nur der Spritverbrauch veraendert
+        sich. nach der Korrektur muessen die Zeiten flach sein."""
         laps = np.arange(1, 51)
         raw = 90.0 + (50 - laps) * 1.8 * 0.03
         corrected = fuel_correct(raw, laps, total_laps=50)
@@ -224,7 +223,7 @@ class TestFitDegradation:
         assert good.is_reliable
 
         short = fit_degradation([1, 2, 3], [90.0, 90.1, 90.2])
-        assert not short.is_reliable          # zu wenige Runden
+        assert not short.is_reliable          # zu wenige runden
 
     def test_flat_stint_has_low_r2(self):
         rng = np.random.default_rng(9)
@@ -248,8 +247,9 @@ class TestFitDegradation:
 
 class TestFindCliff:
     def test_detects_the_break(self):
-        """Flach bis Runde 12, danach steiler - der Knick muss gefunden
-        werden und der zweite Abschnitt staerker steigen."""
+        """die Kurve ist bis Runde 12 flach und wird danach steiler. der
+        Knick muss gefunden werden und der zweite Abschnitt muss staerker
+        steigen."""
         x = np.arange(1, 25)
         y = np.where(x <= 12, 90 + 0.03 * x, 90 + 0.03 * 12 + 0.25 * (x - 12))
         cliff, left, right = find_cliff(x, y)
@@ -269,20 +269,19 @@ class TestFindCliff:
         assert cliff is None and right is None and single.n == 6
 
     def test_improving_tyre_is_not_a_cliff(self):
-        """Wenn der zweite Abschnitt flacher wird, ist das kein Cliff."""
+        """der zweite Abschnitt kann auch flacher werden. dann ist das
+        kein Cliff."""
         x = np.arange(1, 25)
         y = np.where(x <= 12, 90 + 0.25 * x, 90 + 0.25 * 12 + 0.02 * (x - 12))
         cliff, _, right = find_cliff(x, y)
         assert cliff is None and right is None
 
     def test_noiseless_line_is_deterministic_across_platforms(self):
-        """Regressionstest: eine exakt rauschfreie Gerade hat single_sse nahe
-        der Gleitkomma-Aufloesung (~1e-27 auf diesem Rechner) - der Vergleich
-        sse > 0.8*single_sse wird dann zum Vergleich von Rauschen gegen
-        Rauschen und kippt je nach BLAS/LAPACK der Plattform in eine der
-        beiden Richtungen (in CI mit anderer numpy-Version beobachtet:
-        cliff=10 statt None, lokal nicht reproduzierbar). Die 1e-6-Schwelle
-        in find_cliff() faengt genau das ab, unabhaengig vom Vorzeichen des
+        """Regressionstest fuer eine exakt rauschfreie Gerade. single_sse
+        liegt dann nahe der Gleitkomma-Aufloesung. der Vergleich
+        sse > 0.8*single_sse vergleicht dann Rauschen gegen Rauschen und
+        kann je nach BLAS/LAPACK der Plattform kippen. die 1e-6-Schwelle in
+        find_cliff() faengt das ab unabhaengig vom Vorzeichen des
         Rauschens."""
         x = np.arange(1, 25, dtype=float)
         y = 90.0 + 0.08 * x       # exakt, keine Zufallskomponente
@@ -341,7 +340,7 @@ class TestUndercut:
 class TestBrakingZones:
     @staticmethod
     def _lap():
-        """Synthetische Runde: zwei Bremszonen, dazwischen Vollgas."""
+        """synthetische Runde mit zwei Bremszonen und dazwischen Vollgas."""
         n = 300
         t = np.linspace(0, 60, n)
         d = np.linspace(0, 5000, n)
@@ -397,12 +396,12 @@ class TestMatchByDistance:
         assert match_by_distance([100], [200], tolerance=10) == []
 
     def test_extra_value_in_b_is_ignored(self):
-        """Eine zusaetzliche Bremsung eines Fahrers ist kein Fehlerfall."""
+        """eine zusaetzliche Bremsung eines Fahrers ist kein Fehlerfall."""
         paare = match_by_distance([100, 500], [100, 300, 500], tolerance=5)
         assert paare == [(0, 0), (1, 2)]
 
     def test_no_double_booking(self):
-        """Zwei nahe a-Werte duerfen sich nicht denselben b-Wert teilen."""
+        """zwei nahe a-Werte duerfen sich nicht denselben b-Wert teilen."""
         paare = match_by_distance([100, 102], [101], tolerance=5)
         assert len(paare) == 1
 
@@ -448,7 +447,7 @@ class TestActiveDistanceZones:
 
 # ----------------------------------------------------------- distance_in_any_zone
 class TestDistanceInAnyZone:
-    """Zonen-Zugehoerigkeit einzelner Distanzen (P39)."""
+    """zonen-Zugehoerigkeit einzelner Distanzen (P39)."""
 
     def test_inside_and_outside(self):
         out = distance_in_any_zone([5, 50, 150, 250], [0, 200], [100, 300])
@@ -463,15 +462,14 @@ class TestDistanceInAnyZone:
         assert out.tolist() == [False, False, False]
 
     def test_overlapping_zones_still_true(self):
-        """Eine Distanz in mehreren Zonen zaehlt trotzdem nur einmal True."""
+        """eine Distanz in mehreren Zonen zaehlt trotzdem nur einmal True."""
         out = distance_in_any_zone([50], [0, 40], [60, 80])
         assert out.tolist() == [True]
 
 
 # ------------------------------------------------------- lead_distance_to_zone
 class TestLeadDistanceToZone:
-    """Abstand zur naechsten Zone in Fahrtrichtung, mit Rundenumbruch (P39,
-    dritte AUSBAUSTUFE)."""
+    """abstand zur naechsten Zone in Fahrtrichtung mit Rundenumbruch (P39)."""
 
     def test_before_a_zone(self):
         out = lead_distance_to_zone([80], [100, 300], track_length_m=1000)
@@ -486,7 +484,7 @@ class TestLeadDistanceToZone:
         assert out.tolist() == [150.0]
 
     def test_past_last_zone_wraps_to_next_lap(self):
-        """Nach der letzten Zone zaehlt die Reststrecke bis zum Ziel plus
+        """nach der letzten Zone zaehlt die Reststrecke bis zum Ziel plus
         die Distanz vom Start bis zur ersten Zone der naechsten Runde."""
         out = lead_distance_to_zone([950], [100, 300], track_length_m=1000)
         assert out.tolist() == [150.0]        # (1000-950) + 100
@@ -517,10 +515,8 @@ class TestDrsState:
 
 # --------------------------------------------------------------- path_length
 class TestPathLength:
-    """Streckenlaenge aus Positionsdaten."""
-
     def test_unit_square_closed(self):
-        """Vier Seiten a 1 -> Umfang 4. Das Schlusssegment zaehlt mit."""
+        """vier Seiten a 1 -> Umfang 4. das Schlusssegment zaehlt mit."""
         x, y = [0, 1, 1, 0], [0, 0, 1, 1]
         assert path_length(x, y) == pytest.approx(4.0)
 
@@ -535,13 +531,13 @@ class TestPathLength:
         assert path_length([0, 3], [0, 4], closed=True) == pytest.approx(10.0)
 
     def test_circle_approximates_two_pi_r(self):
-        """Ein feines Polygon naehert den Kreisumfang von unten an."""
+        """ein feines Polygon naehert den Kreisumfang von unten an."""
         t = np.linspace(0, 2 * np.pi, 2000, endpoint=False)
         got = path_length(np.cos(t) * 100, np.sin(t) * 100)
         assert got == pytest.approx(2 * np.pi * 100, rel=1e-5)
 
     def test_resolution_does_not_change_result(self):
-        """Doppelt so viele Stuetzpunkte auf derselben Geraden -> gleiche Laenge."""
+        """doppelt so viele Stuetzpunkte auf derselben Geraden -> gleiche Laenge."""
         coarse = path_length([0, 10], [0, 0], closed=False)
         fine = path_length(np.linspace(0, 10, 50), np.zeros(50), closed=False)
         assert coarse == pytest.approx(fine)
@@ -562,7 +558,7 @@ class TestPathLength:
 
 # --------------------------------------------------------------- elevation
 class TestElevationProfile:
-    """Hoehenmeter mit Hysterese gegen Messrauschen."""
+    """hoehenmeter mit Hysterese gegen Messrauschen."""
 
     def test_monotonic_climb(self):
         got = elevation_profile(np.arange(0, 51, 1.0))
@@ -571,7 +567,7 @@ class TestElevationProfile:
         assert got.span == pytest.approx(50.0)
 
     def test_climb_then_descent_is_balanced(self):
-        """Runde endet, wo sie beginnt -> Anstieg gleich Abstieg."""
+        """start und Ziel liegen am selben Punkt -> Anstieg gleich Abstieg."""
         z = np.r_[np.arange(0, 31, 1.0), np.arange(29, -1, -1.0)]
         got = elevation_profile(z)
         assert got.gain == pytest.approx(30.0)
@@ -580,36 +576,37 @@ class TestElevationProfile:
 
     @staticmethod
     def _messrauschen(rng, n, sigma=0.3, window=25):
-        """Korreliertes Rauschen, wie Positionsdaten es tatsaechlich zeigen.
+        """korreliertes Rauschen wie es Positionsdaten tatsaechlich zeigen.
 
-        Weisses Rauschen waere das falsche Modell: aufeinanderfolgende Proben
-        eines Positionskanals haengen zusammen, sie springen nicht unabhaengig.
+        weisses Rauschen waere das falsche Modell. aufeinanderfolgende Proben
+        eines Positionskanals haengen zusammen und springen nicht
+        unabhaengig.
         """
         glatt = np.ones(window) / window
         return np.convolve(rng.normal(0, sigma, n + window), glatt,
                            mode="valid")[:n]
 
     def test_noise_below_threshold_is_ignored(self):
-        """Der eigentliche Zweck: Rauschen darf keine Hoehenmeter erzeugen."""
+        """der eigentliche Zweck: Rauschen darf keine Hoehenmeter erzeugen."""
         z = self._messrauschen(np.random.default_rng(3), 5000)
         got = elevation_profile(z, min_step=1.0)
         assert got.gain == 0.0
         assert got.drop == 0.0
 
     def test_naive_sum_would_massively_overcount(self):
-        """Belegt, warum die Hysterese noetig ist."""
+        """zeigt warum die Hysterese noetig ist."""
         z = self._messrauschen(np.random.default_rng(3), 5000)
         naiv = float(np.abs(np.diff(z)).sum())
-        assert naiv > 50                         # ohne Schwelle: frei erfunden
+        assert naiv > 50                         # ohne Schwelle frei erfunden
         assert elevation_profile(z, min_step=1.0).gain == 0.0
 
     def test_white_noise_still_leaks_above_threshold(self):
-        """Grenze des Verfahrens, bewusst festgehalten.
+        """eine bewusst festgehaltene Grenze des Verfahrens.
 
-        Weisses Rauschen mit sigma=0.3 ueberschreitet die 1-m-Schwelle ueber
-        5000 Proben hunderte Male. Die Hysterese daempft das deutlich, setzt
-        es aber nicht auf null - wer die Funktion auf ungeglaettete Daten
-        loslaesst, muss min_step anheben.
+        weisses Rauschen mit sigma=0.3 ueberschreitet die 1-m-Schwelle ueber
+        5000 Proben hunderte Male. die Hysterese daempft das deutlich. sie
+        setzt es aber nicht auf null. wer die Funktion auf ungeglaettete
+        Daten anwendet muss min_step anheben.
         """
         rng = np.random.default_rng(0)
         z = rng.normal(0, 0.3, 5000)
@@ -620,7 +617,7 @@ class TestElevationProfile:
         assert elevation_profile(z, min_step=2.0).gain == 0.0
 
     def test_real_climb_survives_noise(self):
-        """Ein echter Anstieg darf durch ueberlagertes Rauschen nicht verschwinden."""
+        """ein echter Anstieg darf durch ueberlagertes Rauschen nicht verschwinden."""
         rng = np.random.default_rng(4)
         z = np.linspace(0, 40, 2000) + self._messrauschen(rng, 2000, sigma=0.5)
         got = elevation_profile(z, min_step=1.0)
@@ -651,12 +648,12 @@ class TestElevationProfile:
 
 # --------------------------------------------------------------- StatusIntervals
 class TestStatusIntervals:
-    """Sparses Aenderungs-Log (wie FastF1s track_status) in Intervalle."""
+    """sparses Aenderungs-Log (wie FastF1s track_status) in Intervalle."""
 
     def test_end_is_next_start_not_own_last_occurrence(self):
-        """Der eigentliche Zweck: 'SCDeployed' erscheint einmal, gilt aber
-        bis zum naechsten Statuswechsel - nicht nur an seinem eigenen
-        Zeitpunkt (das waere ein Intervall der Laenge 0)."""
+        """der eigentliche Zweck: 'SCDeployed' erscheint einmal und gilt bis
+        zum naechsten Statuswechsel und nicht nur an seinem eigenen
+        Zeitpunkt. sonst waere das Intervall Laenge 0."""
         status = ["1", "4", "1"]
         zeit = [0.0, 100.0, 500.0]
         s, start, ende = status_intervals(status, zeit)
@@ -664,7 +661,7 @@ class TestStatusIntervals:
         assert list(start) == [0.0, 100.0, 500.0]
         assert ende[0] == pytest.approx(100.0)
         assert ende[1] == pytest.approx(500.0)
-        assert np.isnan(ende[2])                  # letztes Intervall offen
+        assert np.isnan(ende[2])                  # letztes intervall offen
 
     def test_immediate_repeats_are_merged(self):
         status = ["1", "1", "4", "1"]
@@ -674,10 +671,10 @@ class TestStatusIntervals:
         assert list(start) == [0.0, 100.0, 500.0]
 
     def test_naive_groupby_would_give_zero_length(self):
-        """Dokumentiert den Fehler, den die Funktion vermeidet: Gruppieren
-        nach *aufeinanderfolgend* gleichem Status (cumsum ueber Wechsel) und
-        dessen eigenem Min/Max ergibt hier ueberall Laenge 0, weil kein
-        Status zweimal hintereinander steht - das war die urspruengliche
+        """dokumentiert den vermiedenen Fehler. Gruppieren nach
+        *aufeinanderfolgend* gleichem Status (cumsum ueber Wechsel) und
+        dessen eigenem Min/Max ergibt hier ueberall Laenge 0 weil kein
+        Status zweimal hintereinander steht. das war die urspruengliche
         Fassung von f1lab.session.track_status_phases()."""
         status = np.array(["1", "4", "1", "6", "1"])
         zeit = np.array([0.0, 100.0, 500.0, 600.0, 900.0])
@@ -720,7 +717,7 @@ class TestTyreModel:
 
     def test_stint_time_sums_each_lap(self):
         t = TyreModel("SOFT", 90.0, 1.0)
-        # Runden 1..3: 90, 91, 92
+        # runden 1..3: 90, 91, 92
         assert t.stint_time(3) == pytest.approx(90 + 91 + 92)
 
     def test_stint_time_below_one_raises(self):
@@ -746,7 +743,7 @@ class TestRaceConfig:
         with pytest.raises(ValueError, match="Zweimischungs-Regel"):
             RaceConfig(n_laps=10, pit_loss=20.0,
                       tyres=(TyreModel("SOFT", 90.0, 0.05),))
-        # mit ausgeschalteter Regel geht es
+        # mit ausgeschalteter regel geht es
         RaceConfig(n_laps=10, pit_loss=20.0,
                   tyres=(TyreModel("SOFT", 90.0, 0.05),),
                   require_two_compounds=False)
@@ -768,7 +765,7 @@ class TestRaceConfig:
 
 
 class TestOptimalStrategy:
-    """Kleine, von Hand nachrechenbare Rennen."""
+    """die Rennen sind klein. sie lassen sich von Hand nachrechnen."""
 
     def _cfg(self, **kw):
         defaults = dict(
@@ -778,11 +775,11 @@ class TestOptimalStrategy:
         return RaceConfig(**defaults)
 
     def test_prefers_flatter_degrading_tyre_for_long_stint(self):
-        """SOFT baut zehnmal so schnell ab wie HARD - bei freier Stintlaenge
+        """SOFT baut zehnmal so schnell ab wie HARD. bei freier Stintlaenge
         gewinnt ein frueher Wechsel auf HARD."""
         cfg = self._cfg()
         best = optimal_strategy(cfg)
-        # das laengste Stueck des Rennens sollte auf HARD liegen
+        # das laengste stueck des rennens sollte auf HARD liegen
         laengster = max(best.stints, key=lambda s: s.length)
         assert laengster.compound == "HARD"
 
@@ -808,7 +805,7 @@ class TestOptimalStrategy:
             optimal_strategy(cfg)
 
     def test_more_pit_stops_never_beats_pit_loss_savings(self):
-        """Ein Vergleichsplan mit einem zusaetzlichen, unnoetigen Stopp kann
+        """ein Vergleichsplan mit einem zusaetzlichen, unnoetigen Stopp kann
         nie besser sein als das Optimum."""
         cfg = self._cfg()
         best = optimal_strategy(cfg)
@@ -838,9 +835,9 @@ class TestFrontierByStops:
 
 class TestPitLossCrossovers:
     def test_lower_pit_loss_favours_more_stops(self):
-        """Ein guenstigerer Boxenstopp macht zusaetzliche Stopps attraktiver -
+        """ein guenstigerer Boxenstopp macht zusaetzliche Stopps attraktiver.
         die Stoppzahl bei niedrigem Pitloss ist mindestens so hoch wie bei
-        hohem."""
+        hohem Pitloss."""
         cfg = RaceConfig(n_laps=40, pit_loss=20.0, min_stint=3,
                          tyres=(TyreModel("SOFT", 90.0, 0.3),
                                TyreModel("HARD", 91.0, 0.05)))
@@ -864,7 +861,7 @@ class TestSafetyCarProcess:
         assert all(0.0 <= v <= 1.0 for v in q[1:51])
 
     def test_marginals_start_at_zero(self):
-        """Runde 1 startet immer gruen."""
+        """runde 1 startet immer gruen."""
         prozess = SafetyCarProcess()
         q = prozess.marginals(10)
         assert q[1] == pytest.approx(0.0)
@@ -926,7 +923,7 @@ class TestExpectedCostAndHindsight:
                                 TyreModel("HARD", 91.0, 0.05)))
 
     def test_expected_cost_without_sc_equals_green_time(self):
-        """Ohne jede Safety-Car-Wahrscheinlichkeit gibt es keinen Rabatt -
+        """ohne jede Safety-Car-Wahrscheinlichkeit gibt es keinen Rabatt.
         die erwarteten Kosten sind genau die Fahrzeit des festen Plans."""
         cfg = self._cfg()
         plan = optimal_strategy(cfg)
@@ -935,9 +932,9 @@ class TestExpectedCostAndHindsight:
         assert kosten == pytest.approx(plan.green_time)
 
     def test_hindsight_never_worse_than_expected_cost_of_fixed_plan(self):
-        """Das Optimum bei bekanntem Verlauf ist eine untere Schranke - im
-        Mittel nie schlechter als ein fester Plan, der stur durchgezogen
-        wird."""
+        """das Optimum bei bekanntem Verlauf ist eine untere Schranke. im
+        Mittel ist es nie schlechter als ein fester Plan der stur
+        durchgezogen wird."""
         cfg = self._cfg()
         plan = optimal_strategy(cfg)
         prozess = SafetyCarProcess(p_deploy=0.05, p_end=0.3)
@@ -956,7 +953,7 @@ class TestExpectedCostAndHindsight:
 
 # --------------------------------------------------------- lap_times_for_strategy
 class TestLapTimesForStrategy:
-    """Rundenzeiten je Runde aus einer festen Strategie (P41)."""
+    """rundenzeiten je Runde aus einer festen Strategie (P41)."""
 
     def test_sum_matches_green_time(self):
         cfg = RaceConfig(n_laps=20, pit_loss=20.0, min_stint=3,
@@ -974,8 +971,8 @@ class TestLapTimesForStrategy:
         assert len(lap_times_for_strategy(cfg, plan)) == 15
 
     def test_pit_loss_lands_on_pit_lap(self):
-        """Der Boxenverlust steckt auf der Runde, an deren Ende gestoppt
-        wird - genau die in Strategy.pit_laps genannte Runde."""
+        """der Boxenverlust steckt auf der Runde an deren Ende gestoppt wird.
+        das ist genau die in Strategy.pit_laps genannte Runde."""
         cfg = RaceConfig(n_laps=10, pit_loss=25.0, min_stint=2,
                          tyres=(TyreModel("SOFT", 90.0, 0.0),
                                TyreModel("HARD", 90.0, 0.0)),
@@ -990,11 +987,11 @@ class TestLapTimesForStrategy:
 
 # ------------------------------------------------------------- gap_evolution
 class TestGapEvolution:
-    """Rundenweiser Abstand zweier Autos mit Ueberholwahrscheinlichkeit (P41)."""
+    """rundenweiser Abstand zweier Autos mit Ueberholwahrscheinlichkeit (P41)."""
 
     def test_far_apart_never_blocks(self):
-        """Weit auseinander liegend entspricht die Simulation exakt der
-        freien Rechnung, unabhaengig von p_overtake."""
+        """weit auseinander liegend entspricht die Simulation exakt der
+        freien Rechnung. das gilt unabhaengig von p_overtake."""
         hero = np.full(10, 90.0)
         rival = np.full(10, 90.0)
         verlauf, blockiert = gap_evolution(hero, rival, initial_gap=30.0,
@@ -1004,9 +1001,9 @@ class TestGapEvolution:
         assert verlauf[-1] == pytest.approx(30.0)
 
     def test_p_overtake_one_matches_free_gap(self):
-        """Gelingt jeder Versuch, macht die Blockade keinen Unterschied mehr -
-        die Simulation muss der freien Rechnung entsprechen."""
-        hero = np.full(20, 89.0)     # 1s/Runde schneller
+        """gelingt jeder Versuch macht die Blockade keinen Unterschied mehr.
+        die Simulation muss dann der freien Rechnung entsprechen."""
+        hero = np.full(20, 89.0)     # 1s/runde schneller
         rival = np.full(20, 90.0)
         verlauf, _ = gap_evolution(hero, rival, initial_gap=0.5,
                                    p_overtake=1.0, block_gap_s=1.0,
@@ -1015,9 +1012,9 @@ class TestGapEvolution:
         assert verlauf[-1] == pytest.approx(frei_ende)
 
     def test_p_overtake_zero_pins_at_block_gap(self):
-        """Gelingt kein Versuch, kann hero nie unter block_gap_s
-        aufschliessen, auch bei grossem Tempovorteil."""
-        hero = np.full(20, 85.0)     # 5s/Runde schneller
+        """gelingt kein Versuch kann hero nie unter block_gap_s
+        aufschliessen. das gilt auch bei grossem Tempovorteil."""
+        hero = np.full(20, 85.0)     # 5s/runde schneller
         rival = np.full(20, 90.0)
         verlauf, blockiert = gap_evolution(hero, rival, initial_gap=0.8,
                                            p_overtake=0.0, block_gap_s=1.0,
@@ -1038,10 +1035,11 @@ class TestGapEvolution:
             gap_evolution([90.0, 90.0], [90.0], initial_gap=1.0, p_overtake=0.5)
 
     def test_hero_already_ahead_never_blocks(self):
-        """Negativer Startabstand (hero schon vorn) darf nie in die
-        Blockade-Logik laufen, selbst wenn rival deutlich schneller waere."""
+        """negativer Startabstand (hero schon vorn) darf nie in die
+        Blockade-Logik laufen. das gilt selbst wenn rival deutlich
+        schneller waere."""
         hero = np.full(10, 90.0)
-        rival = np.full(10, 85.0)    # rival 5s/Runde schneller
+        rival = np.full(10, 85.0)    # rival 5s/runde schneller
         verlauf, blockiert = gap_evolution(hero, rival, initial_gap=-2.0,
                                            p_overtake=0.0, block_gap_s=1.0,
                                            rng=random.Random(4))
@@ -1051,7 +1049,7 @@ class TestGapEvolution:
 
 # --------------------------------------------------------------- traffic_cost
 class TestTrafficCost:
-    """Erwarteter Zeitverlust durch Verkehr, Monte Carlo (P41)."""
+    """erwarteter Zeitverlust durch Verkehr per Monte Carlo (P41)."""
 
     def test_zero_when_never_close(self):
         hero = np.full(10, 90.0)
@@ -1069,7 +1067,7 @@ class TestTrafficCost:
         assert mittel == pytest.approx(0.0, abs=1e-6)
 
     def test_higher_p_overtake_costs_less(self):
-        """Monotonie: eine leichtere Strecke (hohe p_overtake) darf im
+        """monotonie: eine leichtere Strecke (hohe p_overtake) darf im
         Mittel nie mehr kosten als eine schwere (niedrige p_overtake)."""
         hero = np.full(30, 88.0)
         rival = np.full(30, 90.0)
@@ -1087,7 +1085,7 @@ class TestTrafficCost:
         assert a == b
 
     def test_cost_is_never_negative(self):
-        """Verkehr kann hero nur bremsen, nie beschleunigen - der
+        """verkehr kann hero nur bremsen, nie beschleunigen. der
         Zeitverlust ist per Konstruktion >= 0."""
         hero = np.full(25, 89.0)
         rival = np.full(25, 90.0)
@@ -1098,7 +1096,7 @@ class TestTrafficCost:
 
 # --------------------------------------------------------- track_curvature
 class TestTrackCurvature:
-    """Kruemmung aus X/Y-Ideallinie (P37)."""
+    """kruemmung aus X/Y-Ideallinie (P37)."""
 
     def test_straight_line_has_zero_curvature(self):
         x = np.linspace(0, 100, 101)
@@ -1107,7 +1105,7 @@ class TestTrackCurvature:
         assert np.max(np.abs(kappa[5:-5])) == pytest.approx(0.0, abs=1e-9)
 
     def test_circle_matches_one_over_radius(self):
-        """Auf einem Kreis mit Radius R ist kappa(s) konstant 1/R."""
+        """auf einem Kreis mit Radius R ist kappa(s) konstant 1/R."""
         R = 50.0
         theta = np.linspace(0, np.pi, 300)
         x, y, dist = R * np.cos(theta), R * np.sin(theta), R * theta
@@ -1118,11 +1116,11 @@ class TestTrackCurvature:
 
 # ------------------------------------------------------------- simulate_lap
 class TestSimulateLap:
-    """Quasi-stationaere Punktmassen-Rundenzeitsimulation (P37)."""
+    """quasi-stationaere Punktmassen-Rundenzeitsimulation (P37)."""
 
     def test_straight_line_runs_at_top_speed(self):
-        """Ohne Kruemmung ist v_top die einzige Grenze - konstante
-        Geschwindigkeit, Rundenzeit exakt Distanz/v_top."""
+        """ohne Kruemmung ist v_top die einzige Grenze. die Geschwindigkeit
+        ist konstant und die Rundenzeit ist exakt Distanz/v_top."""
         dist = np.linspace(0, 1000, 200)
         kappa = np.zeros_like(dist)
         v, t = simulate_lap(dist, kappa, mu_g=20.0, a_accel=8.0, a_brake=25.0,
@@ -1131,9 +1129,9 @@ class TestSimulateLap:
         assert t == pytest.approx(1000 / 80.0)
 
     def test_constant_curvature_runs_at_grip_limited_speed(self):
-        """Bei konstanter Kruemmung ist die kurvengrip-begrenzte
-        Geschwindigkeit sqrt(mu_g/kappa) ueberall bindend, unabhaengig von
-        den Beschleunigungsgrenzen."""
+        """bei konstanter Kruemmung ist die kurvengrip-begrenzte
+        Geschwindigkeit sqrt(mu_g/kappa) ueberall bindend. das gilt
+        unabhaengig von den Beschleunigungsgrenzen."""
         mu_g, kappa_wert = 20.0, 0.02
         dist = np.linspace(0, 500, 200)
         kappa = np.full_like(dist, kappa_wert)
@@ -1144,7 +1142,7 @@ class TestSimulateLap:
         assert t == pytest.approx(500 / erwartet)
 
     def test_lower_brake_deceleration_starts_braking_earlier(self):
-        """Der Rueckwaertspass ist bremsbegrenzt: mit schwaecherer
+        """der Rueckwaertspass ist bremsbegrenzt: mit schwaecherer
         Bremsverzoegerung muss frueher vor der Kurve gebremst werden."""
         dist = np.linspace(0, 300, 600)
         kappa = np.where(dist < 200, 1e-6, 0.0125)
@@ -1160,12 +1158,12 @@ class TestSimulateLap:
 
 # -------------------------------------------------------- calibrate_lap_model
 class TestCalibrateLapModel:
-    """Kleinste-Quadrate-Kalibrierung der vier Fahrzeugparameter (P37)."""
+    """kleinste-Quadrate-Kalibrierung der vier Fahrzeugparameter (P37)."""
 
     def test_recovers_known_parameters_from_noiseless_trace(self):
-        """Aus einer mit bekannten Parametern simulierten (rauschfreien)
+        """aus einer mit bekannten Parametern simulierten (rauschfreien)
         Geschwindigkeitsspur muss die Kalibrierung dieselben Parameter
-        zurueckgewinnen - der Rundtrip simulate_lap -> calibrate_lap_model
+        zurueckgewinnen. der Rundtrip simulate_lap -> calibrate_lap_model
         ist die staerkste Pruefung fuer diese Funktion."""
         wahr = {"mu_g": 15.0, "a_accel": 9.0, "a_brake": 28.0, "v_top": 90.0}
         dist = np.linspace(0, 1500, 750)
@@ -1182,8 +1180,7 @@ class TestCalibrateLapModel:
 
 # ----------------------------------------------------------- simulate_stint
 class TestSimulateStint:
-    """Rundenzeit ueber einen Stint mit sinkender Kraftstoffmasse (P37, zweite
-    AUSBAUSTUFE)."""
+    """rundenzeit ueber einen Stint mit sinkender Kraftstoffmasse (P37)."""
 
     def _strecke(self):
         dist = np.linspace(0, 1000, 400)
@@ -1191,8 +1188,8 @@ class TestSimulateStint:
         return dist, kappa
 
     def test_laptimes_fall_monotonically_as_tank_empties(self):
-        """Mit vollerem Tank ist das Auto langsamer - je mehr Kraftstoff
-        verbrannt ist, desto schneller die Runde, nie umgekehrt."""
+        """mit vollerem Tank ist das Auto langsamer. mehr verbrannter
+        Kraftstoff macht die Runde schneller und nie langsamer."""
         dist, kappa = self._strecke()
         zeiten = simulate_stint(dist, kappa, mu_g_ref=20.0, a_accel_ref=10.0,
                                 a_brake_ref=28.0, v_top=90.0,
@@ -1201,8 +1198,8 @@ class TestSimulateStint:
         assert zeiten[0] > zeiten[-1]
 
     def test_empty_tank_throughout_matches_plain_simulate_lap(self):
-        """Ohne Kraftstoff (fuel_start_kg=0) ist jede Runde identisch zur
-        unskalierten simulate_lap-Rundenzeit - die Skalierung m_dry/(m_dry+0)
+        """ohne Kraftstoff (fuel_start_kg=0) ist jede Runde identisch zur
+        unskalierten simulate_lap-Rundenzeit. die Skalierung m_dry/(m_dry+0)
         ist 1."""
         dist, kappa = self._strecke()
         params = dict(mu_g=20.0, a_accel=10.0, a_brake=28.0, v_top=90.0)
@@ -1216,8 +1213,8 @@ class TestSimulateStint:
         assert np.allclose(zeiten, t_erwartet)
 
     def test_laptimes_constant_once_tank_is_dry(self):
-        """Sobald der errechnete Rest-Kraftstoff 0 erreicht, aendert sich die
-        Rundenzeit nicht mehr - Tank kann nicht negativ werden."""
+        """sobald der errechnete Rest-Kraftstoff 0 erreicht aendert sich die
+        Rundenzeit nicht mehr. der Tank kann nicht negativ werden."""
         dist, kappa = self._strecke()
         zeiten = simulate_stint(dist, kappa, mu_g_ref=20.0, a_accel_ref=10.0,
                                 a_brake_ref=28.0, v_top=90.0,

@@ -1,61 +1,4 @@
-"""
-P09 - Gangwechsel-Karte der Strecke
-===================================
-
-Die Ideallinie in XY-Koordinaten, eingefaerbt nach eingelegtem Gang - das ikonische FastF1-Bild.
-
-Kategorie:   Telemetrie
-Niveau:      Fortgeschritten
-Aufwand:     2-3 h
-Schwerpunkt: Datenanalyse, Engineering
-
-WARUM DAS LOHNT
-Optisch stark und technisch lehrreich zugleich: LineCollection, Positionsdaten und diskrete Farbskalen. Das Bild, das man sich an die Wand haengt.
-
-VORGEHEN
-  1. Telemetrie der schnellsten Runde holen (get_telemetry mergt Car+Pos)
-  2. X/Y zu Segment-Paaren umbauen
-  3. LineCollection mit diskreter Colormap ueber nGear
-  4. Achsen gleich skalieren, Colorbar mit Gaengen 1-8
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Lap.get_telemetry
-  - Telemetry X/Y/nGear/Speed/Throttle/DRS
-  - matplotlib LineCollection
-
-AUSBAUSTUFE  [umgesetzt]
-Dieselbe Karte fuer Speed, Throttle und DRS, als 2x2-Grid.
-
-Zwei Anpassungen gegenueber der urspruenglichen Fassung:
-
-Erstens die Session: Belgien 2024 Q war komplett nass (daher DRS durchgehend
-deaktiviert - der DRS-Kanal der Pole-Runde stand die ganze Runde auf einem
-einzigen, nicht dokumentierten Wert). Fuer eine Karte, die gerade DRS zeigen
-soll, ist das ungeeignet. Monza 2024 Q ersetzt die Wahl: die Strecke mit den
-laengsten DRS-Zonen im Kalender, trocken, mit echter Variation im Kanal.
-
-Zweitens der DRS-Kanal selbst: FastF1s eigene Dokumentation bezeichnet die
-Codes unterhalb von 10 als unsicher ("Unknown Distinction", "Noted
-Sometimes"). Verwendet wird hier die in der Community uebliche Lesart -
-gerade Werte ab 10 heissen offen, 8 heisst erkannt/im Aktivierungsbereich
-aber noch nicht offen, alles andere zu -, mit drei statt zwei Farben, damit
-der Unterschied zwischen "im Fenster" und "tatsaechlich offen" sichtbar
-bleibt statt in einem einzigen "aktiv" zu verschwinden. Die Klassifikation
-selbst ist f1lab.drs_state() (core.py, netzlos getestet) - dieselbe Funktion
-nutzt auch der DRS-Kanal der Telemetrie-Seite im Dashboard.
-
-Bei der Farbwahl zeigt sich ein Grenzfall von f1lab.design: die Rampe dort
-ist fuer Groessen mit echtem Verlauf gedacht (Hoehenmeter, Degradation) und
-funktioniert fuer Speed und Throttle genau deshalb gut - das sind echte
-Kontinua. Gang ist das nicht: sieben klar getrennte, gleich wichtige
-Zustaende, keine Groesse mit Zwischenwerten. Mit der einfarbigen Rampe waren
-Gang 6, 7 und 8 auf der Karte praktisch nicht mehr zu unterscheiden (die
-meiste Distanz liegt in den oberen Gaengen). Deshalb hier die Ausnahme:
-Gang bekommt eine mehrfarbige, wahrnehmungsuniforme Skala (viridis) statt der
-Rampe - dieselbe Wahl, die die urspruengliche Fassung schon getroffen hatte,
-und aus genau diesem Grund richtig. DRS bleibt ein Zustand mit den
-Wertungsfarben (zu/erkannt/offen), nicht mit einer Skala.
-"""
+"""malt die ideallinie als 2x2-karte eingefaerbt nach gang speed throttle und drs"""
 from __future__ import annotations
 
 import sys
@@ -66,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -95,8 +38,7 @@ def zeichne_karte(ax, x: np.ndarray, y: np.ndarray, werte: np.ndarray, *,
                   cmap, norm, titel: str, cbar_label: str,
                   cbar_ticks=None, boundaries=None,
                   cbar_ticklabels=None) -> None:
-    """Eine eingefaerbte Streckenkarte - Kern von P09, wiederverwendet fuer
-    alle vier Kanaele dieses Skripts."""
+    """zeichnet eine nach werten eingefaerbte streckenkarte. wird fuer alle vier kanaele wiederverwendet."""
     punkte = np.column_stack([x, y]).reshape(-1, 1, 2)
     segmente = np.concatenate([punkte[:-1], punkte[1:]], axis=1)
     lc = LineCollection(segmente, cmap=cmap, norm=norm, linewidths=4)

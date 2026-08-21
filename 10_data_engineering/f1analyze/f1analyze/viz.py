@@ -1,6 +1,7 @@
-"""Grafiken fuer den Wochenend-Report - derselbe Hausstil wie die
-01-12-Skripte (f1lab.design), damit ein PDF-Report und die App gleich
-aussehen.
+"""Grafiken fuer den Wochenend-Report.
+
+selber Hausstil wie die 01-12-Skripte, ueber f1lab.design. damit sehen
+PDF-Report und App gleich aus.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def plot_pace(pace_df: pd.DataFrame, titel: str) -> plt.Figure:
-    """Bereinigte Race Pace als Balken, Delta zum Schnellsten."""
+    """bereinigte Race Pace als Balken, Delta zum Schnellsten."""
     fig, ax = plt.subplots(figsize=(10, max(4, 0.32 * len(pace_df))))
     df = pace_df.sort_values("delta_s")
     farben = [SERIEN[0] if i < 3 else MUTED for i in range(len(df))]
@@ -39,7 +40,7 @@ def plot_pace(pace_df: pd.DataFrame, titel: str) -> plt.Figure:
 
 
 def plot_strategy(stints_df: pd.DataFrame, order: list[str], titel: str) -> plt.Figure:
-    """Strategie-Gantt-Chart, dieselbe Bauweise wie P14."""
+    """strategie-Gantt-Chart, dieselbe Bauweise wie P14."""
     from f1lab.design import COMPOUND
 
     fig, ax = plt.subplots(figsize=(10, max(4, 0.32 * len(order))))
@@ -63,8 +64,8 @@ def plot_strategy(stints_df: pd.DataFrame, order: list[str], titel: str) -> plt.
 
 def build_pdf(race_session, quali_session, pace_df: pd.DataFrame,
               stints_df: pd.DataFrame, path: Path) -> None:
-    """VORGEHEN 5 / weekend --report: alle Grafiken eines Wochenendes in
-    ein PDF, eine Seite je Grafik plus eine Titelseite."""
+    """alle Grafiken eines Wochenendes in ein PDF, eine Seite je Grafik
+    plus eine Titelseite."""
     order = (race_session.results.sort_values("Position")["Abbreviation"]
             .loc[lambda s: s.isin(stints_df["Driver"].unique())].tolist())
 

@@ -1,8 +1,8 @@
-"""Tests fuer f1lab.session, soweit ohne Netzzugriff moeglich.
+"""tests fuer f1lab.session soweit ohne Netzzugriff moeglich.
 
-Die Ladefunktionen brauchen die F1-API und werden hier nicht getestet.
-Was sich aber pruefen laesst, ist die Behandlung der Rohspalten - und genau
-dort lauern die Fallstricke, weil der Live-Timing-Feed Lueckenhaftes liefert.
+die Ladefunktionen brauchen die F1-API und werden hier nicht getestet.
+pruefbar ist aber die Behandlung der Rohspalten. genau dort lauern die
+Fallstricke weil der Live-Timing-Feed Lueckenhaftes liefert.
 """
 from __future__ import annotations
 
@@ -23,11 +23,11 @@ from f1lab.session import (
 
 
 class TestNotDeletedMask:
-    """Regressionstests fuer einen Absturz in clean_laps().
+    """regressionstest fuer einen Absturz in clean_laps().
 
     FastF1s pick_not_deleted() invertiert die Spalte 'Deleted' direkt mit ~.
-    Ist die Spalte object-dtype - was passiert, sobald None darin steht -
-    wirft pandas einen TypeError. In Barcelona 2024 ist genau das der Fall.
+    object-dtype macht das kaputt. das passiert sobald None in der Spalte
+    steht. pandas wirft dann einen TypeError.
     """
 
     def test_plain_booleans(self):
@@ -35,12 +35,12 @@ class TestNotDeletedMask:
         assert out.tolist() == [False, True, True, False]
 
     def test_none_counts_as_not_deleted(self):
-        """Keine Meldung der Rennleitung heisst: Runde zaehlt."""
+        """keine Meldung der Rennleitung heisst: Runde zaehlt."""
         out = not_deleted_mask(pd.Series([None, True, None, False]))
         assert out.tolist() == [True, False, True, True]
 
     def test_object_dtype_does_not_raise(self):
-        """Der Fall, der pick_not_deleted() zum Absturz bringt."""
+        """genau dieser Fall bringt pick_not_deleted() zum Absturz."""
         s = pd.Series([None, True, False], dtype=object)
         with pytest.raises(TypeError):
             _ = ~s                      # so macht es FastF1
@@ -62,14 +62,14 @@ class TestNotDeletedMask:
         assert len(not_deleted_mask(s)) == len(s)
 
     def test_no_pandas_warning(self):
-        """Kein FutureWarning - sonst bricht das Verhalten mit pandas 3."""
+        """kein FutureWarning. sonst bricht das Verhalten mit pandas 3."""
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("error", FutureWarning)
             not_deleted_mask(pd.Series([None, True, False], dtype=object))
 
     def test_usable_as_numpy_index(self):
-        """So wird die Maske in clean_laps() eingesetzt."""
+        """so wird die Maske in clean_laps() eingesetzt."""
         df = pd.DataFrame({
             "LapTime": [90.1, 90.2, 90.3, 90.4],
             "Deleted": pd.Series([None, True, None, False], dtype=object),
@@ -85,19 +85,19 @@ class TestTrackStatus:
         assert TRACK_STATUS["6"] == "vsc"
 
     def test_codes_are_strings(self):
-        """Der Feed liefert Strings, keine Zahlen - ein Mapping auf int
+        """der Feed liefert Strings, keine Zahlen. ein Mapping auf int
         wuerde still nichts treffen."""
         assert all(isinstance(k, str) for k in TRACK_STATUS)
 
     def test_green_is_the_filter_used_everywhere(self):
-        """clean_laps() filtert auf '1'. Sollte sich das Mapping aendern,
-        faellt es hier auf."""
+        """clean_laps() filtert auf '1'. ein geaendertes Mapping faellt
+        hier auf."""
         green = [k for k, v in TRACK_STATUS.items() if v == "gruen"]
         assert green == ["1"]
 
 
 class TestSessionApiSurface:
-    """Stellt sicher, dass die oeffentliche Schnittstelle stabil bleibt."""
+    """sichert die Stabilitaet der oeffentlichen Schnittstelle."""
 
     def test_exports_exist(self):
         import f1lab
@@ -107,7 +107,7 @@ class TestSessionApiSurface:
             assert hasattr(f1lab, name), f"f1lab.{name} fehlt"
 
     def test_core_functions_are_numpy_only(self):
-        """core darf nicht von FastF1 abhaengen - sonst waeren die Tests
+        """core darf nicht von FastF1 abhaengen. sonst waeren die Tests
         ohne Netz nicht mehr moeglich."""
         import inspect
 
@@ -127,12 +127,11 @@ class TestSessionApiSurface:
 
 
 class TestCacheInventory:
-    """Bestandsaufnahme des FastF1-Caches allein aus der Ordnerstruktur.
+    """bestandsaufnahme des FastF1-Caches allein aus der Ordnerstruktur.
 
-    Die Oberflaeche soll nur Sessions zur Auswahl stellen, die auch
-    auswertbar sind. Ob eine Session im Cache liegt, steht nirgends
-    geschrieben - es ergibt sich aus den abgelegten Dateien, und genau
-    daran haengen hier die Erwartungen.
+    die Oberflaeche soll nur auswertbare Sessions zur Auswahl stellen. ob
+    eine Session im Cache liegt steht nirgends geschrieben. es ergibt sich
+    aus den abgelegten Dateien. genau daran haengen hier die Erwartungen.
     """
 
     @staticmethod
@@ -163,8 +162,8 @@ class TestCacheInventory:
         assert out["season"].tolist() == [2024, 2024]
 
     def test_sprint_quali_heisst_je_nach_jahr_anders(self, tmp_path):
-        """2023 'Sprint_Shootout', ab 2024 'Sprint_Qualifying' - beides ist
-        dieselbe Session und muss auf dieselbe Kennung fallen."""
+        """2023 heisst es 'Sprint_Shootout', ab 2024 'Sprint_Qualifying'.
+        beides ist dieselbe Session und muss auf dieselbe Kennung fallen."""
         self._session(tmp_path, 2023, "2023-04-30", "Azerbaijan_Grand_Prix",
                       "2023-04-29", "Sprint_Shootout")
         self._session(tmp_path, 2024, "2024-04-21", "Chinese_Grand_Prix",
@@ -172,7 +171,7 @@ class TestCacheInventory:
         assert cached_sessions(tmp_path)["ident"].tolist() == ["SQ", "SQ"]
 
     def test_leerer_ordner_zaehlt_nicht_als_geladen(self, tmp_path):
-        """FastF1 legt den Ordner schon beim Anfassen an. Ohne Timing-Datei
+        """FastF1 legt den Ordner schon beim Anfassen an. ohne Timing-Datei
         ist die Session nicht auswertbar und darf nicht als geladen gelten."""
         self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
                       "2024-08-30", "Practice_1", timing=False)
@@ -181,7 +180,7 @@ class TestCacheInventory:
         assert not out["timing"].iloc[0]
 
     def test_telemetrie_wird_getrennt_ausgewiesen(self, tmp_path):
-        """Telemetrie ist ein eigener, viel groesserer Download - eine
+        """telemetrie ist ein eigener, viel groesserer Download. eine
         Session kann Timing haben und trotzdem keine Telemetrie."""
         self._session(tmp_path, 2024, "2024-09-01", "Italian_Grand_Prix",
                       "2024-09-01", "Race", telemetry=True)
@@ -193,8 +192,8 @@ class TestCacheInventory:
         assert out["timing"].all()
 
     def test_fremde_ordner_stoeren_nicht(self, tmp_path):
-        """Neben den Jahresordnern liegen im Cache auch die HTTP-Datenbank
-        und Systemdateien - die duerfen den Scan nicht aus dem Tritt bringen."""
+        """neben den Jahresordnern liegen im Cache auch die HTTP-Datenbank
+        und Systemdateien. die duerfen den Scan nicht aus dem Tritt bringen."""
         (tmp_path / "fastf1_http_cache.sqlite").touch()
         (tmp_path / ".DS_Store").touch()
         (tmp_path / "notizen").mkdir()
@@ -217,8 +216,8 @@ class TestCacheInventory:
 
 
 class TestFindCache:
-    """Der Cache liegt je nach Rechner woanders - gesucht wird in fester
-    Reihenfolge, und ein fehlender Cache ist kein Fehler."""
+    """der Cache liegt je nach Rechner woanders. gesucht wird in fester
+    Reihenfolge und ein fehlender Cache ist kein Fehler."""
 
     def test_explizites_argument_gewinnt(self, tmp_path, monkeypatch):
         monkeypatch.setenv("F1_CACHE", str(tmp_path / "aus_env"))
@@ -234,8 +233,8 @@ class TestFindCache:
         assert find_cache() == aus_env
 
     def test_ohne_treffer_none(self, tmp_path, monkeypatch):
-        """Kein Cache heisst: noch kein Warmup gelaufen. Die Oberflaeche
-        soll das erklaeren koennen, statt an einem Fehler zu scheitern."""
+        """kein Cache heisst noch kein Warmup gelaufen. die Oberflaeche
+        soll das erklaeren koennen statt an einem Fehler zu scheitern."""
         monkeypatch.setenv("F1_CACHE", str(tmp_path / "gibt_es_nicht"))
         monkeypatch.setattr(session_mod, "CACHE_DIR", tmp_path / "auch_nicht")
         monkeypatch.setattr(
@@ -245,13 +244,14 @@ class TestFindCache:
 
 
 class TestCacheReady:
-    """Regressionstest fuer einen echten Bug in f1analyze/data.py:
-    load_session() rief bei JEDEM Aufruf enable_cache() ohne Argumente auf
-    und hat damit einen von aussen gesetzten Offline-Fixture-Cache (siehe
+    """regressionstest fuer einen echten Bug in f1analyze/data.py.
+
+    load_session() rief bei jedem Aufruf enable_cache() ohne Argumente auf.
+    das hat einen von aussen gesetzten Offline-Fixture-Cache (siehe
     tests/conftest.py dort) stillschweigend auf den Standardpfad
-    zurueckgesetzt. cache_ready() gibt Aufrufern eine Moeglichkeit, eine
-    bereits gesetzte Konfiguration zu respektieren, statt sie zu
-    ueberschreiben (siehe CLAUDE.md, f1analyze-Nachtrag)."""
+    zurueckgesetzt. cache_ready() gibt Aufrufern eine Moeglichkeit eine
+    bereits gesetzte Konfiguration zu respektieren statt sie zu
+    ueberschreiben."""
 
     def test_false_ohne_vorherigen_enable_cache_aufruf(self, monkeypatch):
         monkeypatch.setattr(session_mod, "_active_cache", None)

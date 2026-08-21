@@ -1,7 +1,7 @@
-"""Reine Rechenfunktionen ohne FastF1-Abhaengigkeit.
+"""reine rechenfunktionen ohne FastF1-abhaengigkeit.
 
-Alles hier arbeitet auf numpy-Arrays und ist damit ohne Netzzugriff testbar.
-Die FastF1-Anbindung liegt in :mod:`f1lab.session`.
+alles hier arbeitet auf numpy-arrays und ist damit ohne netzzugriff testbar.
+die FastF1-anbindung liegt in :mod:`f1lab.session`.
 """
 from __future__ import annotations
 
@@ -12,16 +12,16 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.signal import savgol_filter
 
-# Faustwerte aus der Literatur. Groessenordnung belastbar, keine Messwerte.
+# faustwerte aus der literatur. groessenordnung belastbar, keine messwerte.
 FUEL_KG_PER_LAP = 1.8
 FUEL_S_PER_KG = 0.03
-M_DRY_KG = 798.0  # FIA-Mindestgewicht 2024 (Auto+Fahrer, ohne Kraftstoff)
+M_DRY_KG = 798.0  # FIA-mindestgewicht 2024 (auto+fahrer, ohne kraftstoff)
 
 
-# --------------------------------------------------------------- Statistik
+# --------------------------------------------------------------- statistik
 @dataclass(frozen=True)
 class Interval:
-    """Punktschaetzer mit Konfidenzintervall."""
+    """punktschaetzer mit konfidenzintervall."""
     value: float
     lo: float
     hi: float
@@ -31,10 +31,10 @@ class Interval:
         return self.hi - self.lo
 
     def overlaps(self, other: Interval) -> bool:
-        """True, wenn sich die Intervalle ueberschneiden.
+        """true, wenn sich die intervalle ueberschneiden.
 
-        Ueberlappende Intervalle heissen: der Unterschied ist mit diesen
-        Daten nicht belegbar.
+        ueberlappende intervalle heissen: der unterschied ist mit diesen
+        daten nicht belegbar.
         """
         return not (self.hi < other.lo or other.hi < self.lo)
 
@@ -44,20 +44,20 @@ class Interval:
 
 def bootstrap_median(values, n_resamples: int = 1000, alpha: float = 0.05,
                      seed: int | None = 42) -> Interval:
-    """Median mit Bootstrap-Konfidenzintervall.
+    """median mit bootstrap-konfidenzintervall.
 
-    Rundenzeiten sind rechtsschief - langsame Runden gibt es viele, schnellere
-    als das Optimum nicht. Der Median ist daher robuster als der Mittelwert,
-    hat aber keine geschlossene Formel fuer das Konfidenzintervall.
+    rundenzeiten sind rechtsschief. langsame runden gibt es viele, schnellere
+    als das optimum nicht. der median ist deshalb robuster als der mittelwert,
+    hat aber keine geschlossene formel fuer das konfidenzintervall.
 
     Args:
-        values: Beobachtungen, mindestens 2.
-        n_resamples: Anzahl der Bootstrap-Ziehungen.
-        alpha: Irrtumswahrscheinlichkeit, 0.05 ergibt ein 95%-Intervall.
-        seed: Fuer reproduzierbare Ergebnisse.
+        values: beobachtungen, mindestens 2.
+        n_resamples: anzahl der bootstrap-ziehungen.
+        alpha: irrtumswahrscheinlichkeit, 0.05 ergibt ein 95%-intervall.
+        seed: fuer reproduzierbare ergebnisse.
 
     Raises:
-        ValueError: bei weniger als 2 Werten.
+        ValueError: bei weniger als 2 werten.
     """
     v = np.asarray(values, dtype=float)
     v = v[~np.isnan(v)]
@@ -75,10 +75,10 @@ def bootstrap_median(values, n_resamples: int = 1000, alpha: float = 0.05,
 
 
 def mad_outlier_mask(values, threshold: float = 3.5) -> np.ndarray:
-    """Ausreisser ueber die Median Absolute Deviation.
+    """ausreisser ueber die median absolute deviation.
 
-    Robuster als die Standardabweichung, weil der Schaetzer selbst nicht von
-    den Ausreissern verschoben wird. True bedeutet Ausreisser.
+    robuster als die standardabweichung: der schaetzer selbst wird nicht von
+    den ausreissern verschoben. true bedeutet ausreisser.
     """
     v = np.asarray(values, dtype=float)
     med = np.nanmedian(v)
@@ -89,48 +89,48 @@ def mad_outlier_mask(values, threshold: float = 3.5) -> np.ndarray:
     return np.abs(modified_z) > threshold
 
 
-# --------------------------------------------------------------- Rating
+# --------------------------------------------------------------- rating
 def elo_expected(rating_a: float, rating_b: float) -> float:
-    """Erwartete Punktzahl von A gegen B nach dem Elo-Modell, zwischen 0 und 1.
+    """erwartete punktzahl von A gegen B nach dem Elo-modell, zwischen 0 und 1.
 
-    Gleiche Ratings ergeben 0.5. 400 Punkte Vorsprung bedeuten eine erwartete
-    Siegquote von rund 91 Prozent.
+    gleiche ratings ergeben 0.5. 400 punkte vorsprung bedeuten eine erwartete
+    siegquote von rund 91 prozent.
     """
     return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / 400.0))
 
 
 def elo_update(rating_a: float, rating_b: float, score_a: float,
                k: float = 24.0) -> tuple[float, float]:
-    """Neue Ratings nach einem einzelnen Duell.
+    """neue ratings nach einem einzelnen duell.
 
     Args:
-        score_a: Ergebnis aus Sicht von A - 1 fuer einen Sieg, 0 fuer eine
-            Niederlage, 0.5 fuer ein Unentschieden.
-        k: Wie stark ein einzelnes Duell das Rating bewegt. Klein haelt das
-            Rating traege (viele Duelle noetig, um es zu verschieben), gross
-            macht es sprunghaft.
+        score_a: ergebnis aus sicht von A. 1 fuer einen sieg, 0 fuer eine
+            niederlage, 0.5 fuer ein unentschieden.
+        k: wie stark ein einzelnes duell das rating bewegt. klein haelt das
+            rating traege: es braucht viele duelle, um es zu verschieben.
+            gross macht es sprunghaft.
 
     Returns:
-        (neues Rating A, neues Rating B). Elo ist ein Nullsummenspiel - was A
+        (neues rating A, neues rating B). Elo ist ein nullsummenspiel: was A
         gewinnt, verliert B exakt.
     """
     delta = k * (score_a - elo_expected(rating_a, rating_b))
     return rating_a + delta, rating_b - delta
 
 
-# --------------------------------------------------------------- Treibstoff
+# --------------------------------------------------------------- treibstoff
 def fuel_correct(lap_times, lap_numbers, total_laps: int,
                  kg_per_lap: float = FUEL_KG_PER_LAP,
                  s_per_kg: float = FUEL_S_PER_KG) -> np.ndarray:
-    """Rundenzeiten auf konstante Tankfuellung normieren.
+    """rundenzeiten auf konstante tankfuellung normieren.
 
-    Ein Auto verliert ueber die Renndistanz rund 100 kg Sprit und wird dadurch
-    kontinuierlich schneller. Ohne Korrektur sieht jeder Reifen am Rennende
-    besser aus als er ist, und die Degradation wird unterschaetzt.
+    ein auto verliert ueber die renndistanz rund 100 kg sprit und wird dadurch
+    kontinuierlich schneller. ohne korrektur sieht jeder reifen am rennende
+    besser aus als er ist, und die degradation wird unterschaetzt.
 
-    Die Korrektur addiert auf jede Runde die Zeit, die das Auto mit der zu
-    diesem Zeitpunkt noch vorhandenen Restmenge Sprit schneller gewesen waere.
-    Bezugspunkt ist das Rennende (leerer Tank).
+    die korrektur addiert auf jede runde die zeit, die das auto mit der zu
+    diesem zeitpunkt noch vorhandenen restmenge sprit schneller gewesen waere.
+    bezugspunkt ist das rennende (leerer tank).
     """
     t = np.asarray(lap_times, dtype=float)
     n = np.asarray(lap_numbers, dtype=float)
@@ -138,31 +138,31 @@ def fuel_correct(lap_times, lap_numbers, total_laps: int,
     return t - remaining_laps * kg_per_lap * s_per_kg
 
 
-# --------------------------------------------------------------- Degradation
+# --------------------------------------------------------------- degradation
 @dataclass(frozen=True)
 class DegradationFit:
-    """Ergebnis einer Degradationsschaetzung fuer einen Stint."""
-    slope: float          # Sekunden pro Runde Reifenalter
-    intercept: float      # extrapolierte Zeit bei Reifenalter 0
-    r2: float             # Bestimmtheitsmass
-    n: int                # ausgewertete Runden
+    """ergebnis einer degradationsschaetzung fuer einen stint."""
+    slope: float          # sekunden pro runde reifenalter
+    intercept: float      # extrapolierte zeit bei reifenalter 0
+    r2: float             # bestimmtheitsmass
+    n: int                # ausgewertete runden
 
     @property
     def is_reliable(self) -> bool:
-        """Grobe Plausibilitaetspruefung.
+        """grobe plausibilitaetspruefung.
 
-        Unter 6 Runden ist die Steigung Rauschen, unter R^2 = 0.3 beschreibt
-        die Gerade das Verhalten nicht.
+        unter 6 runden ist die steigung rauschen. unter R^2 = 0.3 beschreibt
+        die gerade das verhalten nicht.
         """
         return self.n >= 6 and self.r2 >= 0.3
 
 
 def fit_degradation(tyre_life, lap_times) -> DegradationFit:
-    """Lineare Regression Rundenzeit ueber Reifenalter.
+    """lineare regression rundenzeit ueber reifenalter.
 
-    Die Steigung ist die Degradation in Sekunden pro Runde. Erwartet werden
-    fuel-korrigierte Zeiten - sonst mischt sich der Gewichtseffekt hinein und
-    kompensiert die Degradation teilweise weg.
+    die steigung ist die degradation in sekunden pro runde. erwartet werden
+    fuel-korrigierte zeiten. sonst mischt sich der gewichtseffekt hinein und
+    kompensiert die degradation teilweise weg.
     """
     x = np.asarray(tyre_life, dtype=float)
     y = np.asarray(lap_times, dtype=float)
@@ -185,18 +185,18 @@ def fit_degradation(tyre_life, lap_times) -> DegradationFit:
 
 def find_cliff(tyre_life, lap_times, min_segment: int = 4
                ) -> tuple[int | None, DegradationFit, DegradationFit | None]:
-    """Sucht den Knickpunkt, ab dem der Reifen deutlich schneller abbaut.
+    """sucht den knickpunkt, ab dem der reifen deutlich schneller abbaut.
 
-    Reifen degradieren nicht linear. Ab einem gewissen Punkt - dem Cliff -
-    bricht der Grip ueberproportional ein. Die Funktion probiert jeden
-    moeglichen Bruchpunkt durch und waehlt den mit der kleinsten
-    Gesamt-Fehlerquadratsumme.
+    reifen degradieren nicht linear. ab einem gewissen punkt, dem cliff,
+    bricht der grip ueberproportional ein. die funktion probiert jeden
+    moeglichen bruchpunkt durch und waehlt den mit der kleinsten
+    gesamt-fehlerquadratsumme.
 
     Returns:
-        (Reifenalter am Knick oder None, Fit davor, Fit danach oder None)
+        (reifenalter am knick oder None, fit davor, fit danach oder None)
 
-    Ein Ergebnis von None heisst: die zweiteilige Anpassung ist nicht besser
-    als die einfache Gerade, der Stint war also linear oder zu kurz.
+    ein ergebnis von None heisst: die zweiteilige anpassung ist nicht besser
+    als die einfache gerade. der stint war also linear oder zu kurz.
     """
     x = np.asarray(tyre_life, dtype=float)
     y = np.asarray(lap_times, dtype=float)
@@ -210,13 +210,14 @@ def find_cliff(tyre_life, lap_times, min_segment: int = 4
     single_sse = float(np.sum(
         (y - (single.slope * x + single.intercept)) ** 2))
     if single_sse < 1e-6:
-        # Praktisch perfekt linear (Restfehler nur noch Gleitkomma-Rauschen,
-        # keine echte Streuung mehr, wie bei einer rauschfreien synthetischen
-        # Gerade). Der Vergleich sse > 0.8*single_sse waere dann ein
-        # Vergleich von Rauschen gegen Rauschen - je nach BLAS/LAPACK der
-        # Plattform kippt er in die eine oder andere Richtung (in CI mit
-        # anderer numpy-Version beobachtet, lokal nicht reproduziert). Ohne
-        # echte Streuung gibt es nichts zu erklaeren, also kein Cliff.
+        # praktisch perfekt linear. restfehler ist nur noch
+        # gleitkomma-rauschen, keine echte streuung mehr, wie bei einer
+        # rauschfreien synthetischen gerade. der vergleich sse > 0.8*single_sse
+        # waere dann ein vergleich von rauschen gegen rauschen: je nach
+        # BLAS/LAPACK der plattform kippt er in die eine oder andere
+        # richtung (in CI mit anderer numpy-version beobachtet, lokal nicht
+        # reproduziert). ohne echte streuung gibt es nichts zu erklaeren,
+        # also kein cliff.
         return None, single, None
 
     best = None
@@ -235,21 +236,21 @@ def find_cliff(tyre_life, lap_times, min_segment: int = 4
         return None, single, None
 
     sse, i, left, right = best
-    # Zwei Geraden haben zwei Parameter mehr. Nur akzeptieren, wenn der
-    # Fehler deutlich faellt und der zweite Abschnitt staerker ansteigt.
+    # zwei geraden haben zwei parameter mehr. nur akzeptieren, wenn der
+    # fehler deutlich faellt und der zweite abschnitt staerker ansteigt.
     if sse > 0.8 * single_sse or right.slope <= left.slope:
         return None, single, None
 
     return int(x[i]), left, right
 
 
-# --------------------------------------------------------------- Strategie
+# --------------------------------------------------------------- strategie
 def estimate_pit_loss(in_lap_deltas, out_lap_deltas) -> float:
-    """Zeitverlust eines Boxenstopps aus beobachteten Runden schaetzen.
+    """zeitverlust eines boxenstopps aus beobachteten runden schaetzen.
 
-    Erwartet die Differenz von In- bzw. Out-Lap zur normalen Rundenzeit
-    desselben Fahrers. Der Median ist robust gegen die Faelle, in denen
-    waehrend des Stopps etwas schiefging.
+    erwartet die differenz von in- bzw. out-lap zur normalen rundenzeit
+    desselben fahrers. der median ist robust gegen die faelle, in denen
+    waehrend des stopps etwas schiefging.
     """
     a = np.asarray(in_lap_deltas, dtype=float)
     b = np.asarray(out_lap_deltas, dtype=float)
@@ -261,24 +262,24 @@ def estimate_pit_loss(in_lap_deltas, out_lap_deltas) -> float:
 
 def undercut_gain(deg_old: float, deg_new: float, n_laps: int = 3,
                   out_lap_penalty: float = 0.6) -> float:
-    """Zeitgewinn, wenn ein Fahrer n Runden frueher an die Box geht.
+    """zeitgewinn, wenn ein fahrer n runden frueher an die box geht.
 
-    Der Verfolger stoppt frueher und faehrt auf frischen Reifen, waehrend der
-    Vordermann weiter altert. Der Pitloss selbst faellt fuer beide an und
-    kuerzt sich heraus - entscheidend ist nur die Pace-Differenz im Fenster.
+    der verfolger stoppt frueher und faehrt auf frischen reifen, waehrend der
+    vordermann weiter altert. der pitloss selbst faellt fuer beide an und
+    kuerzt sich heraus. entscheidend ist nur die pace-differenz im fenster.
 
     Args:
-        deg_old: Degradation des alten Reifens, s pro Runde.
-        deg_new: Degradation des frischen Reifens, s pro Runde.
-        n_laps: Wie viele Runden frueher gestoppt wird.
-        out_lap_penalty: Aufschlag auf die Out-Lap, weil der Reifen noch kalt
-            ist. Groessenordnung eine halbe bis eine Sekunde.
+        deg_old: degradation des alten reifens, s pro runde.
+        deg_new: degradation des frischen reifens, s pro runde.
+        n_laps: wie viele runden frueher gestoppt wird.
+        out_lap_penalty: aufschlag auf die out-lap. der reifen ist noch
+            kalt, groessenordnung eine halbe bis eine sekunde.
 
     Returns:
-        Sekunden. Positiv heisst, der Undercut lohnt sich.
+        sekunden. positiv heisst, der undercut lohnt sich.
 
-    Nicht modelliert: Verkehr. Wer hinter einem langsameren Auto herauskommt,
-    verliert den Vorteil in einer Runde wieder.
+    nicht modelliert: verkehr. wer hinter einem langsameren auto herauskommt,
+    verliert den vorteil in einer runde wieder.
     """
     if n_laps < 1:
         raise ValueError("n_laps muss mindestens 1 sein")
@@ -294,44 +295,44 @@ def undercut_gain(deg_old: float, deg_new: float, n_laps: int = 3,
 def optimal_undercut_window(deg_old: float, deg_new: float,
                             max_laps: int = 8,
                             out_lap_penalty: float = 0.6) -> tuple[int, float]:
-    """Findet die Rundenzahl mit dem groessten Undercut-Gewinn.
+    """findet die rundenzahl mit dem groessten undercut-gewinn.
 
     Returns:
-        (Anzahl Runden, Gewinn in Sekunden)
+        (anzahl runden, gewinn in sekunden)
     """
     gains = [(n, undercut_gain(deg_old, deg_new, n, out_lap_penalty))
              for n in range(1, max_laps + 1)]
     return max(gains, key=lambda t: t[1])
 
 
-# --------------------------------------------------------- Rennstrategie (P35)
-# Exakter Boxenstopp-Plan als kuerzester Pfad in einem DAG, plus eine
-# Safety-Car-Politik per Rueckwaertsinduktion. Siehe P35 fuer die Herleitung
-# (die Stintkosten haengen nur von Mischung und Laenge ab, nicht von der
-# Position im Rennen - das macht das Problem zu einem kuerzesten Pfad).
+# --------------------------------------------------------- rennstrategie (P35)
+# exakter boxenstopp-plan als kuerzester pfad in einem DAG, plus eine
+# safety-car-politik per rueckwaertsinduktion. siehe P35 fuer die herleitung:
+# die stintkosten haengen nur von mischung und laenge ab, nicht von der
+# position im rennen. das macht das problem zu einem kuerzesten pfad.
 #
-# GRUEN/SC sind die zwei Flaggenzustaende, ueber die SafetyCarProcess/
-# solve_policy/roll_out sich verstaendigen (0/1 statt Strings - beide Module
-# vergleichen sie oft in engen Schleifen).
+# GRUEN/SC sind die zwei flaggenzustaende, ueber die SafetyCarProcess/
+# solve_policy/roll_out sich verstaendigen. 0/1 statt strings: beide module
+# vergleichen sie oft in engen schleifen.
 GRUEN, SC = 0, 1
 UNENDLICH = float("inf")
 
 
 @dataclass(frozen=True)
 class TyreModel:
-    """Rundenzeitmodell einer Mischung, treibstoffkorrigiert.
+    """rundenzeitmodell einer mischung, treibstoffkorrigiert.
 
     lap_time(alter) = basis + linear * (alter - 1) + quadratisch * (alter - 1)^2
 
-    Das Reifenalter ist einsbasiert: Alter 1 ist die erste Runde auf dem Satz,
-    also ist ``base_time`` die Zeit auf frischem Gummi. Die nullbasierte
-    Variante waere eine hypothetische Runde auf einem null Runden alten Reifen -
-    nicht interpretierbar, und jeder Indexfehler bliebe still.
+    das reifenalter ist einsbasiert: alter 1 ist die erste runde auf dem satz,
+    also ist ``base_time`` die zeit auf frischem gummi. die nullbasierte
+    variante waere eine hypothetische runde auf einem null runden alten
+    reifen. das ist nicht interpretierbar, und jeder indexfehler bliebe still.
 
-    Der quadratische Term bildet den Abbau am Stintende ab. Er macht das Modell
-    nicht komplizierter, weil die Stintkosten vorab je (Mischung, Laenge)
-    ausgerechnet werden: die Rundenzeitfunktion darf beliebig krumm sein,
-    solange die Optimierung nur fertige Zahlen sieht.
+    der quadratische term bildet den abbau am stintende ab. das macht das
+    modell nicht komplizierter: die stintkosten werden vorab je (mischung,
+    laenge) ausgerechnet. die rundenzeitfunktion darf beliebig krumm sein,
+    solange die optimierung nur fertige zahlen sieht.
     """
 
     compound: str
@@ -347,7 +348,7 @@ class TyreModel:
         return self.base_time + self.deg_linear * a + self.deg_quad * a * a
 
     def stint_time(self, length: int) -> float:
-        """Reine Fahrzeit eines Stints ueber ``length`` Runden, ohne Pitloss."""
+        """reine fahrzeit eines stints ueber ``length`` runden, ohne pitloss."""
         if length < 1:
             raise ValueError("Stintlaenge muss mindestens 1 sein")
         return sum(self.lap_time(a) for a in range(1, length + 1))
@@ -355,17 +356,17 @@ class TyreModel:
 
 @dataclass(frozen=True)
 class RaceConfig:
-    """Alles, was die Aufgabe festlegt.
+    """alles, was die aufgabe festlegt.
 
-    ``fuel_effect`` steht bewusst nicht in der Zielfunktion. Jede Strategie
-    faehrt die Runden 1..L genau einmal, also ist der Treibstoffterm fuer alle
-    Plaene identisch - eine additive Konstante, die das Optimum nicht bewegen
-    kann. Sie wird nur fuer die Anzeige wieder addiert, damit die Rennzeit auf
-    einer erkennbaren Skala steht.
+    ``fuel_effect`` steht bewusst nicht in der zielfunktion. jede strategie
+    faehrt die runden 1..L genau einmal, also ist der treibstoffterm fuer
+    alle plaene identisch: eine additive konstante, die das optimum nicht
+    bewegen kann. sie wird nur fuer die anzeige wieder addiert, damit die
+    rennzeit auf einer erkennbaren skala steht.
 
-    Wichtig: die Basiszeiten muessen treibstoffkorrigiert sein. Der Term
-    ``LapNumber`` gehoert in die Degradationsschaetzung (P13), aber nicht
-    zusaetzlich in ``base_time`` - sonst zaehlt er doppelt.
+    wichtig: die basiszeiten muessen treibstoffkorrigiert sein. der term
+    ``LapNumber`` gehoert in die degradationsschaetzung (P13), aber nicht
+    zusaetzlich in ``base_time``. sonst zaehlt er doppelt.
     """
 
     n_laps: int
@@ -397,7 +398,7 @@ class RaceConfig:
 
     @property
     def fuel_offset(self) -> float:
-        """Treibstoffzeit ueber das ganze Rennen. Fuer jede Strategie gleich."""
+        """treibstoffzeit ueber das ganze rennen. fuer jede strategie gleich."""
         return self.fuel_effect * self.n_laps * (self.n_laps - 1) / 2.0
 
 
@@ -427,7 +428,7 @@ class Strategy:
 
     @property
     def pit_laps(self) -> tuple[int, ...]:
-        """Runden, an deren Ende an die Box gefahren wird."""
+        """runden, an deren ende an die box gefahren wird."""
         return tuple(s.start_lap - 1 for s in self.stints[1:])
 
     @property
@@ -447,14 +448,14 @@ class Strategy:
 
 
 class InfeasibleRace(RuntimeError):
-    """Keine Strategie erfuellt die gesetzten Bedingungen."""
+    """keine strategie erfuellt die gesetzten bedingungen."""
 
 
 def pit_loss_at(cfg: RaceConfig, lap: int) -> float:
-    """Zeitverlust eines Stopps am Ende von ``lap``.
+    """zeitverlust eines stopps am ende von ``lap``.
 
-    Unter Safety Car ist das Feld langsam, der relative Preis der Boxengasse
-    bricht ein. ``sc_pit_loss_factor`` ist der Anteil, der uebrig bleibt.
+    unter safety car ist das feld langsam, der relative preis der boxengasse
+    bricht ein. ``sc_pit_loss_factor`` ist der anteil, der uebrig bleibt.
     """
     if lap in cfg.sc_laps:
         return cfg.pit_loss * cfg.sc_pit_loss_factor
@@ -462,7 +463,7 @@ def pit_loss_at(cfg: RaceConfig, lap: int) -> float:
 
 
 def stint_arcs(cfg: RaceConfig) -> list[tuple[int, int, int, float]]:
-    """Alle legalen Stints als (Mischungsindex, Startrunde, Endrunde, Kosten)."""
+    """alle legalen stints als (mischungsindex, startrunde, endrunde, kosten)."""
     arcs = []
     for ci, tyre in enumerate(cfg.tyres):
         cap = cfg.n_laps if cfg.max_stint is None else min(cfg.max_stint, cfg.n_laps)
@@ -473,8 +474,8 @@ def stint_arcs(cfg: RaceConfig) -> list[tuple[int, int, int, float]]:
                 continue
             for length in range(cfg.min_stint, min(cap, cfg.n_laps - start + 1) + 1):
                 end = start + length - 1
-                # ein Stint, der vor der Flagge endet, braucht einen Nachfolger,
-                # der selbst wieder lang genug ist
+                # ein stint, der vor der flagge endet, braucht einen
+                # nachfolger, der selbst wieder lang genug ist
                 if end < cfg.n_laps and (cfg.n_laps - end) < cfg.min_stint:
                     continue
                 eintritt = 0.0 if start == 1 else pit_loss_at(cfg, start - 1)
@@ -483,16 +484,17 @@ def stint_arcs(cfg: RaceConfig) -> list[tuple[int, int, int, float]]:
 
 
 def optimal_strategy(cfg: RaceConfig) -> Strategy:
-    """Exaktes Optimum per dynamischer Programmierung ueber den Stint-DAG.
+    """exaktes optimum per dynamischer programmierung ueber den stint-DAG.
 
-    Der Zustand traegt neben dem Knoten eine Bitmaske der bisher benutzten
-    Mischungen. Ohne die waere die Zweimischungs-Regel nicht durchsetzbar: ein
-    reiner kuerzester Pfad hat kein Gedaechtnis, und am Ende zu filtern verliert
-    die Exaktheit. Bei drei Mischungen kostet die Maske einen Faktor 8.
+    der zustand traegt neben dem knoten eine bitmaske der bisher benutzten
+    mischungen. ohne die waere die zweimischungs-regel nicht durchsetzbar: ein
+    reiner kuerzester pfad hat kein gedaechtnis, und am ende zu filtern
+    verliert die exaktheit. bei drei mischungen kostet die maske einen
+    faktor 8.
 
-    Die Stoppzahl steht nur dann im Zustand, wenn sie eingeschraenkt ist. Sie
-    immer mitzufuehren vervielfacht den Zustandsraum um die Rundenzahl - fuer
-    eine Bedingung, die meistens gar nicht gesetzt ist.
+    die stoppzahl steht nur dann im zustand, wenn sie eingeschraenkt ist. sie
+    immer mitzufuehren vervielfacht den zustandsraum um die rundenzahl, fuer
+    eine bedingung, die meistens gar nicht gesetzt ist.
     """
     arcs = stint_arcs(cfg)
     if not arcs:
@@ -547,13 +549,13 @@ def optimal_strategy(cfg: RaceConfig) -> Strategy:
 
 
 def frontier_by_stops(cfg: RaceConfig, up_to: int = 4) -> dict[int, Strategy | None]:
-    """Bester Plan je exakter Stoppzahl.
+    """bester plan je exakter stoppzahl.
 
-    So ist die Frage im Rennen gestellt. "Die fuenf besten Strategien" liefert
-    fuenfmal dieselbe Idee mit der Boxenrunde um eins verschoben; "bester
-    Einstopper gegen besten Zweistopper und der Abstand dazwischen" ist die
-    Entscheidung. Der Abstand misst auch, wie viel Risiko man kauft: drei
-    Sekunden sind ein Muenzwurf, fuenfundzwanzig nicht.
+    so ist die frage im rennen gestellt. "die fuenf besten strategien" liefert
+    fuenfmal dieselbe idee mit der boxenrunde um eins verschoben. "bester
+    einstopper gegen besten zweistopper und der abstand dazwischen" ist die
+    entscheidung. der abstand misst auch, wie viel risiko man kauft: drei
+    sekunden sind ein muenzwurf, fuenfundzwanzig nicht.
     """
     ergebnis: dict[int, Strategy | None] = {}
     for n in range(up_to + 1):
@@ -566,11 +568,11 @@ def frontier_by_stops(cfg: RaceConfig, up_to: int = 4) -> dict[int, Strategy | N
 
 def pit_loss_crossovers(cfg: RaceConfig, lo: float, hi: float,
                         tol: float = 0.05) -> list[float]:
-    """Pitloss-Werte, an denen die optimale Stoppzahl kippt.
+    """pitloss-werte, an denen die optimale stoppzahl kippt.
 
-    Der Pitloss ist die unsicherste Eingabe - er haengt an Strecke, Verkehr und
-    daran, ob der Stopp sauber laeuft. Das Optimum ist stueckweise konstant in
-    ihm, interessant ist also nicht der Wert, sondern wo er springt.
+    der pitloss ist die unsicherste eingabe. er haengt an strecke, verkehr und
+    daran, ob der stopp sauber laeuft. das optimum ist stueckweise konstant in
+    ihm, interessant ist also nicht der wert, sondern wo er springt.
     """
     def stopps(v: float) -> int:
         return optimal_strategy(replace(cfg, pit_loss=float(v))).n_stops
@@ -595,17 +597,17 @@ def pit_loss_crossovers(cfg: RaceConfig, lo: float, hi: float,
 
 @dataclass(frozen=True)
 class SafetyCarProcess:
-    """Zweizustands-Markow-Kette auf dem Entscheidungspunkt jeder Runde.
+    """zweizustands-markow-kette auf dem entscheidungspunkt jeder runde.
 
-    Grob, aber mit genau zwei Parametern, die sich beide aus FastF1
-    ``TrackStatus`` auszaehlen lassen (siehe P18) - und sie erzeugt die zwei
-    Eigenschaften, auf die es ankommt: Safety Cars sind selten, und wenn sie
-    kommen, bleiben sie ein paar Runden.
+    grob, aber mit genau zwei parametern, die sich beide aus FastF1
+    ``TrackStatus`` auszaehlen lassen (siehe P18). sie erzeugt die zwei
+    eigenschaften, auf die es ankommt: safety cars sind selten, und wenn sie
+    kommen, bleiben sie ein paar runden.
 
-    ``sc[l]`` gilt fuer die Entscheidung zu Beginn von Runde l. Der kuerzeste
-    Pfad indiziert Safety-Car-Runden dagegen nach der Runde, an deren *Ende*
-    gestoppt wird - die beiden passen ueber ``l - 1`` zusammen. Ein Fehler an
-    dieser Stelle verschiebt jeden Vergleich um eine Runde und sieht trotzdem
+    ``sc[l]`` gilt fuer die entscheidung zu beginn von runde l. der kuerzeste
+    pfad indiziert safety-car-runden dagegen nach der runde, an deren *ende*
+    gestoppt wird. die beiden passen ueber ``l - 1`` zusammen. ein fehler an
+    dieser stelle verschiebt jeden vergleich um eine runde und sieht trotzdem
     plausibel aus.
     """
 
@@ -618,7 +620,7 @@ class SafetyCarProcess:
         return self.p_end, 1.0 - self.p_end
 
     def marginals(self, n_laps: int) -> list[float]:
-        """q[l] = P(Safety Car am Entscheidungspunkt von Runde l), 1-basiert."""
+        """q[l] = P(safety car am entscheidungspunkt von runde l), 1-basiert."""
         q = [0.0] * (n_laps + 2)
         p_gruen = 1.0
         for lap in range(1, n_laps + 1):
@@ -637,16 +639,16 @@ class SafetyCarProcess:
 
 
 def solve_policy(cfg: RaceConfig, prozess: SafetyCarProcess) -> tuple[float, dict]:
-    """Optimale Politik per Rueckwaertsinduktion. Gibt (Erwartungswert, Politik).
+    """optimale politik per rueckwaertsinduktion. gibt (erwartungswert, politik).
 
-    Zustand ist (Runde, Mischung, Reifenalter, benutzte Mischungen, Flagge),
-    Aktion ist ausbleiben oder auf Mischung c' wechseln.
+    zustand ist (runde, mischung, reifenalter, benutzte mischungen, flagge),
+    aktion ist ausbleiben oder auf mischung c' wechseln.
 
-    Warum nicht einfach jede Runde neu planen: der kuerzeste Pfad kann
-    "vielleicht kommt gleich ein Safety Car" gar nicht ausdruecken. Neuplanen
-    mit Punktschaetzung ignoriert deshalb den Optionswert des Wartens - die
-    Politik hier dehnt einen Stint manchmal ueber das deterministische Optimum
-    hinaus, nur um die Option offenzuhalten.
+    warum nicht einfach jede runde neu planen: der kuerzeste pfad kann
+    "vielleicht kommt gleich ein safety car" gar nicht ausdruecken. neuplanen
+    mit punktschaetzung ignoriert deshalb den optionswert des wartens. die
+    politik hier dehnt einen stint manchmal ueber das deterministische
+    optimum hinaus, nur um die option offenzuhalten.
     """
     if cfg.exact_stops is not None:
         raise NotImplementedError(
@@ -665,8 +667,8 @@ def solve_policy(cfg: RaceConfig, prozess: SafetyCarProcess) -> tuple[float, dic
         bit = 1 << ci
         return [m | bit for m in range(1 << n_c) if not m & bit]
 
-    # Endebene: das Rennen ist vorbei. Zulaessig nur, wenn der letzte Stint lang
-    # genug war und die Zweimischungs-Regel erfuellt ist.
+    # endebene: das rennen ist vorbei. zulaessig nur, wenn der letzte stint
+    # lang genug war und die zweimischungs-regel erfuellt ist.
     naechste = {}
     for ci in range(n_c):
         for maske in masken(ci):
@@ -721,7 +723,7 @@ def solve_policy(cfg: RaceConfig, prozess: SafetyCarProcess) -> tuple[float, dic
 
 
 def roll_out(cfg: RaceConfig, politik: dict, folge: list[int]) -> Strategy:
-    """Politik gegen einen konkreten Rennverlauf ausfahren."""
+    """politik gegen einen konkreten rennverlauf ausfahren."""
     namen = [t.compound for t in cfg.tyres]
     ci = politik[("start",)]
     maske, alter, start, gesamt = 1 << ci, 0, 1, 0.0
@@ -742,10 +744,10 @@ def roll_out(cfg: RaceConfig, politik: dict, folge: list[int]) -> Strategy:
 
 def expected_cost_of_plan(cfg: RaceConfig, plan: Strategy,
                           prozess: SafetyCarProcess) -> float:
-    """Erwartete Kosten, wenn ein fester Plan stur durchgezogen wird.
+    """erwartete kosten, wenn ein fester plan stur durchgezogen wird.
 
-    Geschlossene Form, keine Simulation: der einzige zufaellige Anteil ist der
-    Pitloss je (fester) Boxenrunde.
+    geschlossene form, keine simulation: der einzige zufaellige anteil ist der
+    pitloss je (fester) boxenrunde.
     """
     q = prozess.marginals(cfg.n_laps)
     gesamt = sum(next(t for t in cfg.tyres if t.compound == st.compound)
@@ -758,7 +760,7 @@ def expected_cost_of_plan(cfg: RaceConfig, plan: Strategy,
 
 def hindsight_value(cfg: RaceConfig, prozess: SafetyCarProcess,
                     n: int = 200, seed: int = 0) -> tuple[float, float]:
-    """Erwartetes Optimum bei *bekanntem* Rennverlauf. Untere Schranke, Mittel und SE."""
+    """erwartetes optimum bei *bekanntem* rennverlauf. untere schranke, mittel und SE."""
     rng = random.Random(seed)
     summe = quadrat = 0.0
     for _ in range(n):
@@ -773,14 +775,14 @@ def hindsight_value(cfg: RaceConfig, prozess: SafetyCarProcess,
     return mittel, (varianz / n) ** 0.5
 
 
-# --------------------------------------------------------------------- Verkehr (P41)
+# --------------------------------------------------------------------- verkehr (P41)
 def lap_times_for_strategy(cfg: RaceConfig, strategy: Strategy) -> np.ndarray:
-    """Freie Rundenzeit je Runde 1..n_laps fuer eine feste Strategie, ohne
-    Verkehr (siehe P41 - Eingabe fuer :func:`gap_evolution`).
+    """freie rundenzeit je runde 1..n_laps fuer eine feste strategie, ohne
+    verkehr (siehe P41, eingabe fuer :func:`gap_evolution`).
 
-    "Frei" heisst: exakt die Zeiten, aus denen :func:`optimal_strategy` selbst
-    rechnet (Reifenmodell plus Pitloss auf der Boxenrunde) - keine neue
-    Rechnung, nur dieselbe Kostenstruktur je Runde statt nur summiert.
+    "frei" heisst: exakt die zeiten, aus denen :func:`optimal_strategy` selbst
+    rechnet (reifenmodell plus pitloss auf der boxenrunde). keine neue
+    rechnung, nur dieselbe kostenstruktur je runde statt nur summiert.
     """
     zeiten = np.empty(cfg.n_laps)
     for st in strategy.stints:
@@ -795,35 +797,35 @@ def lap_times_for_strategy(cfg: RaceConfig, strategy: Strategy) -> np.ndarray:
 def gap_evolution(hero_times, rival_times, initial_gap: float,
                   p_overtake: float, block_gap_s: float = 1.0,
                   rng: random.Random | None = None) -> tuple[np.ndarray, int]:
-    """Rundenweiser Abstand zweier Autos, mit Ueberholwahrscheinlichkeit statt
-    der Annahme, dass ein Tempovorteil sich sofort in Position uebersetzt
-    (siehe P41 - die in P35 bewusst offen gelassene "Verkehr"-Luecke, jetzt
-    mit P38/P39 als Eingabegroesse fuer ``p_overtake``).
+    """rundenweiser abstand zweier autos, mit ueberholwahrscheinlichkeit statt
+    der annahme, dass ein tempovorteil sich sofort in position uebersetzt
+    (siehe P41, die in P35 bewusst offen gelassene "verkehr"-luecke, jetzt
+    mit P38/P39 als eingabegroesse fuer ``p_overtake``).
 
-    ``gap`` > 0 heisst: der Ueberholer (hero) liegt so viele Sekunden hinter
-    dem Vordermann (rival). Solange der freie (unblockierte) Abstand unter
-    ``block_gap_s`` faellt - grob die Distanz, auf der DRS/Windschatten
-    wirken - passiert der Ueberholvorgang nicht automatisch: jede solche
-    Runde ist ein Versuch mit Erfolgswahrscheinlichkeit ``p_overtake``.
-    Scheitert er, haelt hero den Abstand bei ``block_gap_s`` (kann nicht
+    ``gap`` > 0 heisst: der ueberholer (hero) liegt so viele sekunden hinter
+    dem vordermann (rival). solange der freie (unblockierte) abstand unter
+    ``block_gap_s`` faellt (grob die distanz, auf der DRS/windschatten
+    wirken), passiert der ueberholvorgang nicht automatisch. jede solche
+    runde ist ein versuch mit erfolgswahrscheinlichkeit ``p_overtake``.
+    scheitert er, haelt hero den abstand bei ``block_gap_s`` (kann nicht
     weiter aufschliessen, faellt aber auch nicht zurueck) statt den vollen
-    Tempovorteil sofort zu realisieren - genau der Mechanismus, den das
-    reine Rundenzeitmodell aus P35 nicht kennt.
+    tempovorteil sofort zu realisieren. genau das ist der mechanismus, den
+    das reine rundenzeitmodell aus P35 nicht kennt.
 
     Args:
-        hero_times, rival_times: Rundenzeiten je Runde (inkl. Pitloss auf der
-            Boxenrunde, siehe :func:`lap_times_for_strategy`), gleiche Laenge.
-        initial_gap: Abstand vor Runde 1 (positiv = hero hinten).
-        p_overtake: Erfolgswahrscheinlichkeit je Ueberholversuch-Runde -
-            Streckeneigenschaft (siehe P38: Kurven/km korreliert mit
-            Ueberholzahlen; P39: rund drei Viertel der Ueberholungen in der
-            DRS-Zone), hier bewusst als externer Parameter statt intern
-            geschaetzt - siehe P41-Docstring fuer die Kalibrierungsgrenzen.
-        block_gap_s: Abstand, unter dem "blockiert" gilt.
-        rng: fuer reproduzierbare Zufallszahlen; ohne wird ein neuer erzeugt.
+        hero_times, rival_times: rundenzeiten je runde (inkl. pitloss auf der
+            boxenrunde, siehe :func:`lap_times_for_strategy`), gleiche laenge.
+        initial_gap: abstand vor runde 1 (positiv = hero hinten).
+        p_overtake: erfolgswahrscheinlichkeit je ueberholversuch-runde.
+            streckeneigenschaft (siehe P38: kurven/km korreliert mit
+            ueberholzahlen; P39: rund drei viertel der ueberholungen in der
+            DRS-zone), hier bewusst als externer parameter statt intern
+            geschaetzt. siehe P41-docstring fuer die kalibrierungsgrenzen.
+        block_gap_s: abstand, unter dem "blockiert" gilt.
+        rng: fuer reproduzierbare zufallszahlen. ohne wird ein neuer erzeugt.
 
     Returns:
-        (Abstandsverlauf inkl. Runde 0 an Index 0, Anzahl blockierter Runden).
+        (abstandsverlauf inkl. runde 0 an index 0, anzahl blockierter runden).
     """
     hero_times = np.asarray(hero_times, dtype=float)
     rival_times = np.asarray(rival_times, dtype=float)
@@ -848,13 +850,13 @@ def gap_evolution(hero_times, rival_times, initial_gap: float,
 def traffic_cost(hero_times, rival_times, initial_gap: float,
                  p_overtake: float, block_gap_s: float = 1.0,
                  n_sim: int = 2000, seed: int = 0) -> tuple[float, float]:
-    """Erwarteter Zeitverlust durch Verkehr gegenueber der freien Annahme,
-    ueber viele Zufallslaeufe (siehe P41). Mittel und Standardfehler, im
-    selben Stil wie :func:`hindsight_value`.
+    """erwarteter zeitverlust durch verkehr gegenueber der freien annahme,
+    ueber viele zufallslaeufe (siehe P41). mittel und standardfehler, im
+    selben stil wie :func:`hindsight_value`.
 
-    "Zeitverlust" ist der Endabstand MIT Blockade minus der Endabstand OHNE
-    (reine Summe der Rundenzeiten) - positiv heisst, hero verliert durch
-    Verkehr Zeit auf rival, unabhaengig davon, ob am Ende noch ueberholt
+    "zeitverlust" ist der endabstand MIT blockade minus der endabstand OHNE
+    (reine summe der rundenzeiten). positiv heisst, hero verliert durch
+    verkehr zeit auf rival, unabhaengig davon, ob am ende noch ueberholt
     wurde oder nicht.
     """
     hero_times = np.asarray(hero_times, dtype=float)
@@ -873,17 +875,17 @@ def traffic_cost(hero_times, rival_times, initial_gap: float,
     return mittel, (varianz / n_sim) ** 0.5
 
 
-# --------------------------------------------------------------- Telemetrie
+# --------------------------------------------------------------- telemetrie
 def telemetry_source_quality(source) -> dict:
-    """Anteil real gemessener gegen interpolierter Telemetriepunkte
-    (siehe P07-Erweiterung, ``Telemetry.Source`` - bislang ungenutzt).
+    """anteil real gemessener gegen interpolierter telemetriepunkte
+    (siehe P07-erweiterung, ``Telemetry.Source``, bislang ungenutzt).
 
-    ``get_telemetry()`` fuehrt zwei unterschiedlich getaktete Stroeme
-    zusammen (``car_data``: Motor/Pedale, ``pos_data``: Position, groebere
-    Taktung). "car"/"pos" sind echte Messpunkte aus dem jeweiligen Strom,
-    "interpolation" sind synthetische Fuellpunkte, die FastF1 beim
-    Zusammenfuehren auf ein gemeinsames Zeitraster einfuegt, wo keiner der
-    beiden Stroeme einen eigenen Messpunkt hat.
+    ``get_telemetry()`` fuehrt zwei unterschiedlich getaktete stroeme
+    zusammen (``car_data``: motor/pedale, ``pos_data``: position, groebere
+    taktung). "car"/"pos" sind echte messpunkte aus dem jeweiligen strom,
+    "interpolation" sind synthetische fuellpunkte, die FastF1 beim
+    zusammenfuehren auf ein gemeinsames zeitraster einfuegt, wo keiner der
+    beiden stroeme einen eigenen messpunkt hat.
     """
     s = np.asarray(source)
     if s.size == 0:
@@ -898,21 +900,21 @@ def telemetry_source_quality(source) -> dict:
 
 def braking_zones(brake, distance, speed, time, min_length_m: float = 20.0
                   ) -> list[dict]:
-    """Zerlegt den Bremskanal in einzelne Bremszonen.
+    """zerlegt den bremskanal in einzelne bremszonen.
 
-    Der Brake-Kanal ist binaer. Ueber die Flanken lassen sich zusammenhaengende
-    Bremsphasen finden und je Zone Eintrittsgeschwindigkeit, Laenge und
-    mittlere Verzoegerung berechnen.
+    der brake-kanal ist binaer. ueber die flanken lassen sich
+    zusammenhaengende bremsphasen finden und je zone
+    eintrittsgeschwindigkeit, laenge und mittlere verzoegerung berechnen.
 
     Args:
-        brake: Bremssignal, wird nach bool konvertiert.
-        distance: Zurueckgelegte Distanz in Metern.
-        speed: Geschwindigkeit in km/h.
-        time: Zeit in Sekunden.
-        min_length_m: Kuerzere Zonen sind meist Messrauschen.
+        brake: bremssignal, wird nach bool konvertiert.
+        distance: zurueckgelegte distanz in metern.
+        speed: geschwindigkeit in km/h.
+        time: zeit in sekunden.
+        min_length_m: kuerzere zonen sind meist messrauschen.
 
     Returns:
-        Liste von Zonen mit Kennwerten, sortiert nach Distanz.
+        liste von zonen mit kennwerten, sortiert nach distanz.
     """
     b = np.asarray(brake).astype(bool)
     d = np.asarray(distance, dtype=float)
@@ -925,8 +927,8 @@ def braking_zones(brake, distance, speed, time, min_length_m: float = 20.0
         return []
 
     # edges[i] vergleicht b[i+1] mit b[i]:
-    #   +1 -> b[i+1] ist die erste bremsende Probe  -> start = i + 1
-    #   -1 -> b[i]   ist die letzte bremsende Probe -> end   = i
+    #   +1 -> b[i+1] ist die erste bremsende probe  -> start = i + 1
+    #   -1 -> b[i]   ist die letzte bremsende probe -> end   = i
     edges = np.diff(b.astype(np.int8))
     starts = np.flatnonzero(edges == 1) + 1
     ends = np.flatnonzero(edges == -1)
@@ -955,21 +957,21 @@ def braking_zones(brake, distance, speed, time, min_length_m: float = 20.0
 
 
 def match_by_distance(a, b, tolerance: float) -> list[tuple[int, int]]:
-    """Paart Indizes zweier Positionslisten ueber die naechstgelegene Distanz.
+    """paart indizes zweier positionslisten ueber die naechstgelegene distanz.
 
-    Fuer Ereignisse, die beide Seiten auf derselben Strecke haben - Brems-
-    oder Mini-Sektor-Grenzen zweier Fahrer zum Beispiel -, aber nicht exakt
-    an derselben Stelle. Je Wert aus ``a`` wird der naechste, noch nicht
-    vergebene Wert aus ``b`` gesucht; bleibt keiner innerhalb ``tolerance``,
-    bleibt der Wert unverpaart. Das ist kein Fehlerfall - ungleich viele
-    Ereignisse (z.B. eine zusaetzliche Bremsung) sind der Normalfall.
+    fuer ereignisse, die beide seiten auf derselben strecke haben (brems-
+    oder mini-sektor-grenzen zweier fahrer zum beispiel), aber nicht exakt
+    an derselben stelle. je wert aus ``a`` wird der naechste, noch nicht
+    vergebene wert aus ``b`` gesucht. bleibt keiner innerhalb ``tolerance``,
+    bleibt der wert unverpaart. das ist kein fehlerfall: ungleich viele
+    ereignisse (z.b. eine zusaetzliche bremsung) sind der normalfall.
 
     Args:
-        a, b: Positionen (z.B. Meter), beliebige Reihenfolge.
-        tolerance: Maximaler Abstand fuer eine gueltige Paarung.
+        a, b: positionen (z.b. meter), beliebige reihenfolge.
+        tolerance: maximaler abstand fuer eine gueltige paarung.
 
     Returns:
-        Liste von (Index in a, Index in b), sortiert wie a.
+        liste von (index in a, index in b), sortiert wie a.
     """
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
@@ -989,19 +991,19 @@ def match_by_distance(a, b, tolerance: float) -> list[tuple[int, int]]:
 
 def active_distance_zones(active, distance, min_length_m: float = 20.0
                           ) -> list[dict]:
-    """Zerlegt ein beliebiges binaeres Signal in zusammenhaengende
-    Distanz-Zonen - dieselbe Flankenlogik wie :func:`braking_zones`, aber
-    ohne die bremsspezifischen Kennwerte (Geschwindigkeit/Verzoegerung).
-    Fuer DRS-Aktivzonen gedacht, funktioniert fuer jedes binaere
-    Distanzsignal (z.B. auch Throttle > 0).
+    """zerlegt ein beliebiges binaeres signal in zusammenhaengende
+    distanz-zonen. dieselbe flankenlogik wie :func:`braking_zones`, aber
+    ohne die bremsspezifischen kennwerte (geschwindigkeit/verzoegerung).
+    fuer DRS-aktivzonen gedacht, funktioniert fuer jedes binaere
+    distanzsignal (z.b. auch throttle > 0).
 
     Args:
-        active: Binaeres Signal, wird nach bool konvertiert.
-        distance: Zurueckgelegte Distanz in Metern.
-        min_length_m: Kuerzere Zonen sind meist Messrauschen.
+        active: binaeres signal, wird nach bool konvertiert.
+        distance: zurueckgelegte distanz in metern.
+        min_length_m: kuerzere zonen sind meist messrauschen.
 
     Returns:
-        Liste von Zonen (start_m, end_m, length_m), sortiert nach Distanz.
+        liste von zonen (start_m, end_m, length_m), sortiert nach distanz.
     """
     a = np.asarray(active).astype(bool)
     d = np.asarray(distance, dtype=float)
@@ -1030,14 +1032,14 @@ def active_distance_zones(active, distance, min_length_m: float = 20.0
 
 
 def distance_in_any_zone(distances, zone_starts, zone_ends) -> np.ndarray:
-    """Fuer jede Distanz: liegt sie innerhalb irgendeiner der Zonen
-    [start, end]? (siehe P39, Ueberholorte gegen DRS-Zonen).
+    """fuer jede distanz: liegt sie innerhalb irgendeiner der zonen
+    [start, end]? (siehe P39, ueberholorte gegen DRS-zonen).
 
-    Allgemein gehalten wie :func:`active_distance_zones` - nimmt beliebige
-    Start/Ende-Paare, nicht nur DRS.
+    allgemein gehalten wie :func:`active_distance_zones`. nimmt beliebige
+    start/ende-paare, nicht nur DRS.
 
     Returns:
-        Bool-Array derselben Laenge wie ``distances``.
+        bool-array derselben laenge wie ``distances``.
     """
     d = np.asarray(distances, dtype=float)
     starts = np.asarray(zone_starts, dtype=float)
@@ -1049,19 +1051,19 @@ def distance_in_any_zone(distances, zone_starts, zone_ends) -> np.ndarray:
 
 
 def lead_distance_to_zone(distances, zone_starts, track_length_m: float) -> np.ndarray:
-    """Fuer jede Distanz: wie weit bis zum Beginn der naechsten Zone in
-    Fahrtrichtung? (siehe P39, dritte AUSBAUSTUFE: Ueberholorte gegen
-    Bremszonen).
+    """fuer jede distanz: wie weit bis zum beginn der naechsten zone in
+    fahrtrichtung? (siehe P39, dritte AUSBAUSTUFE: ueberholorte gegen
+    bremszonen).
 
-    Mit Rundenumbruch - liegt die naechste Zone erst in der naechsten
-    Runde, zaehlt die Reststrecke bis zum Ziel plus die Distanz vom Start
-    bis zur Zone. Anders als :func:`distance_in_any_zone` (nur drinnen
-    oder draussen) misst das hier einen Abstand, auch ausserhalb jeder
-    Zone - noetig, um zu pruefen, ob Ereignisse sich in der ANNAEHERUNG an
-    eine Zone haeufen, nicht nur exakt darin.
+    mit rundenumbruch: liegt die naechste zone erst in der naechsten
+    runde, zaehlt die reststrecke bis zum ziel plus die distanz vom start
+    bis zur zone. anders als :func:`distance_in_any_zone` (nur drinnen
+    oder draussen) misst das hier einen abstand, auch ausserhalb jeder
+    zone. noetig, um zu pruefen, ob ereignisse sich in der ANNAEHERUNG an
+    eine zone haeufen, nicht nur exakt darin.
 
     Returns:
-        Float-Array derselben Laenge wie ``distances`` (NaN ohne Zonen).
+        float-array derselben laenge wie ``distances`` (NaN ohne zonen).
     """
     d = np.asarray(distances, dtype=float)
     starts = np.sort(np.asarray(zone_starts, dtype=float))
@@ -1076,15 +1078,15 @@ def lead_distance_to_zone(distances, zone_starts, track_length_m: float) -> np.n
 
 def drs_state(drs_values, open_codes: tuple[int, ...] = (10, 12, 14),
               detected_code: int = 8):
-    """Klassifiziert den codierten DRS-Kanal in drei Zustaende.
+    """klassifiziert den codierten DRS-kanal in drei zustaende.
 
-    0 = zu, 1 = erkannt/im Aktivierungsbereich (Code 8), 2 = offen. FastF1s
-    eigene Dokumentation bezeichnet die Codes unterhalb von 10 als unsicher
-    ("Unknown Distinction", "Noted Sometimes") - das hier ist die in der
-    Community uebliche Lesart, nicht eine offiziell bestaetigte.
+    0 = zu, 1 = erkannt/im aktivierungsbereich (code 8), 2 = offen. FastF1s
+    eigene dokumentation bezeichnet die codes unterhalb von 10 als unsicher
+    ("Unknown Distinction", "Noted Sometimes"). das hier ist die in der
+    community uebliche lesart, nicht eine offiziell bestaetigte.
 
     Returns:
-        Ganzzahl-Array derselben Laenge wie ``drs_values``.
+        ganzzahl-array derselben laenge wie ``drs_values``.
     """
     v = np.asarray(drs_values)
     status = np.zeros(v.shape, dtype=int)
@@ -1093,18 +1095,19 @@ def drs_state(drs_values, open_codes: tuple[int, ...] = (10, 12, 14),
     return status
 
 
-# --------------------------------------------------------------- Streckengeometrie
+# --------------------------------------------------------------- streckengeometrie
 def path_length(x, y, closed: bool = True) -> float:
-    """Laenge eines Streckenzugs als Summe der Segmentlaengen.
+    """laenge eines streckenzugs als summe der segmentlaengen.
 
     Args:
-        x, y: Koordinaten in derselben Einheit; das Ergebnis traegt sie ebenfalls.
-        closed: Schliesst den Weg vom letzten zurueck zum ersten Punkt. Eine
-            Rennrunde endet dort, wo sie beginnt - ohne das Schlusssegment
-            fehlt genau die Luecke zwischen letzter Probe und Start-Ziel.
+        x, y: koordinaten in derselben einheit. das ergebnis traegt sie
+            ebenfalls.
+        closed: schliesst den weg vom letzten zurueck zum ersten punkt. eine
+            rennrunde endet dort, wo sie beginnt. ohne das schlusssegment
+            fehlt genau die luecke zwischen letzter probe und start-ziel.
 
     Returns:
-        Gesamtlaenge. Ein Weg aus weniger als zwei Punkten hat Laenge 0.
+        gesamtlaenge. ein weg aus weniger als zwei punkten hat laenge 0.
     """
     px = np.asarray(x, dtype=float)
     py = np.asarray(y, dtype=float)
@@ -1122,14 +1125,14 @@ def path_length(x, y, closed: bool = True) -> float:
     return float(np.hypot(np.diff(px), np.diff(py)).sum())
 
 
-# --------------------------------------------------------- Rundenzeit-Simulation (P37)
+# --------------------------------------------------------- rundenzeit-simulation (P37)
 def track_curvature(x, y, dist, window: int = 21) -> np.ndarray:
-    """Kruemmung kappa(s) = |x'y'' - y'x''| / (x'^2+y'^2)^1.5 einer Ideallinie,
-    numerisch ueber die Distanz differenziert (siehe P37).
+    """kruemmung kappa(s) = |x'y'' - y'x''| / (x'^2+y'^2)^1.5 einer ideallinie,
+    numerisch ueber die distanz differenziert (siehe P37).
 
-    Vor der zweifachen Ableitung geglaettet (Savitzky-Golay): GPS-Rauschen
-    in der Rohposition wuerde sonst durch die zweite Ableitung stark
-    verstaerkt - differenzieren VOR dem Glaetten ist hier der Fehler, nicht
+    vor der zweifachen ableitung geglaettet (Savitzky-Golay): GPS-rauschen
+    in der rohposition wuerde sonst durch die zweite ableitung stark
+    verstaerkt. differenzieren VOR dem glaetten ist hier der fehler, nicht
     danach.
     """
     x = np.asarray(x, dtype=float)
@@ -1144,20 +1147,20 @@ def track_curvature(x, y, dist, window: int = 21) -> np.ndarray:
 
 def simulate_lap(dist, kappa, mu_g: float, a_accel: float, a_brake: float,
                  v_top: float) -> tuple[np.ndarray, float]:
-    """Quasi-stationaere Punktmassen-Rundenzeitsimulation (siehe P37): das
-    Standardverfahren fuer diese Modellklasse (vgl. OptimumLap und aehnliche
-    Rundenzeit-Simulatoren).
+    """quasi-stationaere punktmassen-rundenzeitsimulation (siehe P37): das
+    standardverfahren fuer diese modellklasse (vgl. OptimumLap und aehnliche
+    rundenzeit-simulatoren).
 
-    Kurvengrenzgeschwindigkeit aus v = sqrt(mu_g / kappa) (Kreisbewegung,
-    ``mu_g`` fasst Reibung und Abtrieb in einer effektiven
-    Grenzbeschleunigung zusammen). Vorwaertspass: von jedem Punkt aus so
-    schnell wie moeglich beschleunigen, gedeckelt durch die Kurvengrenze
-    voraus. Rueckwaertspass: von jedem Punkt aus rueckwaerts so, dass eine
-    Bremsung rechtzeitig vor der naechsten Kurve fertig ist. Das Minimum
-    beider Passes ist die tatsaechlich fahrbare Geschwindigkeit.
+    kurvengrenzgeschwindigkeit aus v = sqrt(mu_g / kappa) (kreisbewegung,
+    ``mu_g`` fasst reibung und abtrieb in einer effektiven
+    grenzbeschleunigung zusammen). vorwaertspass: von jedem punkt aus so
+    schnell wie moeglich beschleunigen, gedeckelt durch die kurvengrenze
+    voraus. rueckwaertspass: von jedem punkt aus rueckwaerts so, dass eine
+    bremsung rechtzeitig vor der naechsten kurve fertig ist. das minimum
+    beider passes ist die tatsaechlich fahrbare geschwindigkeit.
 
     Returns:
-        (Geschwindigkeit je Punkt in m/s, Rundenzeit in Sekunden)
+        (geschwindigkeit je punkt in m/s, rundenzeit in sekunden)
     """
     dist = np.asarray(dist, dtype=float)
     kappa = np.asarray(kappa, dtype=float)
@@ -1182,12 +1185,12 @@ def simulate_lap(dist, kappa, mu_g: float, a_accel: float, a_brake: float,
 
 
 def calibrate_lap_model(dist, kappa, speed_real) -> dict:
-    """Vier Fahrzeugparameter (mu_g, a_accel, a_brake, v_top) per kleinste
-    Quadrate an eine echte Geschwindigkeitsspur anpassen (siehe P37).
+    """vier fahrzeugparameter (mu_g, a_accel, a_brake, v_top) per kleinste
+    quadrate an eine echte geschwindigkeitsspur anpassen (siehe P37).
 
     Returns:
-        dict mit den vier Parametern (SI-Einheiten, m/s bzw. m/s^2) und
-        ``rmse_ms`` (Guete des Fits in m/s).
+        dict mit den vier parametern (SI-einheiten, m/s bzw. m/s^2) und
+        ``rmse_ms`` (guete des fits in m/s).
     """
     dist = np.asarray(dist, dtype=float)
     kappa = np.asarray(kappa, dtype=float)
@@ -1210,31 +1213,32 @@ def simulate_stint(dist, kappa, mu_g_ref: float, a_accel_ref: float,
                    a_brake_ref: float, v_top: float, fuel_start_kg: float,
                    n_laps: int, kg_per_lap: float = FUEL_KG_PER_LAP,
                    m_dry_kg: float = M_DRY_KG) -> np.ndarray:
-    """Rundenzeit je Runde eines Stints, waehrend der Tank leerer wird
+    """rundenzeit je runde eines stints, waehrend der tank leerer wird
     (P37, zweite AUSBAUSTUFE).
 
-    Die kalibrierten Grenzwerte (``*_ref``) gelten fuer eine Qualifyingrunde,
-    also nahezu leeren Tank (siehe ``calibrate_lap_model``) - das ist hier der
-    Bezugspunkt bei Kraftstoffmasse 0. Modellannahme: die Kraefte hinter
-    Kurvengrip, Laengsbeschleunigung und Bremsung (Abtrieb, Reifenhaftung,
-    Bremsanlage) haengen kaum vom Fahrzeuggewicht ab, nur die erreichbare
-    Beschleunigung a=F/m schon - mit vollerem Tank (hoehere Masse) sinken alle
-    drei Grenzwerte deshalb um denselben Faktor m_dry/(m_dry+Kraftstoff).
-    Grobe Vereinfachung (echte Bremskraft haengt z.B. auch von der
-    gewichtsabhaengigen Normalkraft ab), aber ohne zweiten Kalibrierungspunkt
-    nicht weiter auftrennbar - deshalb hier bewusst EINE Skalierung fuer alle
-    drei statt einer pro Groesse. v_top bleibt konstant (leistungs-/
+    die kalibrierten grenzwerte (``*_ref``) gelten fuer eine qualifyingrunde,
+    also nahezu leeren tank (siehe ``calibrate_lap_model``). das ist hier der
+    bezugspunkt bei kraftstoffmasse 0. modellannahme: die kraefte hinter
+    kurvengrip, laengsbeschleunigung und bremsung (abtrieb, reifenhaftung,
+    bremsanlage) haengen kaum vom fahrzeuggewicht ab, nur die erreichbare
+    beschleunigung a=F/m schon. mit vollerem tank (hoehere masse) sinken alle
+    drei grenzwerte deshalb um denselben faktor m_dry/(m_dry+kraftstoff).
+    grobe vereinfachung (echte bremskraft haengt z.b. auch von der
+    gewichtsabhaengigen normalkraft ab), aber ohne zweiten kalibrierungspunkt
+    nicht weiter auftrennbar. deshalb hier bewusst EINE skalierung fuer alle
+    drei statt einer pro groesse. v_top bleibt konstant (leistungs-/
     luftwiderstandsbegrenzt, kaum massenabhaengig).
 
     Args:
-        fuel_start_kg: Kraftstoffmasse zu Stint-Beginn.
-        n_laps: Rundenzahl des Stints.
-        kg_per_lap: Verbrauch je Runde, Default wie ``fuel_correct``.
-        m_dry_kg: Fahrzeugmasse ohne Kraftstoff (Bezugsgewicht der Skalierung).
+        fuel_start_kg: kraftstoffmasse zu stint-beginn.
+        n_laps: rundenzahl des stints.
+        kg_per_lap: verbrauch je runde, default wie ``fuel_correct``.
+        m_dry_kg: fahrzeugmasse ohne kraftstoff (bezugsgewicht der
+            skalierung).
 
     Returns:
-        Rundenzeit in Sekunden je Runde, Laenge ``n_laps``. Faellt monoton,
-        waehrend der Tank leerer wird, danach konstant.
+        rundenzeit in sekunden je runde, laenge ``n_laps``. faellt monoton,
+        waehrend der tank leerer wird, danach konstant.
     """
     fuel = np.maximum(fuel_start_kg - kg_per_lap * np.arange(n_laps), 0.0)
     skala = m_dry_kg / (m_dry_kg + fuel)
@@ -1247,38 +1251,38 @@ def simulate_stint(dist, kappa, mu_g_ref: float, a_accel_ref: float,
 
 @dataclass(frozen=True)
 class Elevation:
-    """Hoehenprofil einer Runde, alle Werte in Metern."""
-    gain: float                 # summierter Anstieg
-    drop: float                 # summierter Abstieg
-    span: float                 # hoechster minus tiefster Punkt
+    """hoehenprofil einer runde, alle werte in metern."""
+    gain: float                 # summierter anstieg
+    drop: float                 # summierter abstieg
+    span: float                 # hoechster minus tiefster punkt
 
     @property
     def is_flat(self) -> bool:
-        """Unter 10 m Spannweite ist eine Strecke praktisch eben."""
+        """unter 10 m spannweite ist eine strecke praktisch eben."""
         return self.span < 10.0
 
 
 def elevation_profile(z, min_step: float = 1.0) -> Elevation:
-    """Hoehenmeter aus dem Z-Kanal der Positionsdaten.
+    """hoehenmeter aus dem Z-kanal der positionsdaten.
 
-    Die Rohwerte rauschen um mehrere Dezimeter. Wer einfach alle Betraege der
-    Differenzen aufsummiert, zaehlt dieses Rauschen tausendfach mit und landet
-    bei Hoehenmetern, die um eine Groessenordnung zu hoch sind. Deshalb hier
-    dieselbe Hysterese, die auch GPS-Tracker verwenden: ein Anstieg zaehlt
-    erst, wenn er seit der letzten Richtungsumkehr min_step ueberschreitet.
+    die rohwerte rauschen um mehrere dezimeter. wer einfach alle betraege der
+    differenzen aufsummiert, zaehlt dieses rauschen tausendfach mit und landet
+    bei hoehenmetern, die um eine groessenordnung zu hoch sind. deshalb hier
+    dieselbe hysterese, die auch GPS-tracker verwenden: ein anstieg zaehlt
+    erst, wenn er seit der letzten richtungsumkehr min_step ueberschreitet.
 
-    Die Daempfung wirkt gegen *korreliertes* Rauschen, wie Positionsdaten es
-    zeigen - dort faellt sie auf null. Gegen unabhaengiges weisses Rauschen
-    hilft sie nur teilweise: dessen Einzelsprunge ueberschreiten die Schwelle
-    weiterhin gelegentlich. Auf ungeglaetteten Daten also min_step anheben.
+    die daempfung wirkt gegen *korreliertes* rauschen, wie positionsdaten es
+    zeigen. dort faellt sie auf null. gegen unabhaengiges weisses rauschen
+    hilft sie nur teilweise: dessen einzelsprunge ueberschreiten die schwelle
+    weiterhin gelegentlich. auf ungeglaetteten daten also min_step anheben.
 
     Args:
-        z: Hoehenwerte in Metern.
-        min_step: Schwelle in Metern, unterhalb derer eine Aenderung als
-            Rauschen gilt.
+        z: hoehenwerte in metern.
+        min_step: schwelle in metern, unterhalb derer eine aenderung als
+            rauschen gilt.
 
     Returns:
-        Elevation mit Anstieg, Abstieg und Spannweite.
+        Elevation mit anstieg, abstieg und spannweite.
     """
     v = np.asarray(z, dtype=float)
     v = v[np.isfinite(v)]
@@ -1287,15 +1291,15 @@ def elevation_profile(z, min_step: float = 1.0) -> Elevation:
 
     gain = drop = 0.0
     direction = 0          # +1 steigend, -1 fallend, 0 noch unentschieden
-    pivot = v[0]           # letzter bestaetigter Wendepunkt
-    peak = v[0]            # laufendes Extremum seit dem Wendepunkt
+    pivot = v[0]           # letzter bestaetigter wendepunkt
+    peak = v[0]            # laufendes extremum seit dem wendepunkt
 
     for cur in v[1:]:
         if direction > 0:
             if cur > peak:
-                peak = cur                      # Anstieg laeuft weiter
-            elif cur <= peak - min_step:        # Umkehr bestaetigt
-                gain += peak - pivot            # -> Anstieg verbuchen
+                peak = cur                      # anstieg laeuft weiter
+            elif cur <= peak - min_step:        # umkehr bestaetigt
+                gain += peak - pivot            # -> anstieg verbuchen
                 pivot, peak, direction = peak, cur, -1
         elif direction < 0:
             if cur < peak:
@@ -1308,7 +1312,7 @@ def elevation_profile(z, min_step: float = 1.0) -> Elevation:
         elif cur <= pivot - min_step:
             direction, peak = -1, cur
 
-    # Letzter Abschnitt endet ohne Umkehr und muss noch verbucht werden.
+    # letzter abschnitt endet ohne umkehr und muss noch verbucht werden.
     if direction > 0:
         gain += peak - pivot
     elif direction < 0:
@@ -1318,29 +1322,29 @@ def elevation_profile(z, min_step: float = 1.0) -> Elevation:
                      round(float(v.max() - v.min()), 1))
 
 
-# --------------------------------------------------------------- Race Control
+# --------------------------------------------------------------- race control
 def status_intervals(status, time_s
                      ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Sparses Status-Log (nur Aenderungen, wie FastF1s ``track_status``) in
-    Intervalle umwandeln.
+    """sparses status-log (nur aenderungen, wie FastF1s ``track_status``) in
+    intervalle umwandeln.
 
-    ``track_status`` traegt eine Zeile pro Zustandswechsel, nicht eine pro
-    Zeitschritt - "SCDeployed" erscheint typischerweise genau einmal, auch
-    wenn das Safety Car neun Runden lang draussen bleibt. Ein Intervall endet
-    deshalb dort, wo das naechste beginnt, nicht am letzten Auftreten
-    desselben Werts (das waere derselbe Zeitpunkt wie der Start - ein
-    Gruppieren nach gleichem Status ergibt hier fast ausschliesslich
-    Intervalle der Laenge 0).
+    ``track_status`` traegt eine zeile pro zustandswechsel, nicht eine pro
+    zeitschritt. "SCDeployed" erscheint typischerweise genau einmal, auch
+    wenn das safety car neun runden lang draussen bleibt. ein intervall endet
+    deshalb dort, wo das naechste beginnt, nicht am letzten auftreten
+    desselben werts (das waere derselbe zeitpunkt wie der start). ein
+    gruppieren nach gleichem status ergibt hier fast ausschliesslich
+    intervalle der laenge 0.
 
     Args:
-        status: Zustandswerte, ein Eintrag pro Aenderung.
-        time_s: zugehoerige Zeitpunkte in Sekunden, aufsteigend sortiert.
+        status: zustandswerte, ein eintrag pro aenderung.
+        time_s: zugehoerige zeitpunkte in sekunden, aufsteigend sortiert.
 
     Returns:
-        (status, start, ende) als drei gleich lange Arrays. ``ende`` des
-        letzten Intervalls ist NaN - offen, weil das Log dort endet.
-        Unmittelbar wiederholte Werte (zwei Zeilen mit demselben Status ohne
-        Wechsel dazwischen) werden zu einem Intervall zusammengefasst.
+        (status, start, ende) als drei gleich lange arrays. ``ende`` des
+        letzten intervalls ist NaN. offen, weil das log dort endet.
+        unmittelbar wiederholte werte (zwei zeilen mit demselben status ohne
+        wechsel dazwischen) werden zu einem intervall zusammengefasst.
     """
     s = np.asarray(status)
     t = np.asarray(time_s, dtype=float)
