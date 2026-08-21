@@ -30,6 +30,7 @@ from fastf1.utils import delta_time
 from matplotlib.collections import LineCollection
 
 import f1lab
+from f1lab.design import BG, FG, matplotlib_stil
 
 warnings.filterwarnings("ignore")
 
@@ -41,16 +42,8 @@ f1lab.enable_cache()
 f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
 
 DPI = 130
-BG = "#15151e"
-FG = "#f0f0f0"
 
-plt.rcParams.update({
-    "figure.facecolor": BG, "axes.facecolor": BG,
-    "savefig.facecolor": BG, "text.color": FG,
-    "axes.labelcolor": FG, "xtick.color": FG, "ytick.color": FG,
-    "axes.edgecolor": "#3a3a48", "grid.color": "#2a2a38",
-    "font.size": 11,
-})
+plt.rcParams.update(matplotlib_stil())
 
 KPI: dict = {}
 
