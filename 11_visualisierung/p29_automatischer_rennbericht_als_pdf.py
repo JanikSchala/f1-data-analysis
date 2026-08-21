@@ -20,7 +20,7 @@ import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 
 import f1lab
-from f1lab.design import COMPOUND, FG, GRID, MUTED, SERIEN, matplotlib_stil
+from f1lab.design import BG_HELL, COMPOUND, FG, GRID, MUTED, SERIEN, matplotlib_stil
 
 # Bewusst dauerhaft, nicht nur zur einmaligen Diagnose. FastF1s eigener
 # Handler blieb im GitHub-Actions-Runner ohne erkennbaren Grund stumm. Ein
@@ -61,7 +61,7 @@ def page_results(pdf, ses, seite: int, gesamt: int) -> None:
     tbl.scale(1, 1.5)
     for cell in tbl.get_celld().values():
         cell.set_edgecolor(GRID)
-        cell.set_facecolor("#1e1e2a")
+        cell.set_facecolor(BG_HELL)
         cell.set_text_props(color=FG)
     ax.set_title(f"{ses.event['EventName']} {ses.event.year} - Ergebnis",
                 fontsize=16, pad=20, color=FG, loc="left")
