@@ -13,6 +13,11 @@ saved_data.txt
 cache_warmup_log.csv
 out/
 
+# graphify - Knowledge-Graph ueber den Code, lokal regenerierbar
+# (graphify-out/graph.json --update). Die Uebersichtsgrafik selbst liegt
+# unter assets/ und ist versioniert.
+graphify-out/
+
 # Paketierung und Tests
 *.egg-info/
 build/
