@@ -1,11 +1,11 @@
-"""Teamkollegen-Duell mit Elo-Rating ueber eine ganze Saison.
+"""teamkollegen-duell mit Elo-rating ueber eine ganze saison.
 
-Anders als jede andere Seite hier: keine einzelne Session, sondern ein Scan
-ueber den ganzen Kalender (Quali + Rennen je Wochenende). Das dauert beim
-ersten Aufruf eine Weile - Streamlit cacht das Ergebnis danach fuer den Rest
-der Sitzung. Die Duell-Extraktion selbst kommt aus f1lab.teammate_duels()
-(siehe P05), die Elo-Mechanik aus f1lab.elo_update() - der Saison-Scan bleibt
-hier, aus demselben Grund wie im Skript: er wird nur hier gebraucht.
+anders als jede andere seite hier: keine einzelne session, sondern ein scan
+ueber den ganzen kalender (quali + rennen je wochenende). das dauert beim
+ersten aufruf eine weile, Streamlit cacht das ergebnis danach fuer den rest
+der sitzung. die duell-extraktion kommt aus f1lab.teammate_duels() (siehe
+P05), die Elo-mechanik aus f1lab.elo_update(). der saison-scan bleibt hier
+seitenlokal, weil er nur hier gebraucht wird.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ with st.sidebar:
 
 @st.cache_data(show_spinner=False)
 def _saison_events(cache_pfad: str, saison: int) -> list[str]:
-    """Wochenenden mit Quali UND Rennen im Cache, chronologisch."""
+    """wochenenden mit quali UND rennen im cache, chronologisch."""
     i = f1lab.cached_sessions(cache_pfad)
     info = (i[(i["season"] == saison) & (i["timing"])]
            .groupby("event").agg(datum=("event_date", "min"),

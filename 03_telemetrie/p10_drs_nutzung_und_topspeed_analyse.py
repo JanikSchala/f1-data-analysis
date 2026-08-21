@@ -1,66 +1,4 @@
-"""
-P10 - DRS-Nutzung und Topspeed-Analyse
-======================================
-
-Wie lange ist DRS offen, wie viel bringt es, und wer nutzt es am effizientesten?
-
-Kategorie:   Telemetrie
-Niveau:      Fortgeschritten
-Aufwand:     3 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-DRS-Effektivitaet ist direkt ueberholrelevant. Der DRS-Kanal ist codiert (nicht 0/1) - dass du das weisst, zeigt Detailtiefe.
-
-VORGEHEN
-  1. DRS-Codes verstehen: 10/12/14 = aktiv, 0/1/8 = zu
-  2. Aktivzonen als Distanzintervalle extrahieren
-  3. Topspeed mit und ohne DRS je Fahrer vergleichen
-  4. DRS-Zeitanteil pro Runde als Ranking
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Telemetry DRS
-  - Telemetry Speed/Distance
-  - Laps.pick_fastest
-
-AUSBAUSTUFE  [umgesetzt]
-DRS-Zonen derselben Strecke ueber mehrere Jahre vergleichen und zeigen, wie
-die FIA sie verschoben hat.
-
-Monza hat im Cache nur Telemetrie fuer 2024 (siehe CLAUDE.md: "Telemetrie nur
-fuer 2018 und 2024" - und selbst dort nicht fuer jede Strecke). Fuer den
-Jahresvergleich tritt Aserbaidschan (Baku) an die Stelle: gleiches Layout
-2018 wie 2024, drei lange, gut getrennte Zonen, in beiden Jahren cached. Die
-Zonenerkennung filtert jetzt zusaetzlich alles unter 100 m weg - ohne den
-Filter meldet dieselbe Logik am Start/Ziel-Bereich mehrere kurze
-Wackel-Zonen, die keine echten DRS-Zonen sind, sondern Rest-Aktivierung vom
-Ende der vorherigen Runde.
-
-Ergebnis Baku 2018 gegen 2024: Zone 1 (Start/Ziel-Gerade) beginnt praktisch
-am selben Punkt (+1 m), Zone 2 und Zone 3 beginnen 2024 dagegen 44 bzw. 60 m
-frueher. Keine gleichmaessige Verschiebung also, sondern eine gezielte -
-zwei von drei Zonen wurden verschoben, eine nicht. Ob das eine bewusste
-FIA-Anpassung ist oder teilweise an der minimal unterschiedlichen gemessenen
-Streckenlaenge liegt (5963 m gegen 5935 m - beides die gefahrene Ideallinie,
-nicht die offizielle Laenge, siehe P02), laesst sich aus dieser Zahl allein
-nicht trennen. Festzuhalten ist nur die Beobachtung, nicht die Ursache.
-
-Nebenbei: P09 behandelt Code 8 als eigenen dritten Zustand ("erkannt, aber
-nicht offen"), hier zaehlt er zu "zu" - beides folgt FastF1s eigener,
-ausdruecklich unsicherer Dokumentation dieses Codes. P10 bleibt bei der
-einfacheren, in VORGEHEN Punkt 1 selbst festgelegten Zweiteilung. Technisch
-ist das kein Widerspruch: beide nutzen seit der App-Integration dieselbe
-f1lab.drs_state()/f1lab.drs_zones()/f1lab.drs_usage() - "offen" (Code
-10/12/14) ist in beiden Faellen Zustand 2, P10 fragt nur nie nach Zustand 1.
-
-Kleine Randnotiz zur Umstellung: f1lab.drs_zones() rundet Start/Ende auf
-einen Dezimeter, bevor die Zone zurueckkommt (dieselbe Konvention wie
-f1lab.braking_zones). Die Verschiebung von Zone 2 wird dadurch aus bereits
-gerundeten Werten gebildet und trifft mit -44.5 m genau eine Rundungs-
-Haelfte - Python rundet das zur geraden Zahl, also -44 statt -45. Der
-tatsaechliche, ungerundete Wert liegt bei -44.5 m; die Aussage ("eine
-gezielte Verschiebung von zwei der drei Zonen") aendert das nicht.
-"""
+"""vergleicht drs-zeitanteil und topspeed-gewinn je fahrer und die drs-zonenlage einer strecke ueber zwei jahre"""
 from __future__ import annotations
 
 import sys
@@ -71,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -84,7 +22,7 @@ warnings.filterwarnings("ignore")
 OUT = Path(__file__).parent / "out"
 OUT.mkdir(exist_ok=True)
 
-SEASON, EVENT, IDENT = 2024, "Italy", "Q"          # Monza: 2 DRS-Zonen
+SEASON, EVENT, IDENT = 2024, "Italy", "Q"          # monza hat zwei drs-zonen
 ZONEN_STRECKE = "Azerbaijan"
 ZONEN_JAHRE = (2018, 2024)
 MIN_ZONE_M = 100.0
@@ -106,7 +44,7 @@ def zeichne_ranking(ax, df: pd.DataFrame, spalte: str, xlabel: str,
 
 def zeichne_zonenvergleich(ax, zonen_alt: pd.DataFrame, zonen_neu: pd.DataFrame,
                            strecke_m: float, jahr_alt: int, jahr_neu: int) -> None:
-    """AUSBAUSTUFE: Zonenlage zweier Jahre auf gemeinsamer Distanzachse."""
+    """zeigt die zonenlage zweier jahre auf einer gemeinsamen distanzachse."""
     for jahr, zonen, y, farbe in ((jahr_alt, zonen_alt, 1, SERIEN[0]),
                                   (jahr_neu, zonen_neu, 0, SERIEN[1])):
         for _, z in zonen.iterrows():

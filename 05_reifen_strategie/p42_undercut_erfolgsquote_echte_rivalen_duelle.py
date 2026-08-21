@@ -1,104 +1,4 @@
-"""
-P42 - Undercut-Erfolgsquote: echte, paarweise Rivalen-Duelle
-================================================================
-
-Wie oft gewinnt ein Undercut wirklich - nicht in der Simulation (P15), nicht
-im Modell (P35), sondern gegen den echten Rivalen, den ein Boxenstopp
-tatsaechlich angreift?
-
-Kategorie:   Reifen & Strategie
-Niveau:      Profi
-Aufwand:     4-5 h
-Schwerpunkt: Datenanalyse, Statistik
-
-WARUM DAS LOHNT
-P15 simuliert den Undercut-Gewinn aus Reifenmodellen, P35 rechnet die
-optimale Stoppstrategie gegen die Uhr - beide bewusst ohne Rivalen, siehe
-P35s eigener Hinweis auf Verkehr als blinden Fleck (jetzt in P41
-aufgegriffen). Diese Frage ist eine andere: nicht "wie viel Zeit gewinnt
-ein Undercut modelliert", sondern "wie oft setzt sich ein ECHTER
-Undercut-Versuch am Ende auch durch". Das laesst sich direkt aus
-Positionsdaten beantworten, ohne Reifenmodell - aber nur, wenn man den
-richtigen Rivalen vergleicht.
-
-Ein erster Anlauf dazu wurde bereits einmal verworfen (siehe CLAUDE.md,
-Nachtrag zu P38): Position vor einem Boxenstopp gegen Position im ganzen
-Feld ein paar Runden danach verglichen, ergab fuer ALLE getesteten Stopps
-ein negatives Delta - kein Befund, sondern eine Methodenluecke. Wer stoppt,
-verliert gegen das GANZE Feld automatisch Positionen, weil nicht-stoppende
-Autos in der Zwischenzeit einfach weiterfahren; das misst die
-Boxengassenzeit, nicht den Undercut. Ein Undercut ist per Definition ein
-Duell gegen EINEN Rivalen (den davor liegenden Verfolger), nicht gegen 19
-andere Autos gleichzeitig.
-
-VORGEHEN
-  1. Einzelnes Rennen (Spanien 2024 R) als Sanity-Check: alle Undercut-
-     Duelle auflisten, Ergebnis von Hand nachvollziehbar
-  2. Saison-weiter Scan (2024, alle 24 Rennen): f1lab.undercut_duels() je
-     Rennen aufrufen, alle Duelle sammeln
-  3. Erfolgsquote ueber die ganze Saison, 95%-Konfidenzintervall
-     (Wilson-Score via scipy.stats.binomtest), Binomialtest gegen die
-     naive 50%-Erwartung ("Undercut und Verteidigung sind gleich oft
-     erfolgreich")
-  4. Verteilung je Rennen zeigen: schwankt die Quote nur um den
-     Mittelwert, oder gibt es Rennen mit strukturell anderer Erfolgsquote?
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps.Position (pivotiert je Runde) fuer die Positionsverlaeufe
-  - Laps.PitInTime fuer den Stoppzeitpunkt
-  - scipy.stats.binomtest fuer den Signifikanztest samt Konfidenzintervall
-
-Definition (siehe f1lab.session.undercut_duels() Docstring fuer die volle
-Herleitung): fuer jeden Boxenstopp (Fahrer A, Runde L) ist der Rivale der
-Fahrer, der zu Rundenbeginn genau eine Position vor A lag - nur gezaehlt,
-wenn dieser Rivale nicht selbst in derselben Runde stoppt (sonst kein
-Undercut-Versuch, sondern ein gemeinsamer Stopp) und innerhalb von
-``fenster`` Runden selbst an die Box faehrt (sonst ist die Verfolgung kein
-Undercut, sondern zufaellig zeitversetzte Stopps). Erfolg heisst: nach
-``nachlauf`` gruenen Runden liegt A vor dem Rivalen.
-
-AUSBAUSTUFE  [umgesetzt]
-Robustheit gegen die beiden Fenster-Parameter: haelt der Befund, wenn
-``fenster`` (wie viele Runden der Rivale noch selbst stoppen darf) und
-``nachlauf`` (wie lange nach dem letzten Stopp gewartet wird) variiert
-werden, oder ist die 23.6%-Zahl ein Artefakt der Default-Werte?
-
-Saison 2024, alle 24 Rennen: 161 echte Undercut-Duelle (Default
-fenster=3, nachlauf=2), 38 erfolgreich - **23.6% Erfolgsquote, 95%-KI
-[17.3%, 30.9%]**, Binomialtest gegen 50% mit p<0.0001. Der Undercut
-gewinnt in diesen Daten deutlich seltener, als die verbreitete
-Intuition ("Undercut ist die staerkere Waffe") nahelegt - eher das
-Gegenteil: die Verteidigung (spaeter stoppen, auf der alten Mischung
-verteidigen) gewinnt gut drei von vier dieser direkten Duelle.
-
-Die Robustheitspruefung bestaetigt das ueber einen plausiblen
-Parameterbereich, nicht nur beim Default:
-
-    fenster=2, nachlauf=2:  n=137  Quote 21.2%  p=6.7e-12
-    fenster=3, nachlauf=2:  n=161  Quote 23.6%  p=1.2e-11  (Default)
-    fenster=5, nachlauf=2:  n=209  Quote 27.3%  p=3.6e-11
-    fenster=3, nachlauf=1:  n=162  Quote 23.5%  p=7.6e-12
-    fenster=3, nachlauf=3:  n=160  Quote 23.1%  p=5.5e-12
-
-Ein engeres Zeitfenster (fenster=2) filtert die knappsten, eindeutigsten
-Duelle heraus und zeigt die niedrigste Quote (21.2%); ein weiteres Fenster
-(fenster=5) laesst auch zeitversetztere Stopp-Paare als "Duell" durch und
-zieht die Quote am staerksten Richtung 50% (27.3%) - plausibel, weil ein
-groesserer Rundenabstand zwischen den beiden Stopps die Verbindung zum
-urspruenglichen Angriff verwaschen laesst. In der ganzen getesteten
-Bandbreite bleibt die Kernaussage aber unveraendert: die Erfolgsquote
-liegt durchgehend deutlich unter 50%, mit p-Werten, die in keinem Fall
-auch nur in die Naehe von 0.05 kommen. Der Befund ist kein Artefakt einer
-einzelnen Parameterwahl.
-
-Je Rennen schwankt die Quote stark (0% bis 45.5%, siehe Balkengrafik) -
-elf der 24 Rennen zeigen ueberhaupt einen erfolgreichen Undercut, aber
-selbst das erfolgreichste Rennen (Grossbritannien, 5/11) bleibt unter
-50%. Mit Stichproben von 1-16 Duellen je Rennen ist keins der
-Einzelrennen fuer sich statistisch belastbar (siehe P40s Lektion ueber
-Stichprobengroesse) - erst gepoolt ueber die Saison wird der Effekt
-robust sichtbar.
-"""
+"""ermittelt die undercut-erfolgsquote aus echten paarweisen rivalen-duellen über eine ganze saison"""
 from __future__ import annotations
 
 import sys
@@ -109,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -131,7 +31,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def saison_scan(saison: int) -> pd.DataFrame:
-    """VORGEHEN 2: alle Undercut-Duelle einer Saison sammeln."""
+    """sammelt alle undercut-duelle einer saison."""
     schedule = f1lab.event_dimension([saison])
     alle = []
     for _, row in schedule.iterrows():
@@ -148,7 +48,7 @@ def saison_scan(saison: int) -> pd.DataFrame:
 
 
 def zeichne_verteilung(ax, je_rennen: pd.DataFrame) -> None:
-    """VORGEHEN 4: Erfolgsquote je Rennen, sortiert."""
+    """erfolgsquote je rennen, sortiert."""
     e = je_rennen.sort_values("rate")
     farben = [SERIEN[1] if n >= 5 else MUTED for n in e["n"]]
     ax.barh(e["gp"], e["rate"] * 100, color=farben, height=0.65)
@@ -167,7 +67,7 @@ def zeichne_verteilung(ax, je_rennen: pd.DataFrame) -> None:
 
 
 def zeichne_gesamt(ax, n: int, erfolge: int, ci) -> None:
-    """VORGEHEN 3: Gesamtquote mit Konfidenzintervall gegen 50%."""
+    """gesamtquote mit konfidenzintervall gegen 50%."""
     rate = erfolge / n * 100
     ax.barh([0], [rate], color=SERIEN[1], height=0.5)
     ax.errorbar([rate], [0], xerr=[[rate - ci.low * 100], [ci.high * 100 - rate]],

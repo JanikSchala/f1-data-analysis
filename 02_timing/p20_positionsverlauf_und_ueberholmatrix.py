@@ -1,61 +1,5 @@
-"""
-P20 - Positionsverlauf und Ueberholmatrix
-=========================================
-
-Position ueber Runden fuer alle Fahrer, plus eine Matrix wer wen wie oft ueberholt hat.
-
-Kategorie:   Timing & Rundenanalyse
-Niveau:      Fortgeschritten
-Aufwand:     3 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Der Positionsgraph ist das meistgenutzte Rennbild ueberhaupt. Die Ueberholmatrix zeigt, dass du ueber die Standardgrafik hinausdenkst.
-
-VORGEHEN
-  1. Position je Runde und Fahrer pivotieren
-  2. Linienplot in Fahrer-Styles, y-Achse invertiert
-  3. Positionswechsel zwischen aufeinanderfolgenden Runden erkennen
-  4. Ueberholungen ohne Boxenstopp-Runden zaehlen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps Position/LapNumber
-  - fastf1.plotting.get_driver_style / add_sorted_driver_legend
-  - Lap.get_telemetry / Telemetry.add_driver_ahead
-
-AUSBAUSTUFE  [umgesetzt]
-Versuchte gegen erfolgreiche Ueberholmanoever trennen, per
-DistanceToDriverAhead aus der Telemetrie. Betrachtet wird je Runde nur der
-direkte Rivale - wer zu Rundenbeginn genau eine Position davor lag -, nicht
-irgendein nahes Auto: sonst zaehlen abgehaengte Nachzuegler oder gerade
-ueberrundete Fahrzeuge mit, ohne dass da ein Duell stattfindet. Ein Versuch
-zaehlt ab einer Mindestannaeherung von 3 m (rund eine Wagenlaenge, empirisch
-gegen die Verteilung der minimalen Rivalen-Abstaende dieses Rennens geprueft
-- ein lockereres Mass wie 15 m ohne Mindestdauer liefert mehrere hundert
-"Versuche" pro Fahrer und ist damit fuer ein einzelnes Rennen unplausibel:
-das zaehlt jede kurze Annaeherung im Windschatten mit, nicht nur echte
-Attacken). Erfolgreich ist ein Versuch, wenn der Angreifer die Runde vor dem
-Rivalen beendet.
-
-Monza 2024 R: 193 Versuche unter 3 m, davon 23 erfolgreich (12 %) - der
-Rest, 170 Versuche, blieb ohne Positionswechsel. Die Verteidigung gewinnt die
-meisten knappen Duelle, nicht der Angriff.
-
-Eine kleinere Korrektur gegenueber der urspruenglichen Formulierung:
-DriverAhead traegt die Startnummer, nicht das Kuerzel (Mapping ueber
-DriverNumber -> Driver noetig).
-
-Eine zweite, groessere kam erst bei der App-Integration ans Licht: Position
-und Ueberholmatrix sitzen jetzt in f1lab.position_progression()/
-f1lab.overtakes_matrix() (dieselben Funktionen wie die Renndynamik-Seite im
-Dashboard), und beim Herausziehen fiel auf, dass die Boxenstopp-Ausnahme
-hier nie gegriffen hat: `laps_gruen.pick_wo_box()` entfernt alle
-Boxenrunden, bevor `PitInTime.notna()` danach sucht - die Menge war immer
-leer, in dieser wie in der urspruenglichen Fassung. f1lab.overtakes_matrix()
-baut box_laps jetzt aus ungefilterten Daten und prueft die Gruen-Flagge
-korrekt auf der Ueberholrunde selbst statt nur auf die (wirkungslose)
-Boxenerkennung.
-"""
+"""zeichnet den positionsverlauf und die ueberholmatrix und trennt versuchte
+von erfolgreichen ueberholmanoevern"""
 from __future__ import annotations
 
 import sys
@@ -66,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import fastf1.plotting as f1plt
 import matplotlib.pyplot as plt
@@ -90,8 +34,8 @@ f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
 
 def naeherungen(laps_gruen: pd.DataFrame, pos: pd.DataFrame,
                 nummer_zu_code: dict[str, str]) -> pd.DataFrame:
-    """Minimaler Abstand zum direkten Rivalen je Runde und Fahrer - das
-    Rohmaterial fuer die Versuch/Erfolg-Klassifikation."""
+    """minimaler abstand zum direkten rivalen je runde und fahrer. rohmaterial
+    fuer die versuch/erfolg-klassifikation."""
     beobachtungen = []
     for drv in laps_gruen["Driver"].unique():
         d_laps = laps_gruen[laps_gruen["Driver"] == drv].sort_values("LapStartTime")
@@ -130,9 +74,8 @@ def naeherungen(laps_gruen: pd.DataFrame, pos: pd.DataFrame,
 
 def klassifiziere(naeh: pd.DataFrame, pos: pd.DataFrame,
                   schwelle: float = ANNAEHERUNG_M) -> pd.DataFrame:
-    """Versuche unter der Annaeherungs-Schwelle, markiert als erfolgreich
-    oder nicht - erfolgreich heisst: der Angreifer beendet dieselbe Runde
-    vor seinem Rivalen."""
+    """markiert versuche unter der annaeherungs-schwelle als erfolgreich wenn
+    der angreifer die runde vor dem rivalen beendet."""
     versuche = naeh[naeh["min_dist"] < schwelle].copy()
 
     def erfolgreich(row) -> bool:

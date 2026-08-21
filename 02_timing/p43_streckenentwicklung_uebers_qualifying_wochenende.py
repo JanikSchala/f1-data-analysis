@@ -1,155 +1,5 @@
-"""
-P43 - Streckenentwicklung: wird die Strecke von Q1 zu Q3 wirklich schneller?
-===============================================================================
-
-Die verbreitete Behauptung im Kommentatoren-Jargon: die Strecke "gummiert ein"
-waehrend eines Qualifyings, jede Session wird schneller als die vorherige.
-Stimmt das in echten Daten - und wie trennt man das von den drei
-naheliegenden Verwechslungen (Sprit, Reifenmischung, weniger schnelle Autos
-in Q3)?
-
-Kategorie:   Timing & Rundenanalyse
-Niveau:      Profi
-Aufwand:     4-5 h
-Schwerpunkt: Datenanalyse, Statistik
-
-WARUM DAS LOHNT
-Diese Frage stand explizit als "riskant" auf der Liste offener Ideen, mit
-drei bekannten Fallstricken: Reifenmischung (Q1 manchmal auf Hard, wenn ein
-Team Reifen sparen will), Sprit (freies Training faehrt oft schwer beladen)
-und "Sandbagging" in FP1 (Fahrer zeigen dort bewusst nicht ihr Tempo). Der
-Trick, der alle drei umgeht: gar nicht erst das freie Training verwenden.
-FastF1s `Laps.split_qualifying_sessions()` zerlegt eine Qualifying-Session
-in Q1/Q2/Q3 - und innerhalb von Qualifying sind alle drei Fallstricke
-strukturell entschaerft: jede gewertete Rundenzeit ist per Definition eine
-Banzai-Runde (niemand faehrt in Q auf hohem Sprit), praktisch jeder faehrt
-auf SOFT (siehe VORGEHEN 3), und Sandbagging ergibt in Q keinen Sinn - wer
-ausscheidet, ist raus.
-
-Der verbleibende, wichtigste Fallstrick ist ein vierter, der in der
-urspruenglichen Liste nicht genannt war: von Q1 zu Q3 bleiben nur die
-schnelleren Autos uebrig. Ein einfacher Schnitt-Vergleich "Q3 ist im
-Schnitt schneller als Q1" wuerde deshalb teilweise nur "die langsamen
-Autos sind raus" messen, nicht Streckenentwicklung. Die Loesung: NUR
-Fahrer vergleichen, die in beiden Segmenten eine Zeit gesetzt haben, und je
-Fahrer sein eigenes Q1- gegen sein eigenes Q2-Ergebnis stellen (paarweiser
-Vergleich, wie beim Undercut in P42) - das haelt Auto- und
-Fahrerqualitaet konstant.
-
-VORGEHEN
-  1. Einzelnes Rennen (Spanien 2024 Q) als Sanity-Check:
-     f1lab.qualifying_track_evolution() aufrufen, Ergebnis nachvollziehen
-  2. Saison-weiter Scan (2024): alle Qualifyings, ausser den nassen (siehe
-     Punkt 3)
-  3. Nasse Sessions ausschliessen: Regen ist selbst ein starker,
-     unabhaengiger Zeiteffekt (trocknende Strecke), der die reine
-     "Gummi"-Streckenentwicklung ueberdecken wuerde - erkannt an
-     INTERMEDIATE/WET-Reifen irgendwo in der Session (wie P17s
-     Regen-Klassifikation)
-  4. Statistik ueber alle paarweisen Fahrer-Deltas: Median, Anteil positiv,
-     Wilcoxon-Vorzeichen-Rang-Test (gepaarte, nicht normalverteilte Daten -
-     kein t-Test)
-  5. Je-Rennen-Konsistenz: zeigt JEDES einzelne Rennen dieselbe Richtung,
-     oder ist der gepoolte Befund von wenigen Ausreissern getragen?
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps.split_qualifying_sessions() (neu genutzt in diesem Repo)
-  - Laps.Compound (Regen-Erkennung)
-  - scipy.stats.wilcoxon
-
-AUSBAUSTUFE  [umgesetzt]
-Cross-Saison-Robustheit: haelt der Befund in einer komplett anderen Saison
-(2023), oder ist 2024 ein Einzelfall?
-
-Saison 2024, 21 trockene Qualifyings (Grossbritannien, Belgien, Sao Paulo
-wegen Regen ausgeschlossen - INTERMEDIATE/WET-Reifen irgendwo in der
-Session): **Q1->Q2 median +0.407s schneller (n=313 Fahrer-Vergleiche, 92.3%
-positiv, Wilcoxon p=1.3e-48), Q2->Q3 median +0.167s schneller (n=209, 79.4%
-positiv, p=3.8e-16)**. Reifenmischung als Restfallstrick geprueft: eine
-Wiederholung nur mit SOFT-Runden (statt allen gewerteten Runden) aendert
-kaum etwas (+0.422s/+0.176s statt +0.407s/+0.167s) - fast alle gewerteten
-Q-Runden sind ohnehin SOFT, der Fallstrick war real, aber praktisch
-wirkungslos in dieser Saison.
-
-Die Je-Rennen-Konsistenz ist auffaellig hoch: **21 von 21** trockenen
-Rennen zeigen eine positive mediane Q1->Q2-Verbesserung, **21 von 21** auch
-fuer Q2->Q3 - kein einziges Gegenbeispiel in der ganzen Saison. Das ist ein
-deutlich saubereres Bild als die meisten anderen Befunde dieses Repos
-(vgl. P40s nur 2 von 25 wirklich konsistenten Strecken) - Streckenentwicklung
-scheint kein schwaches, streckenspezifisches Signal zu sein wie der
-Paritaets-Effekt, sondern ein durchgehend wirkendes.
-
-Cross-Saison-Check 2023 (18 trockene Qualifyings): Q1->Q2 median +0.444s
-(n=270, 90.7% positiv, p=3.4e-36, **18/18** Rennen positiv), Q2->Q3 median
-+0.275s (n=179, 80.4% positiv, p=4.0e-13, **16/18** Rennen positiv) - dieselbe
-Groessenordnung, dieselbe Richtung, fast dieselbe Konsistenz wie 2024. Der
-Effekt ist kein Artefakt einer einzelnen Saison.
-
-Ehrlich eingeordnet: Q1->Q2 gewinnt in beiden Saisons deutlich mehr Zeit
-als Q2->Q3 (rund doppelt bis dreifach so viel) - plausibel, weil die
-groesste Zahl an Runden (und damit an frisch aufgetragenem Gummi) in Q1
-gefahren wird, wo noch 20 statt 15 bzw. 10 Autos unterwegs sind. Die Daten
-trennen "mehr Runden legen mehr Gummi" nicht sauber von "Q1 ist als
-Session strukturell anders (laenger, mehr Verkehr)" - beide Erklaerungen
-sind mit dem hier Gemessenen vereinbar, nur die Groessenordnung des
-Gesamteffekts ist der gesicherte Teil.
-
-ZWEITE AUSBAUSTUFE  [umgesetzt]
-Ein vierter moeglicher Fallstrick blieb nach der ersten AUSBAUSTUFE offen,
-diesmal von P17 hergeleitet statt von der urspruenglichen Liste: die
-Strecke kuehlt waehrend eines Abend-Qualifyings meist ab, und P17 fand
-einen echten TrackTemp-Effekt auf die Pace (+0.215 s/°C in Japan 2024 R).
-Waere die Q1->Q3-Verbesserung also nur "kaelterer Asphalt", nicht "mehr
-Gummi"?
-
-Saison 2024, je Rennen die mittlere TrackTemp (aus `Laps.get_weather_data()`)
-pro Segment gegen das gepaarte Pace-Delta gestellt: die Strecke kuehlt in
-**20 von 21 (Q1->Q2) bzw. 18 von 21 (Q2->Q3)** Rennen tatsaechlich ab -
-aber der entscheidende Test ist nicht die Richtung, sondern die
-GROESSE des Zusammenhangs ueber die Rennen hinweg. Die ist schwach und
-NICHT signifikant: Q1->Q2 Pearson r=-0.372 (p=0.097, sogar in die
-FALSCHE Richtung - mehr Abkuehlung haengt mit KLEINEREM Pace-Gewinn
-zusammen), Q2->Q3 r=+0.279 (p=0.221). Noch deutlicher: in allen vier
-Faellen, in denen sich die Strecke stattdessen ERWAERMTE (Q1->Q2 einmal,
-Q2->Q3 dreimal), verbesserte sich die Pace trotzdem - genau das
-Gegenteil dessen, was die Temperatur-Hypothese vorhersagen wuerde, wenn
-sie der Haupttreiber waere.
-
-Ehrliches Fazit: Streckentemperatur ist ein realer, aber hier NICHT der
-tragende Faktor - die Q1->Q3-Verbesserung haelt unabhaengig davon, ob die
-Strecke waehrend der Session waermer oder kaelter wird. Das staerkt die
-urspruengliche "mehr Gummi auf der Strecke"-Interpretation, statt sie zu
-widerlegen - eine plausible Alternative wurde ernsthaft getestet, nicht
-nur erwaehnt und beiseitegelegt.
-
-DRITTE AUSBAUSTUFE  [umgesetzt]
-Gilt derselbe Effekt auch fuer Sprint Qualifying/Sprint Shootout - die
-kuerzere, kleinere Schwester der normalen Qualifikation an einem
-Sprint-Wochenende (siehe P44)? `f1lab.qualifying_track_evolution()` braucht
-dafuer keine Anpassung: `Laps.split_qualifying_sessions()` funktioniert
-strukturell identisch, unabhaengig vom Session-Identifier.
-
-Echter, bisher unbenutzer FastF1-Fund dabei: der Session-Identifier fuer
-diese Session wechselte zwischen den Saisons - 2023 heisst sie "SS"
-(Sprint Shootout, der urspruengliche Name), 2024 "SQ" (Sprint Qualifying,
-nach der Umbenennung durch die FIA) - `f1lab.load(..., "SQ")` wirft fuer
-2023er Events einen klaren Fehler ("Session type 'SQ' does not exist"),
-nicht etwa ein leeres Ergebnis.
-
-Ueber beide Saisons und beide Namen zusammen: **9 von 9 trockenen
-Sprint-Qualifyings** (Oesterreich/Belgien 2023 als Sprint Shootout nass,
-China 2024 als Sprint Qualifying nass - dieselben Regen-Ausschluesse wie
-in P44 fuer die zugehoerigen Sprints) zeigen dieselbe Richtung wie die
-normale Qualifikation: Q1->Q2 median +0.504s (n=133, 94.0% positiv,
-p=1.4e-22), Q2->Q3 median +0.350s (n=88, 79.5% positiv, p=7.1e-10,
-**8/9** Rennen positiv). Die Groessenordnung ist nicht kleiner als bei der
-normalen Qualifikation, eher sogar etwas groesser (P43 Hauptbefund:
-+0.407s/+0.167s in 2024 allein) - obwohl Sprint Qualifying insgesamt
-kuerzer ist (SQ1/SQ2/SQ3 statt Q1/Q2/Q3, kuerzere Segmentlaengen). Die
-Streckenentwicklung ist damit keine Eigenschaft der spezifisch langen
-Standard-Qualifikation, sondern zeigt sich unabhaengig vom Format, sobald
-das Feld auf der Strecke faehrt und sich verkleinert.
-"""
+"""prueft per paarweisem fahrervergleich ob die strecke von Q1 zu Q3
+schneller wird und ob temperatur oder sprint-format das aendern"""
 from __future__ import annotations
 
 import sys
@@ -160,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import fastf1
 import matplotlib.pyplot as plt
@@ -183,12 +33,12 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def ist_nass(session) -> bool:
-    """VORGEHEN 3: Regen ueberdeckt den reinen Gummi-Effekt, deshalb raus."""
+    """regen ueberdeckt den reinen gummi-effekt und wird deshalb ausgeschlossen."""
     return session.laps["Compound"].isin(["INTERMEDIATE", "WET"]).any()
 
 
 def saison_scan(saison: int) -> tuple[pd.DataFrame, list[str]]:
-    """VORGEHEN 2: alle trockenen Qualifyings einer Saison sammeln."""
+    """sammelt alle trockenen qualifyings einer saison."""
     schedule = f1lab.event_dimension([saison])
     alle, nass = [], []
     for _, row in schedule.iterrows():
@@ -208,13 +58,12 @@ def saison_scan(saison: int) -> tuple[pd.DataFrame, list[str]]:
             nass)
 
 
-SPRINT_QUALI_IDENT = {2023: "SS", 2024: "SQ"}  # DRITTE AUSBAUSTUFE: FIA-Umbenennung
+SPRINT_QUALI_IDENT = {2023: "SS", 2024: "SQ"}  # fia-umbenennung: SS -> SQ
 
 
 def sprint_quali_scan(saisons) -> tuple[pd.DataFrame, list[str]]:
-    """DRITTE AUSBAUSTUFE: dieselbe Frage an Sprint Qualifying/Sprint
-    Shootout - der Session-Identifier wechselt zwischen den Saisons
-    (SS 2023, SQ 2024), deshalb kein fester String wie bei saison_scan()."""
+    """dieselbe frage an sprint qualifying/sprint shootout. der
+    session-identifier wechselt zwischen den saisons (SS 2023, SQ 2024)."""
     alle, nass = [], []
     for saison in saisons:
         ident = SPRINT_QUALI_IDENT[saison]
@@ -240,12 +89,8 @@ def sprint_quali_scan(saisons) -> tuple[pd.DataFrame, list[str]]:
 
 
 def temperatur_confound(saison: int) -> pd.DataFrame:
-    """ZWEITE AUSBAUSTUFE: TrackTemp-Trend gegen Pace-Delta, je Rennen.
-
-    Eigener, kleinerer Scan (mit weather=True) statt Wiederverwendung von
-    saison_scan() - der Temperatur-Check braucht Wetterdaten, die der
-    Haupt-Scan bewusst nicht laedt (unnoetiger Mehraufwand fuer die
-    Kernfrage)."""
+    """TrackTemp-trend gegen pace-delta je rennen. eigener scan mit
+    weather=True statt saison_scan(), das keine wetterdaten laedt."""
     schedule = f1lab.event_dimension([saison])
     zeilen = []
     for _, row in schedule.iterrows():
@@ -285,12 +130,12 @@ def temperatur_confound(saison: int) -> pd.DataFrame:
             zeilen.append({
                 "gp": row["event_name"], "segment": segment,
                 "pace_delta_s": (a[gemeinsam] - b[gemeinsam]).dt.total_seconds().median(),
-                "temp_delta_c": ta - tb})  # positiv = Strecke kuehlt ab
+                "temp_delta_c": ta - tb})  # positiv = strecke kuehlt ab
     return pd.DataFrame(zeilen)
 
 
 def zeichne_temperatur(ax, temp_df: pd.DataFrame) -> None:
-    """ZWEITE AUSBAUSTUFE: Streuung zeigt fehlenden Zusammenhang direkt."""
+    """streudiagramm von temperatur-delta gegen pace-delta."""
     for seg, farbe, marker in (("Q1->Q2", SERIEN[0], "o"),
                                ("Q2->Q3", SERIEN[1], "s")):
         sub = temp_df[temp_df["segment"] == seg]
@@ -311,7 +156,7 @@ def zeichne_temperatur(ax, temp_df: pd.DataFrame) -> None:
 
 
 def zeichne_verteilung(ax, deltas: pd.DataFrame) -> None:
-    """VORGEHEN 4: Verteilung der paarweisen Deltas je Segment."""
+    """verteilung der paarweisen deltas je segment."""
     segmente = ["Q1->Q2", "Q2->Q3"]
     daten = [deltas.loc[deltas["segment"] == s, "delta_s"] for s in segmente]
     bp = ax.boxplot(daten, tick_labels=segmente, patch_artist=True,
@@ -340,7 +185,7 @@ def zeichne_verteilung(ax, deltas: pd.DataFrame) -> None:
 
 
 def zeichne_konsistenz(ax, je_rennen: pd.DataFrame) -> None:
-    """VORGEHEN 5: haelt die Richtung in jedem einzelnen Rennen?"""
+    """zeigt ob die richtung in jedem einzelnen rennen haelt."""
     e = je_rennen.sort_values("median_q1q2")
     x = np.arange(len(e))
     breite = 0.38

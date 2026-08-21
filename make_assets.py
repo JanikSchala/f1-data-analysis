@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Erzeugt die Grafiken und Kennzahlen fuer das README.
+erzeugt die Grafiken und Kennzahlen fuer das README.
 
     python make_assets.py
 
-Alle Auswertungen laufen ueber f1lab - das Modul, das auch getestet wird.
-Frueher hatte dieses Skript eine eigene Kopie der Filterlogik, was nach einem
-Bugfix in f1lab zu zwei unterschiedlichen Ergebnissen fuer dieselbe Frage
-gefuehrt hat. Genau das soll hier nicht mehr passieren.
+alle Auswertungen laufen ueber f1lab. das ist dasselbe Modul wie in den
+Tests. eine fruehere eigene Kopie der Filterlogik in diesem Skript hatte
+nach einem Bugfix in f1lab zu abweichenden Ergebnissen gefuehrt. das soll
+nicht wieder passieren.
 
-Schreibt PNGs nach assets/ und die berechneten Werte nach
-assets/kennzahlen.json. Der erste Lauf dauert einige Minuten, weil die
-Sessions heruntergeladen werden - danach kommt alles aus dem Cache.
+schreibt PNGs nach assets/ und die berechneten Werte nach
+assets/kennzahlen.json. der erste Lauf dauert einige Minuten weil die
+Sessions heruntergeladen werden. danach kommt alles aus dem Cache.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import fastf1.plotting as f1plt
 import matplotlib.pyplot as plt
@@ -166,7 +166,7 @@ def race_pace(year=2024, gp="Spain"):
     print(f"[3/5] Race-Pace-Ranking  {gp} {year}")
     ses = f1lab.load(year, gp, "R")
 
-    # Genau dieselbe Funktion, die auch in den Tests geprueft wird.
+    # dieselbe funktion wie in den tests
     pace = f1lab.pace_table(ses)
     laps_clean = f1lab.clean_laps(ses)
 

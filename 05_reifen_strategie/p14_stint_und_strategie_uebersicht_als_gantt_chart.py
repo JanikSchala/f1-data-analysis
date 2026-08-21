@@ -1,51 +1,4 @@
-"""
-P14 - Stint- und Strategie-Uebersicht als Gantt-Chart
-=====================================================
-
-Die klassische Strategiegrafik: jeder Fahrer eine Zeile, jeder Stint ein Balken in Compound-Farbe.
-
-Kategorie:   Reifen & Strategie
-Niveau:      Einsteiger
-Aufwand:     2-3 h
-Schwerpunkt: Strategie, Datenanalyse
-
-WARUM DAS LOHNT
-Diese Grafik hat jedes Team an der Boxenmauer. Schnell gebaut, sofort verstaendlich - und danach schaust du jedes Rennen anders.
-
-VORGEHEN
-  1. Stints je Fahrer aggregieren: Start-Runde, Laenge, Compound
-  2. Nach Endposition sortieren
-  3. Gestapelte horizontale Balken mit Compound-Farben
-  4. Compound-Kuerzel und Stintlaenge beschriften
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps groupby Stint
-  - Laps Compound/FreshTyre
-  - fastf1.plotting.get_compound_color
-
-AUSBAUSTUFE  [umgesetzt]
-Ergaenze eine zweite Spalte mit dem Positionsgewinn/-verlust je Stint,
-damit man sieht, welche Strategie sich ausgezahlt hat.
-
-VORGEHEN 1 nutzt f1lab.stints() statt einer eigenen Kopie der
-Stint-Aggregation - dieselbe Funktion wie die Reifen-Seite im Dashboard.
-Kompaktere Compound-Farben aus f1lab.design.COMPOUND statt
-fastf1.plotting.get_compound_color(), aus demselben Grund wie ueberall im
-Projekt: eine Quelle der Wahrheit fuer Farbe, die Skript und App teilen.
-
-Die AUSBAUSTUFE-Spalte rechts vom Gantt zeigt je Stint die Positions-
-Differenz zwischen erster und letzter Runde des Stints (nicht Overtakes -
-siehe P20/f1lab.overtakes_matrix() dafuer -, sondern die rohe
-Positionsverschiebung inklusive Boxenstopp-Artefakt: ein Fahrer taucht
-direkt nach seinem eigenen Stopp meist kurz weiter hinten auf, was der
-naechste Stint dann wieder "aufholt"). Ungarn 2024 R: Perez und Sargeant
-gewinnen am meisten Positionen waehrend ihrer Stints (+15 bzw. +14 ueber
-das Rennen), aber nur Perez uebersetzt das in ein besseres Zielergebnis als
-den Ausgangspunkt (Startplatz 16, Ziel 7). Sargeants Stint-Gewinne loesen
-sich wieder auf - netto verliert er ueber das ganze Rennen drei Plaetze
-(Start P14, Ziel P17): ein gutes Beispiel dafuer, dass die Spalte
-Stint-Pace zeigt, nicht das Endergebnis.
-"""
+"""zeichnet stints je fahrer als gantt-chart und den positionswechsel je stint daneben"""
 from __future__ import annotations
 
 import sys
@@ -56,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -75,7 +28,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def positionswechsel(ses, stints: pd.DataFrame) -> pd.DataFrame:
-    """AUSBAUSTUFE: Position bei Stint-Beginn gegen Stint-Ende."""
+    """vergleicht position bei stint-beginn gegen stint-ende."""
     pos = ses.laps.set_index(["Driver", "LapNumber"])["Position"]
 
     def bei(drv, lap):
@@ -93,7 +46,7 @@ def positionswechsel(ses, stints: pd.DataFrame) -> pd.DataFrame:
 
 
 def zeichne_gantt(ax, stints: pd.DataFrame, order: list[str]) -> None:
-    """VORGEHEN 3-4: gestapelte Balken, Compound-Kuerzel ab 4 Runden Laenge."""
+    """gestapelte balken mit compound-kürzel ab 4 runden länge."""
     for drv in order:
         prev = 0
         for s in stints[stints["Driver"] == drv].sort_values("stint").itertuples():
@@ -115,8 +68,7 @@ def zeichne_gantt(ax, stints: pd.DataFrame, order: list[str]) -> None:
 
 
 def zeichne_positionsspalte(ax, wechsel: pd.DataFrame, order: list[str]) -> None:
-    """AUSBAUSTUFE: zweite Spalte, ein Punkt je Stint mit Positionsgewinn/
-    -verlust (POSITIV/NEGATIV aus f1lab.design - Wertung, keine Kategorie)."""
+    """ein punkt je stint mit positionsgewinn oder -verlust. POSITIV/NEGATIV aus f1lab.design sind hier eine wertung, keine kategorie."""
     for drv in order:
         g = wechsel[wechsel["Driver"] == drv].sort_values("stint")
         for s in g.itertuples():
@@ -130,8 +82,8 @@ def zeichne_positionsspalte(ax, wechsel: pd.DataFrame, order: list[str]) -> None
                        ha="center", va="center", color="#0c0c12", zorder=4,
                        fontweight="bold")
     ax.tick_params(axis="y", left=False, labelleft=False)
-    # kein eigenes invert_yaxis(): ax teilt die y-Achse mit dem Gantt (sharey)
-    # und uebernimmt dessen bereits invertierte Reihenfolge automatisch.
+    # kein eigenes invert_yaxis() nötig: ax teilt die y-achse mit dem gantt (sharey)
+    # und übernimmt dessen bereits invertierte reihenfolge automatisch
     ax.set_xticks(range(1, int(wechsel["stint"].max()) + 1))
     ax.set_xlabel("Stint")
     ax.set_title("Positions-\ndelta", loc="left", color=FG, fontsize=13, pad=10)

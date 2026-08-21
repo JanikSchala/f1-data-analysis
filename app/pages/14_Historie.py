@@ -1,12 +1,13 @@
-"""WM-Stand-Simulator fuer die laufende Saison und 75 Jahre historische Trends.
+"""WM-stand-simulator fuer die laufende saison und 75 jahre historische
+trends.
 
-Zwei Reiter aus P21/P22 - beide brauchen eine echte Netzwerkverbindung zu
-Ergast/jolpica, wie 11_Boxenstopps.py. Der WM-Simulator ist an die laufende
-Saison gebunden (die Frage "wer kann noch Weltmeister werden" ergibt nur an
-einer offenen Saison Sinn) und deshalb nicht in der Seitenleiste waehlbar,
-nur stundenweise gecacht (Standings aendern sich rennweise). Die 75-Jahre-
-Trends sind dagegen eine feste historische Spanne (1958/1970-2024) und
-liegen dauerhaft im Diskcache - die Zahlen aendern sich nie mehr.
+zwei reiter aus P21/P22. beide brauchen eine echte netzwerkverbindung zu
+Ergast/jolpica, wie 11_Boxenstopps.py. der WM-simulator ist an die laufende
+saison gebunden (die frage "wer kann noch weltmeister werden" ergibt nur an
+einer offenen saison sinn) und ist deshalb nicht in der seitenleiste
+waehlbar, nur stundenweise gecacht (standings aendern sich rennweise). die
+75-jahre-trends sind dagegen eine feste historische spanne und liegen
+dauerhaft im diskcache.
 """
 from __future__ import annotations
 
@@ -238,7 +239,7 @@ with tab_wm:
                 "drin. Die Verschiebung durchs DNF-Modell bleibt deshalb klein "
                 "(siehe P21).")
 
-# ============================================================= 75-Jahre-Trends
+# ============================================================= 75-jahre-trends
 @st.cache_data(persist="disk", show_spinner=False)
 def _dominanz_und_nationen() -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)

@@ -1,10 +1,10 @@
-"""Positionsverlauf, Ueberholungen, Start und Verfolgung ueber ein Rennen.
+"""positionsverlauf, ueberholungen, start und verfolgung ueber ein rennen.
 
-Vier Reiter, alle auf derselben Session: wer gewinnt/verliert wo Positionen
-(P20), wer gewinnt die ersten Meter (P31), was ein enger Vordermann eine
-Rundenzeit kostet (P32), und wo genau auf der Strecke Ueberholungen
-passieren - DRS-Zone oder nicht (P39). Gerechnet wird nirgends hier - jede
-Kennzahl kommt aus f1lab.
+vier reiter, alle auf derselben session: wer gewinnt/verliert wo positionen
+(P20), wer gewinnt die ersten meter (P31), was ein enger vordermann eine
+rundenzeit kostet (P32), und wo auf der strecke ueberholungen passieren,
+in einer DRS-zone oder nicht (P39). gerechnet wird nirgends hier, jede
+kennzahl kommt aus f1lab.
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ tab_position, tab_start, tab_verfolgung, tab_drs = st.tabs(
      "Ueberholorte (DRS)"])
 
 
-# ================================================== Position & Ueberholungen
+# ================================================== position & ueberholungen
 with tab_position:
     pos = f1lab.position_progression(ses)
     if pos.empty:
@@ -97,7 +97,7 @@ with tab_position:
                     tabelle(top)
 
 
-# ================================================================== Start
+# ================================================================== start
 with tab_start:
     if not auswahl.telemetrie:
         st.info("Fuer diese Session liegt keine Telemetrie vor - der Start "
@@ -131,7 +131,7 @@ with tab_start:
                     "t_200": "bis 200 km/h [s]", "m_nach_5s": "Distanz 5s [m]"}))
 
 
-# ======================================================= Verfolgung (Dirty Air)
+# ======================================================= verfolgung (Dirty Air)
 with tab_verfolgung:
     if not auswahl.telemetrie:
         st.info("Fuer diese Session liegt keine Telemetrie vor - die "
@@ -184,7 +184,7 @@ with tab_verfolgung:
                         "Reifeneffekt statt Dirty Air, siehe P32.")
 
 
-# ============================================================ Ueberholorte (DRS)
+# ============================================================ ueberholorte (DRS)
 with tab_drs:
     if not auswahl.telemetrie:
         st.info("Fuer diese Session liegt keine Telemetrie vor - der Ort "

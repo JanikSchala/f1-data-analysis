@@ -1,101 +1,4 @@
-"""
-P19 - Race Control Messages: Strafen und Untersuchungen automatisch auswerten
-=============================================================================
-
-Die Textmeldungen der Rennleitung parsen: Strafen, Verwarnungen, Track-Limits, gestrichene Runden.
-
-Kategorie:   Race Control & Regeln
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Engineering
-
-WARUM DAS LOHNT
-Textparsing plus Regex auf einem echten, unsauberen Feed. Zeigt, dass du auch mit unstrukturierten Daten arbeitest, nicht nur mit fertigen DataFrames.
-
-VORGEHEN
-  1. race_control_messages laden und Kategorien inspizieren
-  2. Regex fuer Fahrer-Nummer, Vergehen und Strafmass bauen
-  3. Track-Limit-Verstoesse je Fahrer und Kurve zaehlen
-  4. Mit Deleted/DeletedReason aus den Laps gegenpruefen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Session.race_control_messages
-  - Laps Deleted/DeletedReason
-  - re
-
-AUSBAUSTUFE  [umgesetzt]
-Baue daraus einen Saison-Report: welche Strecke produziert die meisten
-Track-Limit-Verstoesse, und an welcher Kurve genau.
-
-VORGEHEN 2s Strafen-Regex traf in der urspruenglichen Fassung 0 von 6
-echten Strafmeldungen in Oesterreich 2024 R (getestet, nicht vermutet) - der
-Grund ist keine Tippgenauigkeit, sondern eine falsche Reihenfolge-Annahme.
-Die Vorlage erwartet "CAR 14 (ALO) ... 10 SECOND", die echte FIA-Formulierung
-ist umgekehrt: "10 SECOND TIME PENALTY FOR CAR 14 (ALO) - CAUSING A
-COLLISION". Ausserdem heisst der Boxenstopp-Strafentyp in echten Meldungen
-"STOP/GO PENALTY", nicht "STOP AND GO" wie im Vorschlag. Regex korrigiert
-und gegen alle Strafmeldungen der Saison 2024 geprueft: 49/49 Treffer.
-"DRIVE THROUGH PENALTY" und "REPRIMAND" sind in der Formulierung an dieselbe
-Struktur angelehnt, kamen 2024 aber kein einziges Mal vor - ungetestet,
-weil es diese Saison keinen einzigen Beleg dafuer gibt.
-
-Der TRACKLIM-Regex aus der Vorlage war dagegen von Anfang an korrekt (16/16
-in Oesterreich).
-
-VORGEHEN 4 (Gegenpruefung mit Deleted/DeletedReason) findet eine echte
-Diskrepanz statt nur eine Bestaetigung - und dabei zaehlt die Runden-
-nummer aus der Meldung selbst, nicht die Runde, in der die Meldung gepostet
-wurde (die Loeschung wird oft 1-2 Runden spaeter verbucht, ein erster
-Regex-Entwurf verwechselte das und produzierte 16 Fehltreffer statt der 2
-echten). Von 16 Track-Limit-Meldungen in Oesterreich mit eindeutiger
-Rundennummer im Text finden sich nur 14 als Deleted=True in den Lap-Daten.
-Die zwei fehlenden sind Meldungen der Form "LAP DELETED" (nicht "TIME ...
-DELETED") fuer Rundennummer 1 (Ricciardo, seine allererste Runde) und Runde
-51 (Norris, explizit als Boxenrunde markiert "(PIT)") - beides Runden ohne
-eine im Timing gefuehrte Rundenzeit, auf die sich ein Deleted-Flag setzen
-liesse. Eine dritte Kategorie, in Oesterreich nicht vertreten aber in
-mehreren anderen 2024er Rennen ("(NEXT LAP)" statt einer Rundennummer),
-nennt gar keine explizite Runde und bleibt aus der Gegenpruefung
-folgerichtig aussen vor. FastF1s Deleted-Spalte ist damit fuer
-Track-Limit-Auswertungen leicht unvollstaendig; der Text aus
-race_control_messages ist hier die vollstaendigere Quelle.
-
-AUSBAUSTUFE als Saison-Scan (P05/P18-Muster) ueber alle 24 Rennen 2024:
-Austin (COTA) fuehrt klar mit 43 Track-Limit-Meldungen vor Kanada (31) und
-Abu Dhabi (28) - und mehr als jede zweite COTA-Meldung (17 von 43) betrifft
-eine einzige Kurve, Turn 12, bekannt fuer ihre breiten Kerbs am Ende der
-Zielgeraden-Kombination.
-
-Die Regex-Parser und die Deleted-Gegenpruefung stecken seit der
-App-Integration in f1lab.session (parse_penalties()/parse_track_limits()/
-track_limit_crosscheck()) statt hier lokal (zweiter Konsument: die
-Race-Control-Seite im Dashboard, auf einer beliebigen vom Nutzer gewaehlten
-Session statt fest auf Oesterreich). Der Saison-Scan bleibt skriptlokal.
-
-ZWEITE AUSBAUSTUFE: zwei bislang ungenutzte FastF1-Felder ergaenzt.
-
-``race_control_messages["Flag"]``/``["RacingNumber"]`` waren im ganzen
-Repository nie gelesen - VORGEHEN 2/3 parsen Flaggen-Ereignisse komplett per
-Regex auf den Freitext, obwohl FastF1 Flaggenfarbe und Fahrzeugnummer schon
-getrennt mitliefert. `f1lab.blue_flags()` nutzt das direkt: in Oesterreich
-2024 R wurden 62 blaue Flaggen gezeigt, angefuehrt von Sargeant (15) -
-blaue Flaggen sind aber kein Vergehen, sondern die Aufforderung, einen
-Ueberrunder durchzulassen. Viele blaue Flaggen heissen "wurde oft
-ueberrundet", nicht "hat oft gestoert".
-
-``Laps.DeletedReason`` stand im urspruenglichen Docstring bereits als
-"genutzter Baustein", wurde aber nie tatsaechlich gelesen - nur das
-boolesche ``Deleted`` floss in VORGEHEN 4 ein. `f1lab.
-deleted_reason_crosscheck()` dreht die bestehende Gegenpruefung um: statt
-zu pruefen, ob jede Text-Meldung eine Deleted=True-Runde findet (das deckte
-FastF1s unvollstaendige Deleted-Spalte auf, siehe oben), prueft sie, ob
-jede Deleted=True-Runde mit Track-Limits-Grund auch eine passende
-Race-Control-Meldung im Regex-Treffer findet - die andere Fehlerrichtung.
-Fuer Oesterreich 2024 R: 0 fehlend, die Regex-Abdeckung war hier bereits
-vollstaendig (49/49 bzw. 16/16 waren schon dokumentiert) - eine
-Bestaetigung, kein neuer Fund, aber jetzt tatsaechlich in beide Richtungen
-geprueft statt nur einer.
-"""
+"""parst race-control-meldungen zu strafen und track-limit-verstößen und prüft sie gegen die lap-daten"""
 from __future__ import annotations
 
 import sys
@@ -106,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import fastf1
 import matplotlib.pyplot as plt
@@ -116,7 +19,7 @@ import f1lab
 from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
 
 warnings.filterwarnings("ignore")
-fastf1.set_log_level("ERROR")   # Saison-Scan laedt 24 Sessions, siehe P05
+fastf1.set_log_level("ERROR")   # saison-scan lädt 24 sessions, das wäre sonst sehr geschwätzig
 
 OUT = Path(__file__).parent / "out"
 OUT.mkdir(exist_ok=True)
@@ -133,7 +36,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def saison_scan() -> pd.DataFrame:
-    """AUSBAUSTUFE: Track-Limit-Meldungen je Strecke und Kurve."""
+    """track-limit-meldungen je strecke und kurve."""
     zeilen = []
     for gp in SAISON_RENNEN:
         try:
@@ -147,7 +50,6 @@ def saison_scan() -> pd.DataFrame:
 
 
 def zeichne_strafen(ax, pen: pd.DataFrame) -> None:
-    """VORGEHEN 2."""
     if pen.empty:
         ax.text(0.5, 0.5, "keine Strafen", ha="center", va="center", color=MUTED)
         ax.axis("off")
@@ -164,7 +66,6 @@ def zeichne_strafen(ax, pen: pd.DataFrame) -> None:
 
 
 def zeichne_tracklimits_lokal(ax, lim: pd.DataFrame) -> None:
-    """VORGEHEN 3."""
     je_kurve = lim.groupby("turn").size().sort_index()
     ax.bar([f"T{t}" for t in je_kurve.index], je_kurve.to_numpy(),
           color=SERIEN[0], width=0.6)
@@ -178,7 +79,7 @@ def zeichne_tracklimits_lokal(ax, lim: pd.DataFrame) -> None:
 
 
 def zeichne_saison_ranking(ax, scan: pd.DataFrame) -> None:
-    """AUSBAUSTUFE, Teil 1: Strecken-Ranking."""
+    """strecken-ranking."""
     je_strecke = scan.groupby("gp").size().sort_values(ascending=False).head(10)
     farben = [SERIEN[1] if i == 0 else MUTED for i in range(len(je_strecke))]
     ax.barh(je_strecke.index[::-1], je_strecke.to_numpy()[::-1],
@@ -193,7 +94,7 @@ def zeichne_saison_ranking(ax, scan: pd.DataFrame) -> None:
 
 
 def zeichne_blaue_flaggen(ax, bf: pd.DataFrame) -> None:
-    """ZWEITE AUSBAUSTUFE: blaue Flaggen je Fahrer, aus Flag/RacingNumber."""
+    """blaue flaggen je fahrer, aus Flag/RacingNumber statt regex."""
     if bf.empty:
         ax.text(0.5, 0.5, "keine blauen Flaggen", ha="center", va="center",
                color=MUTED)
@@ -212,7 +113,7 @@ def zeichne_blaue_flaggen(ax, bf: pd.DataFrame) -> None:
 
 
 def zeichne_top_strecke(ax, scan: pd.DataFrame, top_gp: str) -> None:
-    """AUSBAUSTUFE, Teil 2: Kurven-Aufschluesselung der schlimmsten Strecke."""
+    """kurven-aufschlüsselung der strecke mit den meisten meldungen."""
     je_kurve = (scan[scan["gp"] == top_gp].groupby("turn").size()
                .sort_values(ascending=False))
     farben = [SERIEN[1] if i == 0 else MUTED for i in range(len(je_kurve))]

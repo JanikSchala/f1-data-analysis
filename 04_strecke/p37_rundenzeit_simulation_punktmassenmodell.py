@@ -1,106 +1,4 @@
-"""
-P37 - Rundenzeit-Simulation: ein Punktmassenmodell, kalibriert gegen echte Telemetrie
-=======================================================================================
-
-Kein Nachschlagen echter Rundenzeiten - ein physikalisches Modell (Kruemmung, Grip-/Beschleunigungsgrenzen) rechnet eine Runde aus.
-
-Kategorie:   Strecke & Position
-Niveau:      Profi
-Aufwand:     6-8 h
-Schwerpunkt: Datenanalyse, Physik/Numerik
-
-WARUM DAS LOHNT
-FastF1 selbst simuliert nichts - es liefert nur, was tatsaechlich gefahren
-wurde. Dieses Projekt geht einen Schritt weiter: aus der Streckengeometrie
-(Kruemmung entlang der echten Ideallinie) und wenigen physikalischen
-Grenzwerten (Grip, Beschleunigung, Bremsverzoegerung, Hoechstgeschwindigkeit)
-wird eine Rundenzeit numerisch integriert - dieselbe Grundidee, die
-professionelle Rundenzeit-Simulatoren (OptimumLap und aehnliche Tools)
-verwenden, hier komplett selbst gebaut und gegen echte Telemetrie kalibriert
-und geprueft.
-
-VORGEHEN
-  1. Streckenkruemmung aus der realen X/Y-Ideallinie der schnellsten Runde
-     numerisch bestimmen (geglaettet, dann zweifach differenziert)
-  2. Vorwaerts-Rueckwaerts-Algorithmus: vorwaerts beschleunigungsbegrenzt,
-     rueckwaerts bremsbegrenzt, dazwischen kurvengrip-begrenzt - das
-     Standardverfahren fuer quasi-stationaere Punktmassen-Rundenzeitsimulation
-  3. Vier Fahrzeugparameter (Kurven-Grenzbeschleunigung, Laengsbeschleunigung,
-     Bremsverzoegerung, Hoechstgeschwindigkeit) gegen die echte
-     Geschwindigkeitsspur einer Referenzrunde kalibrieren (kleinste Quadrate)
-  4. Simulierte gegen echte Rundenzeit und Geschwindigkeitsspur validieren
-  5. Die kalibrierten Fahrzeugparameter unveraendert auf andere Strecken
-     anwenden und pruefen, ob das Modell dort noch stimmt
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Lap.get_telemetry/add_distance (X/Y-Ideallinie, echte Geschwindigkeit)
-  - scipy.signal.savgol_filter, scipy.optimize.least_squares
-
-AUSBAUSTUFE  [umgesetzt]
-Die kalibrierten Fahrzeugparameter (nicht die Streckengeometrie - die kommt
-je Strecke aus deren eigener echter Telemetrie) unveraendert auf sechs
-andere Strecken anwenden und die simulierte gegen die echte Pole-Rundenzeit
-pruefen: traegt das an einer Strecke identifizierte "Auto" ueber die ganze
-Saison?
-
-Kalibriert an Bahrain 2024 Q (Referenz): Simulation trifft die echte
-Rundenzeit auf 0.5% genau (89.63 s simuliert gegen 89.165 s real), mit
-physikalisch plausiblen Parametern - Kurvengrenzbeschleunigung 25.7 m/s²
-(~2.6g, glaubwuerdig fuer abtriebsstarke Kurven), Laengsbeschleunigung
-7.4 m/s² (~0.75g, traktionsbegrenzt aus langsamen Kurven), Bremsverzoegerung
-29.2 m/s² (~3.0g, ein plausibler Mittelwert ueber ganze Bremszonen -
-Spitzenwerte liegen hoeher), Hoechstgeschwindigkeit 299 km/h.
-
-Auf sechs anderen Strecken (2024 Q) zeigt sich: die Uebertragung gelingt nur
-teilweise. Britain trifft mit 1.6% fast so gut wie die Kalibrierung selbst;
-Austria (-3.8%) und Hungary (-9.3%) liegen noch im plausiblen Bereich.
-Saudi Arabia (+11.9%), Monza (+7.4%) und vor allem Japan (+16.8%) weichen
-deutlich staerker ab - im Mittel 8.5% absoluter Fehler ueber alle sechs
-Strecken, mit einer leichten systematischen Tendenz, zu langsam zu simulieren
-(mittlerer Fehler +4.1%, nicht 0%). Der wahrscheinlichste Grund ist keine
-Modellschwaeche im Kern, sondern eine zu grobe Vereinfachung: das Modell
-kennt nur die 2D-Kruemmung der Ideallinie, nicht Hoehenprofil (Suzuka mit
-seinen starken Steigungen ist der schlechteste Fall), unterschiedliche
-Fluegeleinstellungen je Strecke (Monza mit seinem Niedrig-Abtrieb-Setup
-braeuchte einen hoeheren v_top als Bahrain) oder Reifentemperaturfenster.
-Ein EIN Satz Fahrzeugparameter fuer die ganze Saison ist damit eine zu
-starke Vereinfachung - realistische Simulatoren passen mindestens Abtrieb/
-v_top je Strecke an, was dieses Modell bewusst nicht tut, um zu zeigen, wo
-genau die Grenze der Vereinfachung liegt.
-
-ZWEITE AUSBAUSTUFE  [umgesetzt]
-Kraftstoffmasse als eigener Zustand statt vier fester Parameter: der Tank
-startet mit einer Renndistanz Kraftstoff und brennt Runde fuer Runde ab
-(f1lab.simulate_stint). Modellannahme - dieselbe EINE-Skalierung wie beim
-Streckentransfer oben, nicht mehrere Parameter: die kalibrierten
-Grenzwerte (mu_g, a_accel, a_brake) gelten fuer die fast leere
-Qualifyingrunde, mit vollerem Tank sinken alle drei um denselben Faktor
-m_dry/(m_dry+Kraftstoff) - v_top bleibt konstant (kaum massenabhaengig).
-Das ist eine Vereinfachung (echte Bremskraft haengt z.B. auch von der
-gewichtsabhaengigen Normalkraft ab), aber ohne zweiten Kalibrierungspunkt
-(eine zweite Referenzrunde mit bekannter, abweichender Kraftstoffmasse)
-nicht weiter auftrennbar.
-
-Bahrain 2024, 57-Runden-Stint (Renndistanz, 102.6 kg Startkraftstoff bei
-1.8 kg/Runde - derselbe Verbrauchswert, der auch f1lab.fuel_correct()
-zugrunde liegt): die Simulation wird von Runde 1 zu Runde 57 monoton
-schneller, 94.258s auf 89.709s (+4.549s ueber den ganzen Stint). Die aus
-der Simulation gefittete Steigung (Rundenzeit gegen Restkraftstoff) betraegt
-0.045 s/kg - in derselben Groessenordnung wie der in P04 unabhaengig aus
-echten Rennrunden ermittelte Wert (FUEL_S_PER_KG=0.03 s/kg), aber gut 50%
-hoeher. Die Simulation ist bewusst NICHT auf den P04-Wert kalibriert, der
-Unterschied ist damit ein echter Modellbefund, keine Kalibrierungslücke:
-die EINE 1/m-Skalierung fuer alle drei Grenzwerte behandelt
-Kurvengrenzbeschleunigung, Laengsbeschleunigung und Bremsverzoegerung
-gleich abtriebsdominiert. Real ist nur der Hochgeschwindigkeitsanteil
-(Abtrieb waechst mit v^2) so stark massenabhaengig - in langsamen Kurven
-und beim Anfahren traegt das Gewicht selbst noch spuerbar zum Grip bei,
-und dieser Anteil aendert sich mit dem Tankstand kaum. Das Modell ueber-
-schaetzt den Kraftstoffeffekt deshalb systematisch, exakt weil es (wie in
-der ersten AUSBAUSTUFE beschrieben) nicht zwischen abtriebs- und
-gewichtsbasiertem Grip unterscheidet - dieselbe Modellgrenze zeigt sich
-hier ein zweites Mal, nur an einer anderen Messgroesse.
-"""
+"""simuliert eine rundenzeit aus streckenkruemmung und kalibrierten fahrzeugparametern und prueft die uebertragung auf andere strecken sowie einen kraftstoff-stint"""
 from __future__ import annotations
 
 import sys
@@ -111,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -134,7 +32,6 @@ plt.rcParams.update(matplotlib_stil())
 
 def zeichne_referenz(ax, dist: np.ndarray, speed_real: np.ndarray,
                      v_sim: np.ndarray, t_real: float, t_sim: float) -> None:
-    """VORGEHEN 4."""
     ax.plot(dist, speed_real * 3.6, color=MUTED, lw=1.8, label="Echte Telemetrie")
     ax.plot(dist, v_sim * 3.6, color=SERIEN[0], lw=1.8, ls="--",
            label="Simulation (kalibriert)")
@@ -152,8 +49,7 @@ def zeichne_referenz(ax, dist: np.ndarray, speed_real: np.ndarray,
 
 def zeichne_stint(ax, runde: np.ndarray, zeiten: np.ndarray,
                   fuel_kg: np.ndarray) -> None:
-    """ZWEITE AUSBAUSTUFE: Rundenzeit ueber einen Stint, waehrend der Tank
-    leerer wird."""
+    """zeigt die rundenzeit ueber einen stint waehrend der tank leerer wird."""
     ax.plot(runde, zeiten, color=SERIEN[0], lw=1.8, marker="o", ms=3)
     ax.set_xlabel("Runde")
     ax.set_ylabel("Simulierte Rundenzeit [s]")
@@ -170,7 +66,7 @@ def zeichne_stint(ax, runde: np.ndarray, zeiten: np.ndarray,
 
 
 def zeichne_uebertragung(ax, ergebnisse: pd.DataFrame) -> None:
-    """AUSBAUSTUFE: Abweichung der uebertragenen Simulation je Strecke."""
+    """zeigt die abweichung der uebertragenen simulation je strecke."""
     ergebnisse = ergebnisse.sort_values("diff_pct")
     farben = [SERIEN[0] if abs(v) < 5 else SERIEN[1]
              for v in ergebnisse["diff_pct"]]
@@ -235,7 +131,7 @@ def main():
 
     print("\nZWEITE AUSBAUSTUFE: Kraftstoffmasse im Stint "
          "(Tank brennt Runde fuer Runde ab) ...")
-    stint_laps = 57  # Bahrain GP 2024, echte Renndistanz
+    stint_laps = 57  # bahrain gp 2024 echte renndistanz
     fuel_start = f1lab.core.FUEL_KG_PER_LAP * stint_laps
     fuel_kg = np.maximum(fuel_start - f1lab.core.FUEL_KG_PER_LAP
                         * np.arange(stint_laps), 0.0)

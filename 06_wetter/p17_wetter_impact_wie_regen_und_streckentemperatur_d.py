@@ -1,70 +1,4 @@
-"""
-P17 - Wetter-Impact: Wie Regen und Streckentemperatur die Pace veraendern
-=========================================================================
-
-Wetterdaten im Minutentakt auf jede Runde joinen und den Effekt von TrackTemp auf die Rundenzeit quantifizieren.
-
-Kategorie:   Wetter & Bedingungen
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Streckentemperatur steuert das Reifenfenster. Ein sauberer Zeit-Join zwischen zwei unterschiedlich getakteten Streams ist eine klassische Data-Engineering-Uebung.
-
-VORGEHEN
-  1. weather_data laden und den Verlauf plotten
-  2. get_weather_data() je Runde zuordnen (naechster Messpunkt)
-  3. Rundenzeit gegen TrackTemp regressieren, Fuel-Effekt vorher rausrechnen
-  4. Trocken-/Nass-Phasen ueber Rainfall-Flag segmentieren
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Session.weather_data
-  - Laps.get_weather_data
-  - AirTemp/TrackTemp/Humidity/Rainfall/WindSpeed
-
-AUSBAUSTUFE  [umgesetzt]
-Baue einen Klassifikator, der allein aus Rundenzeit-Streuung und Speed-Traps
-erkennt, ob gerade Intermediates gefahren werden.
-
-Zwei Sessions statt einer, aus zwei verschiedenen Gruenden:
-
-Fuer VORGEHEN 1-3 scheitert die im Vorschlag skizzierte einfache Regression
-(Rundenzeit gegen TrackTemp, ueber alle Fahrer gepoolt) an jeder trockenen
-2024er Session, die probiert wurde - R² zwischen 0.002 und 0.06, obwohl die
-Streckentemperatur teils ueber 10°C schwankt. Der Grund: Reifenalter und
-Fahrer-Tempounterschiede dominieren die Streuung so stark, dass der
-Temperatureffekt komplett darin untergeht. Erst eine Regression, die
-Fahrer-Mittel (statt Rohzeit) und TyreLife als zweite erklaerende Variable
-mitfuehrt, macht ihn sichtbar: Japan 2024 R (trockene Runden, TrackTemp
-31.3-39.0°C) - Reifenalter allein erklaert R²=0.199, mit Streckentemperatur
-zusaetzlich R²=0.413. Der TrackTemp-Koeffizient (+0.215 s/°C, t=16.6 bei
-n=755) ist damit eindeutig kein Rauschen, aber er war in der einfachen
-gepoolten Regression unsichtbar - eine Lektion ueber Konfundierung, nicht
-nur ueber Wetter.
-
-Fuer VORGEHEN 4 und die AUSBAUSTUFE ist Japan ungeeignet (durchgehend
-trocken). Kanada 2024 R hatte echten Regen mit sechs Phasenwechseln und,
-wichtiger, echten Mischungswechsel zwischen Intermediates und Slicks -
-noetig, um einen Klassifikator gegen echte Labels zu pruefen statt nur zu
-behaupten. Dabei faellt auf: das Rainfall-Flag ist nicht dasselbe wie
-"Strecke slick-tauglich" - von 665 Runden ohne Regenmeldung liefen 644
-trotzdem auf Intermediates, weil die Strecke noch zu nass zum Wechseln war.
-
-AUSBAUSTUFE: Klassifikator auf Feld-Aggregaten je Runde (Rundenzeit-Streuung
-ueber alle Fahrer, mittlere Speed-Trap-Geschwindigkeit), Zielgroesse "laeuft
-das Feld mehrheitlich auf Regenreifen". Logistische Regression,
-Leave-one-out-Kreuzvalidierung (56 Runden): 96.4% Trefferquote gegen 66.1%
-Mehrheitsklassen-Basislinie - und die Rundenzeit-Streuung traegt praktisch
-nichts bei, die mittlere Speed-Trap-Geschwindigkeit allein reicht fuer
-dieselbe Genauigkeit (283 km/h im Trockenen, 273 km/h im Nassen, mit
-deutlich groesserer Streuung).
-
-Die vier Rechenschritte (Wetter-Join, Temperatureffekt, Phasenerkennung,
-Klassifikator) stecken seit der App-Integration in f1lab.session statt hier
-lokal (zweiter Konsument: die Wetter-Seite im Dashboard braucht sie auf
-einer beliebigen, vom Nutzer gewaehlten Session statt fest auf Japan/Kanada).
-"""
+"""quantifiziert den effekt von streckentemperatur und regen auf die rundenzeit und klassifiziert nass-/trockenphasen"""
 from __future__ import annotations
 
 import sys
@@ -75,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -90,14 +24,13 @@ warnings.filterwarnings("ignore")
 OUT = Path(__file__).parent / "out"
 OUT.mkdir(exist_ok=True)
 
-TEMP_EVENT = ("Japan", 2024, "R")     # durchgehend trocken, echte Temperaturspanne
-NASS_EVENT = ("Canada", 2024, "R")    # echter Regen, echter Mischungswechsel
+TEMP_EVENT = ("Japan", 2024, "R")     # durchgehend trocken mit echter temperaturspanne
+NASS_EVENT = ("Canada", 2024, "R")    # echter regen mit echtem mischungswechsel
 
 plt.rcParams.update(matplotlib_stil())
 
 
 def zeichne_wetterprofil(ax, ses) -> None:
-    """VORGEHEN 1."""
     w = ses.weather_data
     t = w["Time"].dt.total_seconds() / 60
     ax.plot(t, w["TrackTemp"], color=SERIEN[1], lw=1.8, label="Strecke")
@@ -114,7 +47,6 @@ def zeichne_wetterprofil(ax, ses) -> None:
 
 
 def zeichne_temperatureffekt(ax, erg: dict) -> None:
-    """VORGEHEN 3."""
     d = erg["dry"]
     ax.scatter(d["TrackTemp"], d["partial"], s=10, color=MUTED, alpha=0.4,
               edgecolors="none")
@@ -132,7 +64,6 @@ def zeichne_temperatureffekt(ax, erg: dict) -> None:
 
 
 def zeichne_phasen(ax, phasen: pd.DataFrame, ses) -> None:
-    """VORGEHEN 4."""
     for p in phasen.itertuples():
         farbe = SERIEN[1] if p.nass else SERIEN[0]
         ax.axvspan(p.start.total_seconds() / 60, p.end.total_seconds() / 60,
@@ -150,7 +81,6 @@ def zeichne_phasen(ax, phasen: pd.DataFrame, ses) -> None:
 
 def zeichne_klassifikator(ax, je_runde: pd.DataFrame, y: np.ndarray,
                           pred: np.ndarray) -> None:
-    """AUSBAUSTUFE."""
     richtig = pred == y
     for label, istnass, marker in ((0, False, "o"), (1, True, "^")):
         m = (y == label)

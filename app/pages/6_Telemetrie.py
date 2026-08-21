@@ -1,11 +1,11 @@
-"""Streckenkarte, Bremszonen, Fahrervergleich und DRS - alles aus derselben
-Telemetrie einer Session.
+"""streckenkarte, bremszonen, fahrervergleich und DRS aus derselben
+telemetrie einer session.
 
-Vier Reiter statt einer langen Seite: Streckenkarte (Ideallinie oder nach
-Gang/Speed/Throttle/DRS eingefaerbt), Bremszonen, Zwei-Fahrer-Vergleich
-(Overlay, Delta, Mini-Sektoren) und DRS-Nutzung. Gerechnet wird nirgends
-hier - jede Kennzahl kommt aus f1lab, dieselben Funktionen wie in den
-p06-p10-Skripten.
+vier reiter statt einer langen seite: streckenkarte (ideallinie oder nach
+gang/speed/throttle/DRS eingefaerbt), bremszonen, zwei-fahrer-vergleich
+(overlay, delta, mini-sektoren) und DRS-nutzung. gerechnet wird nirgends
+hier, jede kennzahl kommt aus f1lab, dieselben funktionen wie in den
+p06-p10-skripten.
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ tab_karte, tab_bremsen, tab_vergleich, tab_drs = st.tabs(
     ["Streckenkarte", "Bremszonen", "Zwei Fahrer im Vergleich", "DRS"])
 
 
-# ============================================================ Streckenkarte
+# ============================================================ streckenkarte
 with tab_karte:
     geo = f1lab.circuit_geometry(ses)
     g = st.columns(4)
@@ -135,7 +135,7 @@ with tab_karte:
                     "ist die in der Community uebliche Lesart von Code 8.")
 
 
-# ============================================================== Bremszonen
+# ============================================================== bremszonen
 with tab_bremsen:
     with st.sidebar:
         st.header("Bremszonen")
@@ -226,7 +226,7 @@ with tab_bremsen:
                         "Kurve liegt also nah beieinander.")
 
 
-# ==================================================== Zwei Fahrer im Vergleich
+# ==================================================== zwei fahrer im vergleich
 with tab_vergleich:
     c1, c2 = st.columns(2)
     v1 = c1.selectbox("Fahrer 1", fahrer, index=fahrer.index(schnellster),

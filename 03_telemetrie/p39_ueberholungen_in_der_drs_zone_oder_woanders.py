@@ -1,138 +1,4 @@
-"""
-P39 - Ueberholungen: in der DRS-Zone oder woanders?
-====================================================
-
-DRS gilt als der groesste Ueberholtreiber der Hybrid-Aera - stimmt das mit den tatsaechlichen Ueberholorten ueberein, oder passiert ein relevanter Teil ausserhalb der Zone?
-
-Kategorie:   Telemetrie
-Niveau:      Profi
-Aufwand:     4-5 h
-Schwerpunkt: Datenanalyse, Engineering
-
-WARUM DAS LOHNT
-Kombiniert P20s Ueberholerkennung (Positionswechsel je Runde) mit P10s
-DRS-Zonen zu einer raeumlichen Frage: WO auf der Strecke passiert ein
-Ueberholvorgang, nicht nur WANN. Der Positionswechsel selbst ist nur
-rundenweise bekannt - die genaue Stelle muss aus der Telemetrie des
-Ueberholers rekonstruiert werden (FastF1s ``DriverAhead``-Kanal), und
-dabei zeigt sich unterwegs ein methodischer Fallstrick mit DRS-Zonen aus
-einer Rennrunde (siehe AUSBAUSTUFE).
-
-VORGEHEN
-  1. Ueberholereignisse einer Session laden (f1lab.overtake_events, P20)
-  2. Je Ereignis in der Telemetrie des Ueberholers die letzte Stelle finden,
-     an der der Ueberholte noch direkt davor war (DriverAhead-Kanal)
-  3. DRS-Zonen derselben Strecke bestimmen (f1lab.drs_zones, P10)
-  4. Ueberholorte gegen die Zonen pruefen und den Anteil "in der Zone"
-     berechnen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Telemetry.add_driver_ahead (DriverAhead, DistanceToDriverAhead)
-  - Telemetry.add_distance
-  - Laps.pick_laps/pick_drivers
-
-AUSBAUSTUFE  [umgesetzt]
-Denselben Scan auf alle telemetriefaehigen Rennen der Saison 2024 anwenden
-(siehe P38 fuer dieselbe 12-Strecken-Stichprobe) und pruefen, ob der
-DRS-Anteil je nach Streckencharakter schwankt. Dritte AUSBAUSTUFE:
-Ueberholorte gegen Bremszonen statt DRS-Zonen pruefen, gegen eine
-Zufalls-Baseline statt eine willkuerliche Pufferzone.
-
-Monza 2024 R (Referenz): 157 Ueberholungen, 126 davon (80.3%) in der
-Telemetrie eindeutig lokalisiert - der Rest hatte im entscheidenden Moment
-keinen sauberen DriverAhead-Treffer unter 30m (mehrere Positionswechsel in
-derselben Runde, oder eine Datenluecke). Von den 126 lokalisierten liegen
-101 (80.2%) in einer DRS-Zone.
-
-Dabei zeigte sich unterwegs ein methodischer Fallstrick: DRS-Zonen zuerst
-aus der Rennsession selbst bestimmt (wie in P10/P37 fuer Qualifying ueblich)
-ergab NULL Zonen, obwohl Monza zwei besitzt. Grund: DRS braucht im Rennen
-einen Rueckstand unter 1s auf das Auto davor, die schnellste Rennrunde
-entsteht aber typisch in freier Fahrt genau OHNE Vordermann - DRS bleibt
-dann auf der ganzen Runde zu, egal wie nah die physische Zone ist.
-Behoben durch die Qualifying-Session desselben Events als DRS-Referenz
-(dort gilt die Abstandsregel nicht), automatisch ueber die Rundennummer
-statt den Streckennamen aufgeloest.
-
-Saison-Scan ueber alle 12 telemetriefaehigen Rennen: DRS-Anteil je Strecke
-zwischen 40.0% (Monaco, aber nur 5 lokalisierte Ereignisse - kaum
-belastbar) und 88.4% (Spanien, 164 lokalisierte Ereignisse, deutlich
-robuster). Median der Streckenwerte 71.6%, gepoolt (nach Ereigniszahl
-gewichtet statt jede Strecke gleich zu zaehlen) 76.0% (812/1069) - beide
-Zahlen zusammen zeigen: rund drei von vier Ueberholungen passieren
-tatsaechlich in der DRS-Zone, aber ein spuerbares Viertel nicht (Fahrfehler
-des Vordermanns, spaeteres Bremsen ohne DRS-Hilfe, oder Strategieluecken
-nach Boxenstopps ausserhalb der Zone). Die beiden ueberholstaerksten
-Strecken der Saison (Spanien 196, Bahrain 180 - siehe P38) haben auch die
-hoechsten DRS-Anteile (88.4%, 83.6%) - ein Hinweis, aber aus n=12 kein
-Beweis, dass DRS-Effektivitaet und rohe Ueberholzahl zusammenhaengen.
-
-Abdeckung (lokalisiert/gesamt) liegt ueber alle 12 Strecken zwischen 75.0%
-und 90.0%, ohne erkennbares Muster nach Streckentyp - die nicht lokalisierte
-Restmenge ist am ehesten Methodenrauschen (Mehrfachueberholungen in einer
-Runde, DriverAhead-Datenluecken), keine systematische Verzerrung in eine
-Richtung.
-
-DRITTE AUSBAUSTUFE  [umgesetzt]
-Naheliegende Anschlussfrage: passieren Ueberholungen auch nah an
-Bremszonen (f1lab.driver_braking_zones, P08), nicht nur in DRS-Zonen? Ein
-erster Versuch (Ueberholort einfach als "innerhalb Bremszone + 30-100m
-Puffer davor" zaehlen, wie beim DRS-Check) ergab fuer Monza nur 5-7%
-Treffer - auf den ersten Blick ein Widerspruch zum DRS-Befund oben, aber
-tatsaechlich die falsche Frage: eine Ueberholung MUSS nicht direkt am
-Bremspunkt abgeschlossen sein, sie kann bereits auf der Geraden vorher
-passieren. Richtiggestellt mit f1lab.lead_distance_to_zone(): statt
-"drinnen oder draussen" wird der Abstand zur naechsten Bremszone in
-Fahrtrichtung gemessen (mit Rundenumbruch).
-
-Median dieses Abstands ueber die 126 lokalisierten Monza-Ueberholungen:
-621m - und dagegen gestellt eine Zufalls-Baseline (20 000 gleichverteilte
-Punkte auf der 5723m-Strecke, Median 527m, seed=42): die echten
-Ueberholorte liegen NICHT naeher an einer Bremszone als der Zufall
-(Anteil unter 200m: 10.3% echt gegen 21.0% Zufall - echte Ueberholungen
-sind im letzten kurzen Stueck vor dem Bremspunkt sogar SELTENER als
-Zufall, plausibel: wer bis dahin noch nicht vorbei ist, schafft es meist
-nicht mehr vor der Bremszone), aber deutlich haeufiger im mittleren
-Bereich (Anteil unter 800m: 92.1% echt gegen 68.9% Zufall). Das deckt sich
-mit dem DRS-Befund, statt ihn zu widersprechen: die 700-800m-Baende vor
-Monzas Bremszonen 1 und 4 SIND die DRS-Zonen (746m/766m lang) - "nah an
-einer Bremszone, aber nicht direkt davor" beschreibt denselben Ort wie
-"auf der DRS-Geraden".
-
-VIERTE AUSBAUSTUFE  [umgesetzt]
-Der Telemetrie-Cache deckt genau zwei Saisons vollstaendig ab: 2018 (letzte
-Saison vor der Ground-Effect-Regelaenderung) und 2024 (siehe P33, dieselbe
-Zwei-Jahre-Stichprobe fuer denselben groessten Regelumbruch der
-Telemetrie-Aera). Naheliegende Anschlussfrage an den DRS-Befund oben: hat
-sich der DRS-Anteil an Ueberholungen ueber diesen Umbruch veraendert - die
-2022er Regeln wurden explizit mit dem Versprechen engerer Rennen "auch
-ohne DRS" verkauft, hat sich das in echten Ueberholorten niedergeschlagen?
-
-7 von 8 telemetriefaehigen 2018-Rennen liefern lokalisierte Ueberholungen
-(Australien: 3 Ereignisse, aber keins lokalisierbar - derselbe methodische
-Rest wie beim 2024-Scan, kein neuer Fehler). DRS-Anteil je Strecke 2018:
-22.2% (Monaco) bis 92.2% (Spanien), Median 42.0% - deutlich unter 2024s
-Median von 71.6%. Gepoolt (nach Ereigniszahl gewichtet, wie oben): **2018
-55.8% (135/242) gegen 2024 76.0% (812/1069)**, Chi-Quadrat-Test auf dieser
-gepoolten Ebene hochsignifikant (p=4.1e-10). Der direkte Streckenvergleich
-(Mann-Whitney, n=7 gegen n=12) liegt knapp ueber der ueblichen Schwelle
-(p=0.056) - bei so kleinen Stichproben ehrlich als "nicht ganz signifikant,
-aber dieselbe Richtung wie der robustere gepoolte Test" einzuordnen, nicht
-als Widerspruch.
-
-Ergebnis ist das GEGENTEIL der These "Ground-Effect-Autos brauchen weniger
-DRS": Ueberholungen sind 2024 STAERKER DRS-abhaengig als 2018, nicht
-schwaecher. Eine moegliche Erklaerung, die sich mit diesen Daten allein
-nicht abschliessend pruefen laesst: die 2022er Regeln sollten das
-Hinterherfahren im Nachlauf (dirty air) erleichtern, nicht das Ueberholen
-selbst - wenn Autos dadurch naeher dranbleiben, aber der reine Top-Speed-
-Vorteil durch DRS unveraendert bleibt, waechst der Anteil der Ueberholungen,
-die erst durch DRS ueberhaupt moeglich werden, obwohl die Annaeherung
-leichter fiel. Ehrliche Grenze: n=2 Saisons ist eine Stichprobe von zwei
-Regel-Epochen, kein Trend - ob 2019-2023 (keine Telemetrie im Cache) einen
-allmaehlichen Anstieg oder einen Sprung genau 2022 zeigen wuerden, laesst
-sich von hier aus nicht sagen.
-"""
+"""lokalisiert ueberholorte in der telemetrie und prueft sie gegen drs-zonen und bremszonen ueber strecken und saisons"""
 from __future__ import annotations
 
 import sys
@@ -143,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -158,14 +24,14 @@ warnings.filterwarnings("ignore")
 OUT = Path(__file__).parent / "out"
 OUT.mkdir(exist_ok=True)
 
-REFERENZ = (2024, "Italy", "R")          # Monza: DRS-lastigste Strecke im Cache
+REFERENZ = (2024, "Italy", "R")          # monza hat die laengsten drs-zonen im cache
 
 plt.rcParams.update(matplotlib_stil())
 
 
 def zeichne_streckenkarte(ax, ref_xy: np.ndarray, dist: np.ndarray,
                           zonen: pd.DataFrame, orte: pd.DataFrame) -> None:
-    """VORGEHEN 2-4: Ueberholorte auf der Streckenkarte, DRS-Zonen markiert."""
+    """zeichnet ueberholorte auf der streckenkarte mit markierten drs-zonen."""
     ax.plot(ref_xy[:, 0], ref_xy[:, 1], color=GRID, lw=6, zorder=1,
            solid_capstyle="round")
     for _, z in zonen.iterrows():
@@ -190,7 +56,6 @@ def zeichne_streckenkarte(ax, ref_xy: np.ndarray, dist: np.ndarray,
 
 
 def zeichne_saisonvergleich(ax, ergebnisse: pd.DataFrame) -> None:
-    """AUSBAUSTUFE: DRS-Anteil an Ueberholungen je Strecke, Saison 2024."""
     e = ergebnisse.sort_values("drs_pct")
     ax.barh(e["gp"], e["drs_pct"], color=SERIEN[0], height=0.6)
     ax.set_xlabel("Anteil Ueberholungen in der DRS-Zone [%]")
@@ -203,9 +68,7 @@ def zeichne_saisonvergleich(ax, ergebnisse: pd.DataFrame) -> None:
 
 
 def drs_saison_scan(saison: int) -> pd.DataFrame:
-    """AUSBAUSTUFE/VIERTE AUSBAUSTUFE: DRS-Anteil je telemetriefaehigem
-    Rennen einer Saison - faktorisiert aus main(), damit dieselbe Logik
-    fuer 2024 (Basis-AUSBAUSTUFE) und 2018 (vierte AUSBAUSTUFE) laeuft."""
+    """berechnet den drs-anteil je telemetriefaehigem rennen einer saison. wiederverwendbar fuer mehrere saisons."""
     inv = f1lab.cached_sessions()
     tel_rennen = sorted(inv[(inv["season"] == saison) & (inv["ident"] == "R")
                             & inv["telemetry"]]["event"].unique())
@@ -227,7 +90,6 @@ def drs_saison_scan(saison: int) -> pd.DataFrame:
 
 
 def zeichne_drs_ueber_zeit(ax, erg_2018: pd.DataFrame, erg_2024: pd.DataFrame) -> None:
-    """VIERTE AUSBAUSTUFE: DRS-Anteil je Strecke, 2018 gegen 2024."""
     daten = [erg_2018["drs_pct"], erg_2024["drs_pct"]]
     bp = ax.boxplot(daten, tick_labels=["2018", "2024"], patch_artist=True,
                     widths=0.5, showfliers=False)
@@ -253,8 +115,6 @@ def zeichne_drs_ueber_zeit(ax, erg_2018: pd.DataFrame, erg_2024: pd.DataFrame) -
 
 def zeichne_bremszonen_abstand(ax, vorlauf_echt: np.ndarray,
                                vorlauf_zufall: np.ndarray) -> None:
-    """DRITTE AUSBAUSTUFE: Abstand zur naechsten Bremszone, echte
-    Ueberholorte gegen Zufalls-Baseline."""
     bins = np.linspace(0, max(vorlauf_echt.max(), 1500), 25)
     ax.hist(vorlauf_zufall, bins=bins, density=True, color=GRID, alpha=0.7,
            label="Zufalls-Baseline (gleichverteilt)")

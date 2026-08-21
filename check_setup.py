@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prueft, ob alles bereit ist. Starte mich als erstes:  python check_setup.py"""
+"""prueft ob alles bereit ist. starte mich als erstes: python check_setup.py"""
 import importlib
 import platform
 import sys
@@ -10,7 +10,7 @@ problems = []
 
 print("\n=== Umgebung ===")
 print(f"  Python  {platform.python_version()}  ({sys.executable})")
-if sys.version_info < (3, 9):  # noqa: UP036 - prueft die Nutzer-Installation, kein totes Gate
+if sys.version_info < (3, 9):  # noqa: UP036 (prueft die nutzer-installation und ist kein totes gate)
     problems.append("Python 3.9 oder neuer wird benoetigt.")
     print(BAD + "Version zu alt")
 else:

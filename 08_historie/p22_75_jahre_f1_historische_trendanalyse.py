@@ -1,81 +1,4 @@
-"""
-P22 - 75 Jahre F1: Historische Trendanalyse
-===========================================
-
-Alle Saisons seit 1950 aus der Ergast-kompatiblen API: Dominanzphasen, Zuverlaessigkeit, Nationen, Streckenwandel.
-
-Kategorie:   Historie & Ergast-API
-Niveau:      Fortgeschritten
-Aufwand:     4-5 h
-Schwerpunkt: Datenanalyse
-
-WARUM DAS LOHNT
-Grosse Datenmengen, viele API-Calls, saubere Aggregation - und am Ende Zusammenhaenge, die man vorher nicht kannte. Wann war die F1 am ausgeglichensten, wann am langweiligsten?
-
-VORGEHEN
-  1. Alle Saisons iterieren und Constructor-Standings sammeln
-  2. Dominanz-Index berechnen (Punkteanteil des Siegers)
-  3. DNF-Rate ueber die Jahrzehnte aus finishing_status
-  4. Multi-Panel-Grafik mit vier Trends
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Ergast.get_seasons
-  - Ergast.get_race_results
-  - Ergast.get_constructor_standings
-  - Ergast.get_finishing_status
-
-AUSBAUSTUFE  [umgesetzt]
-Ergaenze eine Analyse der Rundenzeitenentwicklung auf Strecken, die seit
-Jahrzehnten unveraendert sind (Monza, Spa, Silverstone).
-
-VORGEHEN 4 versprach im Titeltext vier Trends (Dominanzphasen,
-Zuverlaessigkeit, Nationen, Streckenwandel), der Code der Vorlage baute nur
-zwei. Die zwei fehlenden sind jetzt da: "Nationen" als Anteil der
-haeufigsten Konstrukteurs-Nationalitaet unter den Punkte-Teams je Saison
-(steckt in denselben get_constructor_standings-Aufrufen wie die Dominanz,
-kostet keine zusaetzlichen Calls) und "Streckenwandel" als Kalendergroesse
-(Rennen je Saison, aus get_race_schedule).
-
-Bei der AUSBAUSTUFE war die im Vorschlag genannte Annahme - Monza, Spa und
-Silverstone seien "seit Jahrzehnten unveraendert" - direkt widerlegbar:
-Spa fehlt 1971-1982 komplett im Kalender (zu gefaehrlich befunden) und kehrt
-1983 mit einer auf weniger als die Haelfte gekuerzten Strecke zurueck -
-sichtbar als Sprung der Rundenzeit von 210s (1970) auf 131s (1983), reine
-Streckengeometrie, keine 40 Jahre Geschwindigkeitsgewinn. Monza und
-Silverstone hatten ebenfalls Kurvenaenderungen (Monza-Schikanen ab 1972,
-Silverstones Arena-Umbau 2010), aber keine, die die Rundenlaenge
-halbierten - ihre Trends sind als Naeherung brauchbar, Spas nicht. Alle
-drei bleiben trotzdem in der Grafik, mit genau dieser Einordnung: eine
-Lektion darin, dass "seit Jahrzehnten dieselbe Strecke" auf den ersten
-Blick oft nicht stimmt.
-
-Zweiter, unabhaengiger Fund beim ersten Durchlauf: Ergasts totalRaceTime
-ist fuer einzelne sehr alte Rennen schlicht kaputt, nicht nur ungenau -
-Silverstone 1954 und Spa 1950 lieferten 2.0 s bzw. 4.8 s "Rundenzeit" fuer
-den Sieger (Rohdaten geprueft: totalRaceTime steht dort bei 2-3 Minuten
-fuer ein mehrstuendiges Rennen, ein Datenfehler in der Quelle, keiner in
-der Rechnung hier). Betraf 2 von 46 Stichproben, gefiltert ueber eine
-Mindestrundenzeit von 30 s - keine F1-Strecke war je schneller.
-
-Dritter Fund, diesmal kein Datenfehler: Silverstones Rundenzeit steigt
-ueber die 75 Jahre von 114 s (1950) auf 159 s (2022) - langsamer, nicht
-schneller, trotz jahrzehntelangem Fahrzeugfortschritt. Auch hier ist die
-Strecke die Erklaerung, nicht das Auto: die urspruengliche Flugplatzstrecke
-war rund 4.65 km lang, die heutige Version nach mehreren Umbauten (u.a. die
-Arena-Erweiterung 2010) knapp 5.9 km - fast ein Viertel laenger plus
-zusaetzliche langsame Kurvenkombinationen. Ohne diese Einordnung liesse
-sich aus der reinen Zahl faelschlich "F1-Autos wurden langsamer" lesen.
-
-Genereller Vorbehalt zur Kennzahl selbst: totalRaceTime/laps ist die
-mittlere Rundenzeit UEBER DAS GANZE RENNEN, nicht die reine Pace - ein
-Safety-Car- oder Regenrennen zieht den Wert nach oben, unabhaengig von der
-Strecke (sichtbar an den einzelnen Ausreissern nach oben in der Grafik, die
-sich nicht durch Streckenumbauten erklaeren). Fuer eine von Rennzwischen-
-faellen bereinigte Pace braeuchte es echte Rundenzeiten statt eines
-Gesamtdurchschnitts - die gibt es ueber Ergast erst ab 1996
-(get_lap_times(), geprueft), gut die Haelfte der hier betrachteten
-75 Jahre.
-"""
+"""analysiert 75 jahre f1-saisons aus der ergast-api auf dominanzphasen, dnf-rate, nationenkonzentration und streckenwandel"""
 from __future__ import annotations
 
 import sys
@@ -112,7 +35,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """Siehe P05/P18/P19/P21 - Ergast/jolpica limitiert bei Serienabfragen."""
+    """Ergast/jolpica limitiert die Anfragerate bei Serienabfragen."""
     for i in range(versuche):
         try:
             return fn(*args, **kwargs)
@@ -124,7 +47,7 @@ def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
 
 
 def dominanz_und_nationen(erg: Ergast) -> pd.DataFrame:
-    """VORGEHEN 1-2 plus "Nationen"-Trend aus denselben Calls."""
+    """nutzt dieselben Constructor-Standings-Calls auch für den Nationen-Trend, keine zusätzlichen Anfragen nötig."""
     rows = []
     for year in range(ERSTE_KONSTRUKTEURS_WM, 2025):
         cs = _mit_wiederholung(erg.get_constructor_standings, season=year)
@@ -147,7 +70,6 @@ def dominanz_und_nationen(erg: Ergast) -> pd.DataFrame:
 
 
 def dnf_rate(erg: Ergast) -> pd.DataFrame:
-    """VORGEHEN 3."""
     rows = []
     for year in range(DNF_AB, 2025):
         st = _mit_wiederholung(erg.get_finishing_status, season=year)
@@ -162,7 +84,6 @@ def dnf_rate(erg: Ergast) -> pd.DataFrame:
 
 
 def kalendergroesse(erg: Ergast) -> pd.DataFrame:
-    """VORGEHEN 4, "Streckenwandel": Rennen und Laender je Saison."""
     rows = []
     for year in range(ERSTE_KONSTRUKTEURS_WM, 2025):
         sched = _mit_wiederholung(erg.get_race_schedule, season=year)
@@ -175,8 +96,7 @@ def kalendergroesse(erg: Ergast) -> pd.DataFrame:
 
 
 def rundenzeit_je_strecke(erg: Ergast) -> pd.DataFrame:
-    """AUSBAUSTUFE: Rundenzeit des Siegers (totalRaceTime/laps), alle
-    SCHRITT_STRECKEN Jahre, damit die Zahl der Calls beherrschbar bleibt."""
+    """Rundenzeit des Siegers, nur alle SCHRITT_STRECKEN Jahre um die Zahl der Calls zu begrenzen."""
     rows = []
     for circuit_id, name in STRECKEN.items():
         for year in range(1950, 2025, SCHRITT_STRECKEN):
@@ -192,9 +112,8 @@ def rundenzeit_je_strecke(erg: Ergast) -> pd.DataFrame:
             if pd.isna(sieger["totalRaceTime"]) or not sieger["laps"]:
                 continue
             sekunden = sieger["totalRaceTime"].total_seconds() / sieger["laps"]
-            # Ergasts totalRaceTime ist fuer einzelne sehr alte Rennen
-            # kaputt (siehe Docstring) - 30s ist auf keiner F1-Strecke je
-            # eine echte Rundenzeit.
+            # Ergasts totalRaceTime ist für einzelne sehr alte Rennen kaputt.
+            # 30s ist auf keiner F1-Strecke je eine echte Rundenzeit.
             if sekunden < 30:
                 continue
             rows.append({"strecke": name, "season": year, "rundenzeit_s": sekunden})

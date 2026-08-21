@@ -1,10 +1,10 @@
-"""Exakter Boxenstopp-Plan (P35): kuerzester Pfad ueber alle legalen
-Strategien statt einer Handvoll Kandidaten, plus eine Safety-Car-Politik per
-Rueckwaertsinduktion.
+"""exakter boxenstopp-plan (P35): kuerzester pfad ueber alle legalen
+strategien statt einer handvoll kandidaten, plus eine safety-car-politik per
+rueckwaertsinduktion.
 
-Die Mischungsparameter kommen aus f1lab.race_config_from_session() - echte
-Degradation (P13) und echter Pitloss dieser Session, keine von Hand
-gesetzten Zahlen. Gerechnet wird nirgends hier: jede Zahl kommt aus
+die mischungsparameter kommen aus f1lab.race_config_from_session(): echte
+degradation (P13) und echter pitloss dieser session, keine von hand
+gesetzten zahlen. gerechnet wird nirgends hier. jede zahl kommt aus
 f1lab.optimal_strategy()/frontier_by_stops()/solve_policy()/hindsight_value().
 """
 from __future__ import annotations
@@ -75,7 +75,7 @@ hinweis("Basiszeit und Degradation sind der Median aller belastbaren "
         "die laengste tatsaechlich gefahrene Stint-Laenge, keine gemessene "
         "Haltbarkeitsgrenze.")
 
-# --- Optimum ----------------------------------------------------------------
+# --- optimum ----------------------------------------------------------------
 st.markdown("##### Exaktes Optimum")
 try:
     beste = f1lab.optimal_strategy(cfg)
@@ -109,7 +109,7 @@ hinweis(f"Boxenstopps am Ende von Runde {', '.join(str(p) for p in beste.pit_lap
         "Kein Kandidat unter den Kandidaten - der exakte kuerzeste Pfad "
         "ueber alle legalen Stint-Kombinationen (siehe P35).")
 
-# --- Bester Plan je Stoppzahl ------------------------------------------------
+# --- bester plan je stoppzahl ------------------------------------------------
 st.markdown("##### Bester Plan je Stoppzahl")
 frontier = f1lab.frontier_by_stops(cfg, up_to=4)
 zeilen = []
@@ -146,7 +146,7 @@ if grenzen:
             f"(aktuell {cfg.pit_loss:.1f}s) - solange der echte Pitloss "
             "dazwischen liegt, aendert sich am Plan nichts.")
 
-# --- Safety Car ---------------------------------------------------------------
+# --- safety car ---------------------------------------------------------------
 st.markdown("##### Was kostet die Unsicherheit ueber das Safety Car?")
 hinweis("Ein Safety Car macht Boxenstopps billig, aber niemand weiss vorher, "
         "wann es kommt. Die optimale Politik ist deshalb kein fester Plan, "

@@ -1,9 +1,9 @@
-"""Kalender und Streckengeometrie - die Dimensionstabellen aus p02.
+"""kalender und streckengeometrie, die dimensionstabellen aus p02.
 
-Die Event-Dimension kommt ohne jeden Session-Download aus. Die Circuit-
-Dimension braucht dagegen Telemetrie, weil `get_circuit_info()` zwar die
-Kurven liefert, aber kein Z - Laenge und Hoehe stammen aus dem Positionskanal
-der schnellsten Runde.
+die event-dimension kommt ohne jeden session-download aus. die
+circuit-dimension braucht dagegen telemetrie, weil `get_circuit_info()`
+zwar die kurven liefert, aber kein Z. laenge und hoehe stammen deshalb aus
+dem positionskanal der schnellsten runde.
 """
 from __future__ import annotations
 
@@ -34,19 +34,19 @@ saisons = sorted(inv["season"].unique())
 
 @st.cache_data(show_spinner="Kalender wird aufgebaut ...")
 def events(jahre: tuple[int, ...]) -> pd.DataFrame:
-    """Kalender aus dem gespeicherten Bestand. Kein Session-Download noetig."""
+    """kalender aus dem gespeicherten bestand. kein session-download noetig."""
     return f1lab.event_dimension(jahre)
 
 
 @st.cache_data(show_spinner="Strecken werden vermessen ...")
 def geometrie(paare: tuple[tuple[int, str], ...]) -> pd.DataFrame:
-    """Streckengeometrie. Braucht Telemetrie und laeuft daher nur auf
-    Anforderung - eine Session je Strecke genuegt, Geometrie ist pro Layout
-    konstant."""
+    """streckengeometrie. braucht telemetrie und laeuft daher nur auf
+    anforderung, eine session je strecke genuegt, weil geometrie pro layout
+    konstant ist."""
     return f1lab.circuit_dimension(list(paare))
 
 
-# --- Kalender -------------------------------------------------------------
+# --- kalender -------------------------------------------------------------
 st.markdown("##### Rennkalender")
 
 try:
@@ -89,7 +89,7 @@ with st.expander("Event-Dimension als Tabelle"):
     st.download_button("Als CSV speichern", dim.to_csv(index=False),
                        file_name="dim_events.csv", mime="text/csv")
 
-# --- Strecken -------------------------------------------------------------
+# --- strecken -------------------------------------------------------------
 st.markdown("##### Streckengeometrie")
 
 mit_telemetrie = inv[inv["telemetry"]]
@@ -127,10 +127,9 @@ if fertig.empty:
 
 fertig["km"] = fertig["length_m"] / 1000
 
-# Die Kurvenzahl ist der einzige Wert, der nicht aus der Telemetrie stammt,
-# sondern aus einer eigenen Abfrage - im Offline-Betrieb fehlt sie deshalb.
-# Dann traegt die Hoehenspanne die zweite Achse, statt ein leeres Bild zu
-# zeigen.
+# die kurvenzahl kommt aus einer eigenen abfrage statt aus der telemetrie
+# und fehlt deshalb im offline-betrieb. dann traegt die hoehenspanne die
+# zweite achse statt ein leeres bild zu zeigen.
 hat_kurven = fertig["corners"].notna().any()
 y_spalte = "corners" if hat_kurven else "elev_span_m"
 y_titel = "Kurven" if hat_kurven else "Hoehenspanne [m]"

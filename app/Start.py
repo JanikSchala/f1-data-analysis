@@ -1,10 +1,10 @@
-"""Startseite: was liegt auf dem Rechner, und was macht die App damit.
+"""startseite: was auf dem rechner liegt und was die app damit macht.
 
-Start mit::
+start mit::
 
     streamlit run app/Start.py
 
-Oder per Doppelklick auf "2_Dashboard_starten.command".
+oder per doppelklick auf "2_Dashboard_starten.command".
 """
 from __future__ import annotations
 
@@ -35,18 +35,18 @@ if kein_cache_hinweis(pfad):
 inv = inventar(str(pfad))
 geladen = inv[inv["timing"]]
 
-# --- Eckdaten -------------------------------------------------------------
+# --- eckdaten -------------------------------------------------------------
 k = st.columns(4)
 k[0].metric("Sessions gespeichert", f"{len(geladen):,}".replace(",", "."))
 k[1].metric("davon mit Telemetrie", int(geladen["telemetry"].sum()))
 k[2].metric("Saisons", geladen["season"].nunique())
 k[3].metric("Rennwochenenden", geladen.groupby(["season", "event"]).ngroups)
 
-# --- Abdeckung ------------------------------------------------------------
+# --- abdeckung ------------------------------------------------------------
 st.markdown("##### Was gespeichert ist")
 
-# Die Bestandsaufnahme kennt keine Rundennummern - die Reihenfolge im Kalender
-# ergibt sie aber eindeutig, weil Testfahrten nicht im Cache landen.
+# die bestandsaufnahme kennt keine rundennummern, die reihenfolge im kalender
+# ergibt sie trotzdem eindeutig, weil testfahrten nicht im cache landen.
 wochenenden = (geladen.groupby(["season", "event", "event_date"])
                .agg(sessions=("ident", "nunique"))
                .reset_index())
@@ -71,7 +71,7 @@ hinweis("Leere Felder sind Wochenenden, die noch nie geladen wurden - keine "
         "Ausfaelle, sondern Luecken im Warmup. Sieben Sessions sind das "
         "Maximum, konventionelle Wochenenden haben fuenf.")
 
-# --- Verteilung -----------------------------------------------------------
+# --- verteilung -----------------------------------------------------------
 links, rechts = st.columns(2)
 
 with links:
@@ -111,7 +111,7 @@ hinweis("Telemetrie ist ein eigener, um ein Vielfaches groesserer Download. "
         "Ohne sie laufen Pace, Reifen und Strategie trotzdem - nur "
         "Streckenverlauf und Bremszonen brauchen sie zwingend.")
 
-# --- Wegweiser ------------------------------------------------------------
+# --- wegweiser ------------------------------------------------------------
 st.markdown("##### Die Seiten")
 st.markdown("""
 | Seite | Was sie beantwortet | Quelle in f1lab |

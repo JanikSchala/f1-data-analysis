@@ -1,11 +1,11 @@
-"""Startplatz-Paritaet (P40): hat die Seite der Startaufstellung (gerade/
-ungerade Startplatz) einen echten, ueber Jahre konsistenten Effekt?
+"""startplatz-paritaet (P40): hat die seite der startaufstellung (gerade/
+ungerade startplatz) einen echten, ueber jahre konsistenten effekt?
 
-Wie 15_MachineLearning.py an keinen waehlbaren Zeitraum gebunden, sondern
-an den ganzen Cache (alle Saisons, alle Strecken) - die Frage braucht
-moeglichst viele Jahre je Strecke, nicht eine einzelne Session. Gerechnet
-wird nirgends hier: f1lab.grid_lap1_positions() liefert Startplatz und
-Runde-1-Position je Fahrer, keine Telemetrie noetig.
+wie 15_MachineLearning.py an keinen waehlbaren zeitraum gebunden, sondern
+an den ganzen cache (alle saisons, alle strecken), weil die frage
+moeglichst viele jahre je strecke braucht, nicht eine einzelne session.
+gerechnet wird nirgends hier: f1lab.grid_lap1_positions() liefert
+startplatz und runde-1-position je fahrer, keine telemetrie noetig.
 """
 from __future__ import annotations
 

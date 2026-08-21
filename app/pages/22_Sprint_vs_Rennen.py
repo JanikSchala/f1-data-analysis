@@ -1,12 +1,11 @@
-"""Sprint gegen Rennen (P44): wird im Sprint wirklich weniger ueberholt?
+"""sprint gegen rennen (P44): wird im sprint wirklich weniger ueberholt?
 
-Feste Zeitspanne (2023+2024, die beiden Saisons mit dem aktuellen Sprint-
-Format) statt waehlbarer Saison, wie der 75-Jahre-Trend-Teil von
-14_Historie.py - Sprint-Wochenenden sind selten (6 je Saison), eine
-einzelne Saison waere kaum aussagekraeftig. `persist="disk"`-gecacht.
-Gerechnet wird nirgends hier: f1lab.overtakes_matrix()/overtake_events()
-(P20/P39) zaehlen identisch in Sprint und Rennen, nur die
-Gegenueberstellung ist neu.
+feste zeitspanne (2023+2024, die beiden saisons mit dem aktuellen
+sprint-format) statt waehlbarer saison, wie der 75-jahre-trend-teil von
+14_Historie.py. sprint-wochenenden sind selten, eine einzelne saison waere
+kaum aussagekraeftig. `persist="disk"`-gecacht. gerechnet wird nirgends
+hier: f1lab.overtakes_matrix()/overtake_events() (P20/P39) zaehlen
+identisch in sprint und rennen, nur die gegenueberstellung ist neu.
 """
 from __future__ import annotations
 

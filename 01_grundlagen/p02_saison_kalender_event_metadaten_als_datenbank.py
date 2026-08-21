@@ -1,59 +1,18 @@
-"""
-P02 - Saison-Kalender & Event-Metadaten als Datenbank
-=====================================================
-
-Alle Rennwochenenden der Telemetrie-Aera in eine saubere Tabelle - inkl. Sprint-Formaten und Streckengeometrie.
-
-Kategorie:   Grundlagen & Datenzugriff
-Niveau:      Einsteiger
-Aufwand:     2 h
-Schwerpunkt: Engineering, DS
-
-WARUM DAS LOHNT
-Jede spaetere Auswertung braucht eine verlaessliche Bezugstabelle fuer Events und Strecken. Ohne sie wird in jedem Skript neu geraten, welches Wochenende welches Format hatte - und genau da schleichen sich Fehler ein, die man in den Ergebnissen nicht mehr sieht.
-
-VORGEHEN
-  1. Schedule fuer mehrere Jahre laden und konkatenieren
-  2. Sprint- vs. konventionelles Format ableiten (EventFormat-Teilwort)
-  3. Streckengeometrie je Circuit aus Positionsdaten berechnen
-  4. Beide Dimensionen als Parquet speichern
-  5. Kalender und Streckenprofil visualisieren
-
-GENUTZTE FASTF1-BAUSTEINE
-  - fastf1.get_event_schedule
-  - Session.get_circuit_info
-  - Lap.get_pos_data
-  - EventSchedule
-
-AUSBAUSTUFE  [umgesetzt]
-Circuit-Dimension mit Kurvenzahl, Streckenlaenge und Hoehenmetern.
-
-Achtung, die urspruengliche Formulierung war so nicht umsetzbar: get_circuit_info()
-liefert nur X, Y, Number, Letter, Angle und Distance - kein Z. Die Kurvenzahl kommt
-also von dort, Laenge und Hoehe aber aus dem Positionskanal (pos_data.Z, in 1/10 m)
-der schnellsten Runde. Damit braucht dieser Teil Telemetrie, waehrend die
-Event-Dimension ohne jeden Session-Download auskommt.
-
-Naechste Stufe: die Dimensionen in DuckDB laden und mit den Ergebnistabellen zu
-einem Sternschema verknuepfen (siehe p26).
-"""
+"""baut event- und streckengeometrie-tabellen für den saison-kalender"""
 from __future__ import annotations
 
 import sys
 import warnings
 from pathlib import Path
 
-# Python legt beim Skriptstart nur den Ordner des Skripts auf den Pfad, nicht
-# das Repo-Wurzelverzeichnis - "import f1lab" scheitert hier also, waehrend es
-# in make_assets.py (liegt oben) funktioniert. pytest loest dasselbe Problem
-# ueber conftest.py; fuer direkt gestartete Skripte in Unterordnern braucht es
-# diese zwei Zeilen. Alternative waere "pip install -e .", was das Repo aber
-# bewusst nicht voraussetzt.
+# python legt beim skriptstart nur den ordner des skripts auf den pfad.
+# das repo-wurzelverzeichnis fehlt dadurch und "import f1lab" scheitert hier.
+# diese zwei zeilen fixen das fuer direkt gestartete skripte in unterordnern.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -76,25 +35,21 @@ OUT = Path(__file__).parent / "out"
 OUT.mkdir(exist_ok=True)
 
 SEASONS = range(2018, 2027)
-GEOMETRIE_SAISON = 2024            # Saison mit Telemetrie im Cache
+GEOMETRIE_SAISON = 2024            # saison mit telemetrie im cache
 
-# Sequenzielle Rampe fuer Hoehenmeter: ein Farbton, dunkel -> hell. Dieselbe
-# Rampe wie in f1lab.design (dort als Liste, hier als Colormap-Objekt fuer
-# scatter/colorbar - matplotlib braucht die Interpolation, Plotly nicht).
+# sequenzielle rampe fuer hoehenmeter. ein farbton von dunkel bis hell.
+# dieselbe rampe wie in f1lab.design aber als colormap-objekt statt liste.
+# matplotlib braucht die interpolation fuer scatter/colorbar.
 HOEHE = LinearSegmentedColormap.from_list("hoehe", RAMPE)
 
 plt.rcParams.update(matplotlib_stil())
 
 
 def kalender_grid(ax, dim):
-    """Ein Feld je Rennwochenende: Zeile = Saison, Spalte = Runde.
-
-    Zeigt auf einen Blick, was Tabellen verstecken - das Wachstum von 21 auf
-    24 Rennen, die abgebrochene Saison 2020 und den Sprint ab 2021.
-    """
+    """ein feld je rennwochenende. zeile = saison, spalte = runde."""
     seasons = sorted(dim["season"].unique())
     y_of = {s: i for i, s in enumerate(seasons)}
-    pad, size = 0.06, 0.88          # Luecke zwischen den Feldern
+    pad, size = 0.06, 0.88          # abstand zwischen den feldern
 
     for row in dim.itertuples():
         ax.add_patch(FancyBboxPatch(
@@ -102,13 +57,13 @@ def kalender_grid(ax, dim):
             boxstyle="round,pad=0,rounding_size=0.22",
             linewidth=0, facecolor=SPRINT if row.is_sprint else KONVENTIONELL))
 
-    for s in seasons:                # Rennzahl rechts neben der Zeile
+    for s in seasons:                # anzahl rennen rechts neben der zeile
         n = int((dim["season"] == s).sum())
         ax.text(dim["round"].max() + 1.1, y_of[s], str(n),
                 va="center", ha="left", color=MUTED, fontsize=10)
 
     ax.set_xlim(0.2, dim["round"].max() + 2.4)
-    ax.set_ylim(len(seasons) - 0.5 + pad, -0.5 - pad)   # 2018 oben
+    ax.set_ylim(len(seasons) - 0.5 + pad, -0.5 - pad)   # 2018 oben in der grafik
     ax.set_yticks(range(len(seasons)), [str(s) for s in seasons])
     ax.set_xticks([1, 5, 10, 15, 20, 24])
     ax.set_xlabel("Runde")
@@ -128,11 +83,9 @@ def kalender_grid(ax, dim):
 
 
 def strecken_profil(ax, geo):
-    """Streckenlaenge gegen Kurvenzahl, eingefaerbt nach Hoehenspanne.
-
-    Die Hoehe ist eine Groesse, keine Kategorie - deshalb eine sequenzielle
-    Rampe in einem Farbton statt weiterer Kategoriefarben.
-    """
+    """streckenlaenge gegen kurvenzahl, eingefaerbt nach hoehenspanne.
+    hoehe ist eine groesse und keine kategorie. deshalb eine sequenzielle
+    rampe statt weiterer kategoriefarben."""
     d = geo.dropna(subset=["length_m", "corners"]).copy()
     if d.empty:
         ax.text(0.5, 0.5, "keine Telemetrie im Cache", ha="center",
@@ -146,9 +99,8 @@ def strecken_profil(ax, geo):
     ax.scatter(d["km"], d["corners"], s=190, c=span, cmap=HOEHE,
                norm=norm, edgecolor=BG, linewidth=2, zorder=3)
 
-    # Direkt beschriften, aber selektiv: nur was die Aussage traegt - die
-    # Extreme in Laenge, Kurvenzahl und Hoehe. Eine Zahl an jedem Punkt
-    # waere Rauschen.
+    # nur die extreme in laenge, kurvenzahl und hoehe beschriften.
+    # eine zahl an jedem punkt waere rauschen.
     zeigen = (set(d.nlargest(2, "km").index) | set(d.nsmallest(2, "km").index)
               | set(d.nlargest(1, "elev_span_m").index)
               | set(d.nlargest(1, "corners").index)
@@ -157,8 +109,7 @@ def strecken_profil(ax, geo):
     x_mitte = (d["km"].min() + d["km"].max()) / 2
     for i in zeigen:
         r = d.loc[i]
-        # Rechte Haelfte nach links beschriften, sonst laeuft der Text in die
-        # Colorbar; sonst abwechselnd ueber/unter den Punkt gegen Kollisionen.
+        # rechte haelfte nach links beschriften. sonst laeuft der text in die colorbar.
         rechts = r["km"] > x_mitte
         ax.annotate(
             r["circuit"], (r["km"], r["corners"]),

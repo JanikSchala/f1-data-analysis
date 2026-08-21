@@ -1,8 +1,8 @@
-"""f1analyze - Wochenend-Analyzer, gebaut auf f1lab.
+"""f1analyze: Wochenend-Analyzer, gebaut auf f1lab.
 
-f1lab ist kein eigenstaendiges Package, sondern ein Ordner im selben
-Repository (siehe f1analyze/data.py). Der Pfad wird deshalb einmal hier
-ergaenzt, beim Import des Packages - jedes Untermodul kann sich danach auf
+f1lab ist kein eigenstaendiges Package. es ist ein Ordner im selben
+Repository (siehe f1analyze/data.py). der Pfad wird deshalb hier einmal
+ergaenzt, beim Import des Packages. jedes Untermodul kann sich danach auf
 "import f1lab" verlassen, ohne den Trick selbst zu wiederholen.
 """
 from __future__ import annotations

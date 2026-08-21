@@ -1,14 +1,13 @@
-"""CLI mit Subcommands (VORGEHEN 3): weekend, pace, strategy, telemetry,
-report, optimize, lap-sim, overtakes, traffic.
+"""CLI mit Subcommands: weekend, pace, strategy, telemetry, report,
+optimize, lap-sim, overtakes, traffic.
 
 Aufruf, sobald installiert (siehe README): f1analyze weekend 2024 Monza
 
-P38 (Ueberholschwierigkeit je Strecke) und P40 (Startplatz-Paritaet)
-bewusst NICHT als Subcommand: beide brauchen einen Season-Scan ueber
-Dutzende bis hunderte Sessions (Minuten, nicht Sekunden) - ein Einzelaufruf
-"f1analyze irgendwas 2024 Monza" passt nicht zu dieser Kostenstruktur. Beide
-leben deshalb nur als Dashboard-Seiten mit ``persist="disk"``-Cache
-(18_Ueberholschwierigkeit.py, 19_Startplatz_Paritaet.py).
+Ueberholschwierigkeit je Strecke und Startplatz-Paritaet sind bewusst
+keine Subcommands. beide brauchen einen Season-Scan ueber Dutzende bis
+hunderte Sessions statt Sekunden. ein Einzelaufruf passt nicht zu dieser
+Kostenstruktur, sie leben deshalb nur als Dashboard-Seiten mit
+``persist="disk"``-Cache.
 """
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ app = typer.Typer(help="Analyse-Werkzeug fuer Formel-1-Renndaten")
 
 @app.command()
 def pace(year: int, gp: str, session: str = "R", top: int = 20) -> None:
-    """Bereinigte Race Pace als Rangliste."""
+    """bereinigte Race Pace als Rangliste."""
     ses = load_session(year, gp, session)
     df = analysis.race_pace(ses)
     typer.echo(df.head(top).to_string(index=False))
@@ -34,7 +33,7 @@ def pace(year: int, gp: str, session: str = "R", top: int = 20) -> None:
 
 @app.command()
 def strategy(year: int, gp: str) -> None:
-    """Stints und Compounds je Fahrer."""
+    """stints und Compounds je Fahrer."""
     ses = load_session(year, gp, "R")
     typer.echo(analysis.stint_summary(ses).to_string(index=False))
 
@@ -42,7 +41,7 @@ def strategy(year: int, gp: str) -> None:
 @app.command()
 def telemetry(year: int, gp: str, driver_a: str, driver_b: str,
              session: str = "Q") -> None:
-    """Schnellste Runden zweier Fahrer vergleichen: Zeit, Speed-Trap,
+    """schnellste Runden zweier Fahrer vergleichen: Zeit, Speed-Trap,
     Bremszonen-Zeitpunkte."""
     ses = load_session(year, gp, session, telemetry=True)
     la = ses.laps.pick_drivers(driver_a.upper()).pick_fastest()
@@ -60,7 +59,7 @@ def telemetry(year: int, gp: str, driver_a: str, driver_b: str,
 
 @app.command()
 def weekend(year: int, gp: str) -> None:
-    """Komplette Wochenendanalyse als Text: Quali, Race Pace, Degradation."""
+    """komplette Wochenendanalyse als Text: Quali, Race Pace, Degradation."""
     race = load_session(year, gp, "R")
     quali = load_session(year, gp, "Q")
 
@@ -76,7 +75,7 @@ def weekend(year: int, gp: str) -> None:
 
 @app.command()
 def optimize(year: int, gp: str) -> None:
-    """Exakt bester Boxenstopp-Plan (P35), aus echter Degradation/Pitloss."""
+    """exakt bester Boxenstopp-Plan, aus echter Degradation/Pitloss."""
     ses = load_session(year, gp, "R")
     try:
         cfg, plan = analysis.optimal_plan(ses)
@@ -90,7 +89,7 @@ def optimize(year: int, gp: str) -> None:
 
 @app.command()
 def lap_sim(year: int, gp: str, session: str = "Q") -> None:
-    """Punktmassen-Rundenzeitsimulation der schnellsten Runde (P37)."""
+    """punktmassen-Rundenzeitsimulation der schnellsten Runde."""
     ses = load_session(year, gp, session, telemetry=True)
     erg = analysis.lap_simulation(ses)
     typer.echo(f"mu_g={erg['mu_g']:.2f} m/s^2 ({erg['mu_g'] / 9.81:.2f}g)  "
@@ -103,7 +102,7 @@ def lap_sim(year: int, gp: str, session: str = "Q") -> None:
 
 @app.command()
 def overtakes(year: int, gp: str) -> None:
-    """Ueberholungen und ihr Anteil in der DRS-Zone (P39)."""
+    """ueberholungen und ihr Anteil in der DRS-Zone."""
     race = load_session(year, gp, "R", telemetry=True)
     quali = load_session(year, gp, "Q", telemetry=True)
     erg = analysis.overtake_summary(race, quali)
@@ -117,10 +116,10 @@ def overtakes(year: int, gp: str) -> None:
 def traffic(year: int, gp: str, alt_stops: int,
            delta: float = 0.15, gap: float = 3.0,
            p_overtake: float = 0.15) -> None:
-    """Verkehrs-Simulation (P41): DAG-Optimum gegen eine Alternative mit
+    """Verkehrs-Simulation: DAG-Optimum gegen eine Alternative mit
     Stoppzahl ALT_STOPS, beide gegen einen Rivalen simuliert. Rivalen-Tempo,
     Startabstand und Ueberholwahrscheinlichkeit sind Szenario-Annahmen,
-    keine Messwerte - siehe P41."""
+    keine Messwerte."""
     ses = load_session(year, gp, "R")
     try:
         erg = analysis.traffic_scenario(ses, alt_stops, delta, gap, p_overtake)
@@ -140,10 +139,10 @@ def traffic(year: int, gp: str, alt_stops: int,
 
 @app.command()
 def report(year: int, gp: str,
-          out: Path = typer.Option(  # noqa: B008 - typers eigenes Muster
+          out: Path = typer.Option(  # noqa: B008 (typers eigenes Muster)
               Path("report.pdf"), help="PDF-Ausgabepfad")
           ) -> None:
-    """PDF-Report mit Race Pace und Reifenstrategie erzeugen."""
+    """pdf-Report mit Race Pace und Reifenstrategie erzeugen."""
     race = load_session(year, gp, "R")
     quali = load_session(year, gp, "Q")
     pace_df = analysis.race_pace(race)

@@ -1,13 +1,13 @@
-"""Verkehr (P41): was P35s Rundenzeitmodell nicht sieht - ein Auto gegen die
-Uhr kennt kein Herauskommen hinter einem Langsameren.
+"""verkehr (P41): was P35s rundenzeitmodell nicht sieht. ein auto gegen die
+uhr kennt kein herauskommen hinter einem langsameren.
 
-Nutzt dieselbe f1lab.race_config_from_session() wie die Strategie-
-Optimierer-Seite, simuliert daneben aber ein Duell gegen einen Rivalen mit
-f1lab.gap_evolution()/traffic_cost() - eine Ueberholwahrscheinlichkeit statt
-der Annahme, dass ein Tempovorteil sich sofort in Position uebersetzt.
-Rivalen-Abstand, Tempo-Delta und Ueberholwahrscheinlichkeit sind hier
-bewusst einstellbare Szenario-Parameter, keine aus der Session gemessenen
-Werte (siehe P41).
+nutzt dieselbe f1lab.race_config_from_session() wie die
+strategie-optimierer-seite, simuliert daneben aber ein duell gegen einen
+rivalen mit f1lab.gap_evolution()/traffic_cost(): eine
+ueberholwahrscheinlichkeit statt der annahme, dass ein tempovorteil sich
+sofort in position uebersetzt. rivalen-abstand, tempo-delta und
+ueberholwahrscheinlichkeit sind hier bewusst einstellbare
+szenario-parameter, keine aus der session gemessenen werte (siehe P41).
 """
 from __future__ import annotations
 

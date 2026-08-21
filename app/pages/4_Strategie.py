@@ -1,9 +1,8 @@
-"""Boxenstopp-Kosten und Undercut-Rechnung.
+"""boxenstopp-kosten und undercut-rechnung.
 
-Der Pitloss kommt aus den Daten der gewaehlten Session, das Undercut-Modell
-rechnet daraufhin durch, was ein frueherer Stopp einbraechte. Das ist der
-Teil, den ein Skript schlecht zeigen kann: die Annahmen sind Stellschrauben,
-und ihre Wirkung sieht man erst, wenn man daran dreht.
+der pitloss kommt aus den daten der gewaehlten session, das undercut-modell
+rechnet daraufhin durch, was ein frueherer stopp einbraechte. die annahmen
+sind stellschrauben, ihre wirkung sieht man erst, wenn man daran dreht.
 """
 from __future__ import annotations
 
@@ -35,7 +34,7 @@ auswahl = sidebar_session(pfad)
 ses = lade(auswahl)
 kopfzeile(ses, auswahl)
 
-# --- Pitloss --------------------------------------------------------------
+# --- pitloss --------------------------------------------------------------
 st.markdown("##### Zeitverlust eines Boxenstopps")
 
 verlust = None
@@ -56,16 +55,15 @@ if verlust is not None:
             "Fahrers. Der Median macht die Schaetzung robust gegen die Stopps, "
             "bei denen etwas schiefging.")
 
-# --- Undercut -------------------------------------------------------------
+# --- undercut -------------------------------------------------------------
 st.markdown("##### Lohnt der Undercut?")
 hinweis("Der Verfolger stoppt frueher und faehrt auf frischen Reifen, waehrend "
         "der Vordermann weiter altert. Der Pitloss faellt fuer beide an und "
         "kuerzt sich heraus - entscheidend ist allein die Pace-Differenz im "
         "Fenster.")
 
-# Startwerte aus der Session, damit die Rechnung nicht im Leeren steht.
-# ses.total_laps ist nur fuer Rennen/Sprint gesetzt - fuer Qualifying/Practice
-# faellt f1lab.fuel_correct() sonst mit TypeError auf None - int.
+# ses.total_laps ist nur fuer Rennen/Sprint gesetzt, fuer Qualifying/Practice
+# faellt f1lab.fuel_correct() sonst mit TypeError auf None minus int.
 je_mischung = (f1lab.degradation_by_compound(ses)
                if ses.total_laps is not None else None)
 if je_mischung is not None and not je_mischung.empty:
@@ -126,7 +124,7 @@ hinweis("Nicht modelliert ist Verkehr - und der entscheidet den Undercut in "
         "herauskommt, gibt den rechnerischen Vorteil in einer einzigen Runde "
         "wieder ab.")
 
-# --- Echte Undercut-Duelle (P42) -------------------------------------------
+# --- echte undercut-duelle (P42) --------------------------------------------
 st.markdown("##### Wie oft gewinnt der Undercut wirklich?")
 if not nur_rennen(auswahl, "Die Undercut-Duelle"):
     duelle = f1lab.undercut_duels(ses)

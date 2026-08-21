@@ -1,4 +1,4 @@
-"""Uebersicht einer Session: Ergebnis und Rundenzeiten im Verlauf."""
+"""uebersicht einer session: ergebnis und rundenzeiten im verlauf."""
 from __future__ import annotations
 
 import plotly.graph_objects as go
@@ -29,7 +29,7 @@ kopfzeile(ses, auswahl)
 
 laps = ses.laps
 
-# --- Ergebnis -------------------------------------------------------------
+# --- ergebnis -------------------------------------------------------------
 st.markdown("##### Ergebnis")
 try:
     r = ses.results
@@ -42,7 +42,7 @@ try:
 except Exception:
     st.info("Fuer diese Session liegt keine Ergebnistabelle vor.")
 
-# --- Rundenzeiten ---------------------------------------------------------
+# --- rundenzeiten ---------------------------------------------------------
 st.markdown("##### Rundenzeiten im Verlauf")
 
 fahrer = sorted(laps["Driver"].dropna().unique())

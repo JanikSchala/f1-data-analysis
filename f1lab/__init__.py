@@ -1,7 +1,7 @@
-"""f1lab - wiederverwendbare Bausteine fuer Formel-1-Datenanalyse.
+"""f1lab buendelt wiederverwendbare Bausteine fuer Formel-1-Datenanalyse.
 
-Die Skripte in diesem Repository zeigen einzelne Analysen. Dieses Paket
-buendelt die Teile, die mehrfach gebraucht werden, und trennt dabei sauber:
+die Skripte in diesem Repository zeigen einzelne Analysen. dieses Paket
+buendelt die mehrfach gebrauchten Teile und trennt sauber:
 
     f1lab.core      reine Rechnung auf numpy-Arrays, ohne Netz testbar
     f1lab.session   FastF1-Anbindung: laden, filtern, aggregieren
@@ -143,17 +143,17 @@ __all__ = [
     "marshal_sector_labels", "weather_join", "temperature_effect",
     "weather_phases", "wet_dry_classifier", "field_spread", "sc_compaction",
     "parse_penalties", "parse_track_limits", "track_limit_crosscheck",
-    # Rennstrategie (P35)
+    # rennstrategie (P35)
     "TyreModel", "RaceConfig", "Stint", "Strategy", "InfeasibleRace",
     "GRUEN", "SC", "stint_arcs", "optimal_strategy", "frontier_by_stops",
     "pit_loss_crossovers", "SafetyCarProcess", "solve_policy", "roll_out",
     "expected_cost_of_plan", "hindsight_value", "race_config_from_session",
-    # Ungenutzte FastF1-Felder nachgezogen
+    # ungenutzte FastF1-Felder nachgezogen
     "marshal_light_labels", "blue_flags", "deleted_reason_crosscheck",
     "telemetry_source_quality", "sc_deployment_sectors",
-    # Rundenzeit-Simulation (P37)
+    # rundenzeit-simulation (P37)
     "track_curvature", "simulate_lap", "calibrate_lap_model", "lap_speed_profile",
     "simulate_stint",
-    # Verkehr (P41)
+    # verkehr (P41)
     "lap_times_for_strategy", "gap_evolution", "traffic_cost",
 ]

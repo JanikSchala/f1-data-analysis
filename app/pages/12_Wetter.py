@@ -1,13 +1,13 @@
-"""Wetter-Impact: Temperaturverlauf, TrackTemp-Effekt auf die Pace,
-Nass-/Trocken-Phasen und ein Klassifikator, der allein aus Feld-Aggregaten
-erkennt, ob das Feld auf Regenreifen faehrt.
+"""wetter-impact: temperaturverlauf, TrackTemp-effekt auf die pace,
+nass-/trocken-phasen und ein klassifikator der allein aus feld-aggregaten
+erkennt ob das feld auf regenreifen faehrt.
 
-Vier Reiter aus P17 - gerechnet wird nirgends hier, jede Kennzahl kommt aus
+vier reiter aus P17. gerechnet wird nirgends hier. jede kennzahl kommt aus
 f1lab.weather_join()/temperature_effect()/weather_phases()/
-wet_dry_classifier(). Anders als im Skript (dort Japan fuer den Effekt,
-Kanada fuer Regen/Klassifikator, weil eine einzelne Session selten beides
-zeigt) laeuft hier alles auf der in der Seitenleiste gewaehlten Session -
-manche Reiter zeigen dann eben einen Hinweis statt eines Ergebnisses.
+wet_dry_classifier(). anders als im skript (dort Japan fuer den effekt,
+Kanada fuer regen/klassifikator, weil eine einzelne session selten beides
+zeigt) laeuft hier alles auf der in der seitenleiste gewaehlten session.
+manche reiter zeigen dann eben einen hinweis statt eines ergebnisses.
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ tab_profil, tab_temp, tab_phasen, tab_klass = st.tabs(
     ["Temperaturverlauf", "TrackTemp-Effekt", "Nass/Trocken-Phasen",
      "Klassifikator"])
 
-# ================================================================== Profil
+# ================================================================== profil
 with tab_profil:
     st.markdown("##### Luft- und Streckentemperatur ueber die Session")
     t = w["Time"].dt.total_seconds() / 60
@@ -108,7 +108,7 @@ with tab_temp:
                 "als zweiter Variable wird der TrackTemp-Effekt sichtbar "
                 "(siehe P17).")
 
-# ================================================================= Phasen
+# ================================================================= phasen
 with tab_phasen:
     st.markdown("##### Nass/Trocken-Phasen ueber das Rainfall-Flag")
     phasen = f1lab.weather_phases(ses)
@@ -143,7 +143,7 @@ with tab_phasen:
             "nass": "Regen gemeldet", "start_min": "Start [min]",
             "end_min": "Ende [min]"}))
 
-# ============================================================= Klassifikator
+# ============================================================= klassifikator
 with tab_klass:
     st.markdown("##### Nass/Trocken allein aus Rundenzeit-Streuung und "
                "Speed-Trap erkennen")

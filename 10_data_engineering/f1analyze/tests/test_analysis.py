@@ -22,7 +22,7 @@ def test_stint_summary_has_expected_columns(race_session):
 def test_degradation_by_compound_only_reliable_fits(race_session):
     df = analysis.degradation_by_compound(race_session)
     assert not df.empty
-    assert (df["mean"].abs() < 2.0).all()  # Sekunden je Runde, Plausibilitaet
+    assert (df["mean"].abs() < 2.0).all()  # sekunden je runde, plausibilitaet
 
 
 def test_pit_loss_is_a_positive_number_of_seconds(race_session):
@@ -39,8 +39,8 @@ def test_optimal_plan_has_at_least_one_stop(race_session):
 
 def test_lap_simulation_is_close_to_real_laptime(quali_session_tel):
     erg = analysis.lap_simulation(quali_session_tel)
-    assert abs(erg["diff_pct"]) < 5.0    # grobe Plausibilitaet, siehe P37
-    assert erg["v_top"] > 50.0           # m/s, plausible Hoechstgeschwindigkeit
+    assert abs(erg["diff_pct"]) < 5.0    # grobe plausibilitaet
+    assert erg["v_top"] > 50.0           # m/s, plausible hoechstgeschwindigkeit
 
 
 def test_overtake_summary_counts_are_consistent(race_session_tel, quali_session_tel):
@@ -51,9 +51,9 @@ def test_overtake_summary_counts_are_consistent(race_session_tel, quali_session_
 
 
 def test_traffic_scenario_never_helps_hero(race_session):
-    """Verkehr kann die Alternative nur unattraktiver machen, nie die
-    Rangfolge zufaellig zugunsten des Optimums verzerren - siehe P41:
-    der Verkehrs-Zuschlag ist per Konstruktion nie negativ."""
+    """verkehr kann die Alternative nur unattraktiver machen. nie die
+    Rangfolge zufaellig zugunsten des Optimums verzerren: der
+    Verkehrs-Zuschlag ist per Konstruktion nie negativ."""
     cfg, plan = analysis.optimal_plan(race_session)
     frontier = f1lab.frontier_by_stops(cfg, up_to=4)
     alt_n = next(n for n, s in frontier.items()

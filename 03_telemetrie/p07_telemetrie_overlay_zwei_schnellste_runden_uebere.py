@@ -1,69 +1,4 @@
-"""
-P07 - Telemetrie-Overlay: Zwei schnellste Runden uebereinanderlegen
-===================================================================
-
-Speed, Throttle, Brake, Gang und DRS zweier Fahrer ueber die Distanz - plus kumuliertes Zeit-Delta.
-
-Kategorie:   Telemetrie
-Niveau:      Fortgeschritten
-Aufwand:     3 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Das ist die Standard-Grafik jedes Performance-Engineers. Wer sie sauber inkl. delta_time() bauen kann, hat den Kern der Telemetrie-Arbeit verstanden.
-
-VORGEHEN
-  1. Schnellste Runde beider Fahrer holen
-  2. Car-Data mit add_distance() anreichern
-  3. delta_time() fuer die Zeitdifferenz ueber die Distanz
-  4. Fuenf gestapelte Subplots mit gemeinsamer x-Achse
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Lap.get_car_data
-  - Telemetry.add_distance
-  - fastf1.utils.delta_time
-  - fastf1.plotting.get_driver_style
-  - f1lab.braking_zones (Bremspunkte, siehe AUSBAUSTUFE)
-
-AUSBAUSTUFE  [umgesetzt]
-Bremspunkte automatisch markieren (ueber f1lab.braking_zones, dieselbe
-Funktion wie in P08/Dashboard) und je Zonenpaar annotieren, wer wo spaeter
-bremst. Zonen werden ueber die naechstgelegene Distanz gepaart (Toleranz
-150 m) - beide Fahrer umrunden dieselbe Strecke, ihre Bremspunkte fuer
-dieselbe Kurve liegen also nah beieinander, auch wenn die genaue Anzahl
-erkannter Zonen leicht abweicht (VER 7, NOR 6 in Japan 2024 Q - eine
-Bremsung war zu kurz fuer die Mindestlaenge).
-
-Zusaetzlich, ueber die AUSBAUSTUFE hinaus: delta_time() traegt seit FastF1
-3.0 eine Deprecation-Warnung mit dem Hinweis, das Ergebnis gegen
-Sektorzeiten zu verifizieren - "a nice gimmick but not actually very
-accurate". Genau das passiert hier: die kontinuierliche delta_time()-Kurve
-wird an beiden Sektorgrenzen gegen die tatsaechliche, aus den Sektorzeiten
-berechnete Differenz geprueft. Japan 2024 Q, VER gegen NOR: an Sektorgrenze 2
-schaetzt delta_time() +0.262 s, die Sektorzeiten sagen +0.212 s - eine
-Abweichung von 50 ms, die man ohne diese Gegenprobe nicht sehen wuerde. Die
-Kurve bleibt trotzdem die richtige Wahl fuer den Streckenverlauf (Sektorzeiten
-allein zeigen nur drei Punkte, keinen Verlauf) - nur eben mit der
-Unsicherheitsangabe, die FastF1 selbst empfiehlt.
-
-Bremszonen-Erkennung und -Paarung sitzen seit der App-Integration komplett in
-f1lab (driver_braking_zones, compare_braking_zones) - dieselben Funktionen
-wie in P08 und im Bremszonen-Reiter des Dashboards.
-
-ZWEITE AUSBAUSTUFE: ``Telemetry["Source"]`` (bislang im ganzen Repository
-ungenutzt) markiert je Punkt, ob er aus dem echten car_data-/pos_data-Strom
-stammt oder eine synthetische Fuellstelle ist, die FastF1 beim
-Zusammenfuehren der beiden unterschiedlich getakteten Stroeme einfuegt
-(``get_telemetry()``, nicht das hier fuer den eigentlichen Overlay
-verwendete ``get_car_data()`` - Source ist dort trivial konstant "car", die
-Interpolation entsteht erst beim Mergen mit den Positionsdaten).
-`f1lab.telemetry_source_quality()` quantifiziert das: Japan 2024 Q, VER/NOR
-schnellste Runde, unter 1% der Punkte sind interpoliert - ein einfacher
-Datenqualitaets-Check, der bestaetigt, dass das Overlay auf echten statt
-erfundenen Messwerten beruht, aber nicht in jeder Session selbstverstaendlich
-ist (car_data und pos_data koennen bei Empfangsluecken deutlich staerker
-auseinanderlaufen).
-"""
+"""legt speed, throttle, brake, gang und drs zweier fahrer ueber die schnellste runde uebereinander und markiert bremspunkte"""
 from __future__ import annotations
 
 import sys
@@ -74,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import fastf1.plotting as f1plt
 import matplotlib.pyplot as plt
@@ -99,8 +34,8 @@ f1plt.setup_mpl(mpl_timedelta_support=False, color_scheme="fastf1")
 
 
 def sektor_check(lap1, lap2, ref: pd.DataFrame, delta: np.ndarray) -> pd.DataFrame:
-    """Verifiziert delta_time() an den Sektorgrenzen gegen die tatsaechlichen
-    Sektorzeiten - genau die Gegenprobe, die FastF1s eigene Doku empfiehlt."""
+    """verifiziert delta_time() an den sektorgrenzen gegen die echten sektorzeiten.
+    fastf1s doku empfiehlt genau diese gegenprobe."""
     s1 = [lap1[c].total_seconds() for c in
          ("Sector1Time", "Sector2Time", "Sector3Time")]
     s2 = [lap2[c].total_seconds() for c in

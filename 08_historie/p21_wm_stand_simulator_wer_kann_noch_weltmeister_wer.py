@@ -1,71 +1,4 @@
-"""
-P21 - WM-Stand-Simulator: Wer kann noch Weltmeister werden?
-===========================================================
-
-Aktuelle Standings holen, alle verbleibenden Punkte-Szenarien durchrechnen und Titelchancen simulieren.
-
-Kategorie:   Historie & Ergast-API
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Kombinatorik plus Monte-Carlo auf echten Daten. Die Frage 'wann ist der Titel entschieden' beantwortet jeder F1-Sender - du machst es reproduzierbar.
-
-VORGEHEN
-  1. Aktuellen Fahrer- und Teamstand laden
-  2. Verbleibende Rennen und Sprints zaehlen, Maximalpunkte bestimmen
-  3. Rechnerische Titelchance (worst/best case) pruefen
-  4. Monte-Carlo mit historischer Ergebnisverteilung je Fahrer
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Ergast.get_driver_standings
-  - Ergast.get_constructor_standings
-  - get_events_remaining
-
-AUSBAUSTUFE  [umgesetzt]
-Ergaenze Ausfallwahrscheinlichkeiten aus get_finishing_status() -
-DNFs veraendern die Chancen deutlich.
-
-Laeuft auf der echten laufenden Saison (2026, Stand nach dem 11. von 23
-Rennen, Ungarn) statt eines abgeschlossenen Jahres - "wer kann noch
-Weltmeister werden" ist nur an einer offenen Saison eine echte Frage, nicht
-nachtraeglich mit bekanntem Ausgang. Die 24-Runden-Schleife der Vorlage war
-auf eine 2024er-Annahme zugeschnitten; ersetzt durch die tatsaechlich
-gefahrenen Runden aus dem Kalender.
-
-VORGEHEN 3 zeigt eine Grenze der eigenen Methode auf: nach nur 11 von 23
-Rennen ist der rechnerische Test praktisch wertlos - bei maximal 316 noch
-moeglichen Punkten ist er fuer alle 22 Fahrer im Feld wahr, auch fuer die
-mit 0 Punkten. Genau deshalb lohnt sich VORGEHEN 4 (Monte-Carlo mit echter
-Ergebnisverteilung statt Bestenfalls-Annahme): sie zeigt, dass die Fuehrung
-(Antonelli, 219 Punkte nach 11 Rennen) den Titel bereits zu 99.3 %
-gewinnt, obwohl "rechnerisch" 21 andere Fahrer noch Chancen haetten - je
-nach zufaelligem Los der Sprint-Wochenenden (2 von 12 verbleibenden Events)
-mit passender Punktetabelle (8-7-6-5-4-3-2-1) simuliert.
-
-AUSBAUSTUFE: DNF-Wahrscheinlichkeit je Fahrer aus den bisherigen 11 Rennen
-(get_finishing_status() liefert nur ein Saison-Aggregat, keine
-Fahrer-Aufschluesselung - die noetige Granularitaet steckt im
-status-Feld von get_race_results(), hier verwendet). Die Spannweite ist
-real gross (Stroll 55 % DNF-Quote, Hamilton 0 % ueber 11 Rennen). Die
-Titelchancen selbst verschieben sich trotzdem nur im Bereich weniger
-Zehntelprozentpunkte - nicht weil DNFs egal waeren, sondern weil das
-Punktesystem ausserhalb der Top 10 ohnehin auf 0 saettigt: ob eine
-schlechte Runde ein Ausfall oder ein regulaerer 15. Platz war, aendert am
-Punktekonto meistens nichts, das steckt in der reinen Positions-Stichprobe
-schon drin. Sichtbar wird der DNF-Effekt erst bei einer engeren Frage -
-der Podiumsplatz-Wahrscheinlichkeit in der Endabrechnung (Top 3): Russell
-verliert dadurch 0.7 simulierte Prozentpunkte (83.3%->82.6%), Leclerc
-gewinnt 0.5 hinzu (13.9%->14.4%). Beide haben identische DNF-Quoten
-(18.2 %, 2 von 11 Rennen) - die Verschiebung kommt also nicht aus
-unterschiedlichem Ausfallrisiko, sondern aus der unterschiedlichen Form
-ihrer jeweils verbleibenden (nicht-DNF) Positionsverteilung, die im
-DNF-Modell separat von den Ausfaellen gezogen wird. Bei Werten dieser
-Groessenordnung (deutlich unter 1 Prozentpunkt) ist ein Teil davon zudem
-Simulationsrauschen trotz 50 000 Durchlaeufen - der Punkt bleibt: hier gibt
-es schlicht nichts Grosses zu holen.
-"""
+"""simuliert wm-titelchancen für die restsaison per monte-carlo aus dem aktuellen punktestand und einem dnf-modell"""
 from __future__ import annotations
 
 import sys
@@ -103,8 +36,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """Ergast/jolpica limitiert die Anfragerate bei Serienabfragen ueber
-    eine ganze Saison, siehe P05/P18/P19."""
+    """Ergast/jolpica limitiert die Anfragerate bei Serienabfragen ueber eine ganze Saison."""
     for i in range(versuche):
         try:
             return fn(*args, **kwargs)
@@ -123,7 +55,7 @@ def punkte_array(tabelle: dict) -> np.ndarray:
 
 def saison_verlauf(erg: Ergast, jahr: int, runden: int
                    ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """VORGEHEN 4 Datenbasis: alle bisher gefahrenen Rennen und Sprints."""
+    """lädt alle bisher gefahrenen Rennen und Sprints als Datenbasis für die Monte-Carlo-Simulation."""
     race_frames, sprint_frames = [], []
     for r in range(1, runden + 1):
         res = _mit_wiederholung(erg.get_race_results, season=jahr, round=r).content
@@ -144,9 +76,8 @@ def saison_verlauf(erg: Ergast, jahr: int, runden: int
 def monte_carlo(base_points: dict, drivers: list[str],
                 pos_hist: dict, sprint_hist: dict, sprint_flags: list[bool],
                 dnf_rate: dict | None, rng: np.random.Generator) -> pd.DataFrame:
-    """VORGEHEN 4 / AUSBAUSTUFE: vektorisierte Simulation ueber alle
-    verbleibenden Events. dnf_rate=None -> Basis-Version (Positions-
-    Stichprobe traegt Ausfaelle implizit schon, siehe Docstring)."""
+    """vektorisierte Simulation über alle verbleibenden Events. dnf_rate=None ergibt die Basis-Version.
+    Die Positions-Stichprobe trägt Ausfälle dabei implizit schon mit."""
     pts_r, pts_s = punkte_array(PTS_RENNEN), punkte_array(PTS_SPRINT)
     totals = {d: np.full(N_SIM, base_points.get(d, 0.0)) for d in drivers}
 

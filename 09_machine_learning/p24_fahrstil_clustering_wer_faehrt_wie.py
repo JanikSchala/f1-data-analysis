@@ -1,69 +1,4 @@
-"""
-P24 - Fahrstil-Clustering: Wer faehrt wie?
-==========================================
-
-Unsupervised Learning auf Telemetrie-Features: Bremsverhalten, Gaspedal-Modulation, Lenkaggressivitaet.
-
-Kategorie:   Machine Learning
-Niveau:      Profi
-Aufwand:     5-6 h
-Schwerpunkt: Datenanalyse
-Zusaetzliche Pakete: scikit-learn
-
-WARUM DAS LOHNT
-Unsupervised auf Zeitreihen ist anspruchsvoll und die Ergebnisse sind nie eindeutig. Aber Fahrertypen allein aus Telemetrie abzuleiten, ohne dem Modell zu sagen wonach es suchen soll, hat etwas.
-
-VORGEHEN
-  1. Fuer viele Runden vieler Fahrer Telemetrie-Features aggregieren
-  2. Features: Vollgasanteil, Bremsanteil, Anzahl Gaspedal-Modulationen, Coasting
-  3. Standardisieren, PCA auf 2 Dimensionen
-  4. k-Means und Interpretation der Cluster
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Lap.get_car_data
-  - Telemetry Throttle/Brake/Speed/nGear
-  - sklearn PCA/KMeans
-
-AUSBAUSTUFE  [umgesetzt]
-Nutze Dynamic Time Warping auf den rohen Speed-Traces statt aggregierter
-Features - naeher am tatsaechlichen Fahrverhalten.
-
-VORGEHEN 1 sagt "viele Runden", die Vorlage nahm pro Fahrer und Strecke nur
-die schnellste - eine einzelne Runde ist ein verrauschter Schaetzer fuer
-"Fahrstil". Jetzt gehen alle Runden innerhalb der 107%-Schwelle ein
-(im Schnitt 4-5 je Fahrer und Session statt einer), bevor auf Fahrerebene
-gemittelt wird.
-
-VORGEHEN 4 nannte "Interpretation der Cluster", die Vorlage druckte nur die
-Cluster-Mittelwerte. Ergaenzt: eine Silhouette-Auswahl von k (2-5) statt der
-angenommenen 3, und eine Einordnung, welches Feature ein Cluster tatsaechlich
-von den anderen trennt (per-Feature-Differenz zum Gesamtmittel, nicht nur
-die rohen Cluster-Mittel nebeneinander). Ehrlicher Nebenbefund: die
-Silhouette-Werte liegen fuer alle getesteten k zwischen 0.21 und 0.24, dicht
-beieinander - es gibt keine natuerliche, klar abgesetzte Clusterstruktur in
-den Pedal-Features, nur die am wenigsten schlechte Einteilung.
-
-VORGEHEN 2s "Vollgas_%" (Throttle > 98) hatte einen echten Kalibrierungsbug:
-Norris' Throttle-Kanal erreicht in Bahrain 2024 Q auf allen vier Runden nie
-mehr als 98-99 (jeder andere Fahrer im Feld: 99-100), die fixe Schwelle
-maass ihm dadurch 0% Vollgasanteil zu - eindeutig falsch, seine Rundenzeiten
-liegen im normalen Feld. Umgestellt auf eine rundeneigene Schwelle
-(Throttle innerhalb 2 Prozentpunkten des Rundenmaximums), robust gegen
-Kanaele, die aus welchem Grund auch immer nie exakt 100 erreichen.
-
-AUSBAUSTUFE: Dynamic Time Warping (klassische DP, keine Zusatzbibliothek -
-weder dtaidistance noch fastdtw stehen in requirements.txt) mit
-Sakoe-Chiba-Band auf die Speed-Spur der schnellsten Runde in Suzuka - der
-Strecke mit dem groessten Wechsel aus Highspeed- und Technisch-Passagen im
-Sample, am ehesten geeignet, Fahrstil in der reinen Geschwindigkeitsspur
-sichtbar zu machen. Die per DTW gefundenen Cluster (hierarchisch, da
-k-Means keine vorberechnete Distanzmatrix nimmt) stimmen mit den
-Feature-basierten Clustern praktisch nicht ueberein (Adjusted Rand Index
-nahe 0, siehe Ausgabe - Zufallsniveau, nicht "teilweise") - ein ehrlicher
-Befund: rohe Geschwindigkeitsform und aggregierte Pedal-Statistik erfassen
-nicht dasselbe, und keines der beiden Verfahren liefert hier eine
-sonderlich robuste Struktur (siehe Silhouette-Werte oben).
-"""
+"""clustert fahrstile per k-means auf pedal-/schaltstatistik und vergleicht das mit dtw-clustering auf rohen speed-spuren"""
 from __future__ import annotations
 
 import sys
@@ -104,14 +39,12 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def style_features(tel: pd.DataFrame) -> dict:
-    """VORGEHEN 2."""
     t = tel.copy()
     t["dt"] = t["Time"].diff().dt.total_seconds().fillna(0)
     total = t["dt"].sum()
-    # Peak-relativ statt fixer Schwelle (">98"): manche Autos/Sessions
-    # erreichen im Throttle-Kanal nie 100, ohne dass der Fahrer weniger
-    # Vollgas gefahren waere - siehe Docstring (Norris, Bahrain 2024, Peak
-    # 98 statt 100 auf allen vier Runden, mit fixer Schwelle 0% "Vollgas").
+    # Peak-relativ statt fixer Schwelle (">98"). Manche Autos/Sessions
+    # erreichen im Throttle-Kanal nie 100, obwohl der Fahrer trotzdem voll
+    # beschleunigt.
     full = t.loc[t["Throttle"] >= t["Throttle"].max() - 2, "dt"].sum()
     brake = t.loc[t["Brake"].astype(bool), "dt"].sum()
     coast = t.loc[(t["Throttle"] < 5) & (~t["Brake"].astype(bool)), "dt"].sum()
@@ -126,8 +59,7 @@ def style_features(tel: pd.DataFrame) -> dict:
 
 
 def sammle_features() -> pd.DataFrame:
-    """VORGEHEN 1: alle Quicklaps (nicht nur die schnellste) je Fahrer und
-    Strecke, danach auf Fahrerebene gemittelt."""
+    """nutzt alle Quicklaps je Fahrer und Strecke statt nur der schnellsten, danach auf Fahrerebene gemittelt."""
     rows = []
     for gp in STRECKEN:
         ses = f1lab.load(SEASON, gp, "Q", telemetry=True)
@@ -146,8 +78,7 @@ def sammle_features() -> pd.DataFrame:
 
 
 def dtw_distanz(a: np.ndarray, b: np.ndarray, band: int = DTW_BAND) -> float:
-    """Klassisches DTW mit Sakoe-Chiba-Band (keine Zusatzbibliothek noetig,
-    siehe Docstring)."""
+    """Klassisches DTW mit Sakoe-Chiba-Band, keine Zusatzbibliothek nötig."""
     n, m = len(a), len(b)
     d = np.full((n + 1, m + 1), np.inf)
     d[0, 0] = 0.0
@@ -160,9 +91,8 @@ def dtw_distanz(a: np.ndarray, b: np.ndarray, band: int = DTW_BAND) -> float:
 
 
 def dtw_matrix(ses) -> pd.DataFrame:
-    """AUSBAUSTUFE: Speed-Spuren der schnellsten Runde je Fahrer, auf ein
-    gemeinsames Punkteraster gebracht (DTW warpt in der Zeit, braucht aber
-    trotzdem endliche, vergleichbar aufgeloeste Folgen)."""
+    """Speed-Spuren der schnellsten Runde je Fahrer auf ein gemeinsames Punkteraster gebracht.
+    DTW warpt in der Zeit, braucht aber trotzdem endliche, vergleichbar aufgelöste Folgen."""
     spuren = {}
     for drv in ses.drivers:
         abb = ses.get_driver(drv)["Abbreviation"]
@@ -186,7 +116,7 @@ def dtw_matrix(ses) -> pd.DataFrame:
 
 
 def beste_clusteranzahl(X: np.ndarray, kandidaten=range(2, 6)) -> tuple[int, dict]:
-    """VORGEHEN 4: k ueber Silhouette waehlen statt anzunehmen."""
+    """wählt k über den Silhouette Score statt ihn anzunehmen."""
     scores = {}
     for k in kandidaten:
         labels = KMeans(n_clusters=k, n_init=20, random_state=0).fit_predict(X)
@@ -196,17 +126,16 @@ def beste_clusteranzahl(X: np.ndarray, kandidaten=range(2, 6)) -> tuple[int, dic
 
 
 def cluster_interpretation(agg: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
-    """VORGEHEN 4: nicht nur Cluster-Mittel, sondern Abweichung vom
-    Gesamtmittel - das zeigt, WAS ein Cluster tatsaechlich auszeichnet."""
+    """zeigt die Abweichung vom Gesamtmittel statt der rohen Cluster-Mittel. Das macht sichtbar, was ein Cluster tatsächlich auszeichnet."""
     z = (agg - agg.mean()) / agg.std()
     z["cluster"] = labels
     return z.groupby("cluster").mean().round(2)
 
 
-# Cluster sind hier Ergebnis, nicht von vornherein feste Kategorien - bei
-# k>MAX_SERIEN reichen die drei Hausfarben nicht; ein qualitatives Colormap
-# plus unterschiedliche Marker (Redundanz fuer Farbsehschwaeche) uebernimmt
-# dann, dieselbe Ausnahme wie bei Gaengen/DRS-Codes in P09.
+# Cluster sind hier Ergebnis, nicht von vornherein feste Kategorien. Bei
+# k>MAX_SERIEN reichen die drei Hausfarben nicht. Ein qualitatives Colormap
+# plus unterschiedliche Marker (Redundanz für Farbsehschwäche) übernimmt
+# dann, dieselbe Ausnahme wie bei Gängen/DRS-Codes in P09.
 MARKER = ["o", "^", "s", "D", "P", "X", "v"]
 
 

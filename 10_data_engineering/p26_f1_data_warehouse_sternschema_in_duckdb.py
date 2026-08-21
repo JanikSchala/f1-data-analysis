@@ -1,90 +1,4 @@
-"""
-P26 - F1-Data-Warehouse: Sternschema in DuckDB
-==============================================
-
-Eine echte ETL-Pipeline: FastF1 -> Parquet -> DuckDB mit Fakten- und Dimensionstabellen, idempotent und inkrementell.
-
-Kategorie:   Data Engineering
-Niveau:      Profi
-Aufwand:     8-10 h
-Schwerpunkt: Engineering
-Zusaetzliche Pakete: duckdb, pyarrow
-
-WARUM DAS LOHNT
-Das staerkste Projekt fuer eine Data-Engineering-Rolle. Zeigt Schema-Design, Idempotenz, inkrementelle Loads und analytisches SQL - alles, was in Produktion zaehlt.
-
-VORGEHEN
-  1. Schema entwerfen: dim_event, dim_driver, dim_team, fact_lap, fact_pitstop
-  2. Extractor je Session schreiben, der Parquet-Partitionen erzeugt
-  3. Idempotenz: bereits geladene Sessions ueberspringen (Manifest-Tabelle)
-  4. DuckDB-Views ueber die Parquet-Dateien anlegen
-  5. Analytische Queries: Pace-Ranking, Deg je Compound und Strecke
-
-GENUTZTE FASTF1-BAUSTEINE
-  - fastf1 gesamt
-  - pandas.to_parquet
-  - duckdb
-
-AUSBAUSTUFE  [umgesetzt]
-Haenge dbt davor und definiere die Transformationen als Modelle mit Tests -
-dann hast du eine Pipeline, die man wirklich deployen wuerde.
-
-VORGEHEN 1 versprach fuenf Tabellen, gebaut wurde nur fact_lap. Vier fehlten
-komplett: dim_event (wiederverwendet aus f1lab.event_dimension() - dieselbe
-Funktion, die P02 und die Kalender-Dashboardseite fuellt, nicht noch einmal
-neu geschrieben), dim_driver und dim_team (aus session.results extrahiert,
-kein zusaetzlicher API-Call - die Ergebnisse liegen beim Laden der Runden
-ohnehin vor) und fact_pitstop (neu: PitInTime steht auf der Runde VOR der
-Box, PitOutTime auf der Runde DANACH - ein Stopp ist deshalb ein Paar
-aufeinanderfolgender Zeilen desselben Fahrers, keine einzelne). DurationS
-ist damit die volle Boxengassenzeit (~20-25s), nicht die reine Standzeit
-(~2s) - derselbe Unterschied, den P16 schon bei Ergasts duration-Feld
-gefunden hat, hier nur aus Timing-Daten statt der Ergast-API.
-
-VORGEHEN 5 nannte zwei Analysen, die Vorlage baute nur eine (Degradation je
-Compound/Strecke). Pace-Ranking ergaenzt: bereinigte Median-Rundenzeit je
-Fahrer und Event, ueber dim_driver auf den vollen Namen gejoint. Rohe
-Sekunden ueber ein ganzes Jahr zu mitteln waere aber blind fuer
-Streckenlaenge (Monaco ~75s Runden, Spa ~105s) - mart_driver_pace fuehrt
-deshalb eine "rel_pace"-Spalte (Anteil ueber der schnellsten Median-Runde
-desselben Events), erst darueber ist eine saisonweite Rangliste sinnvoll.
-
-AUSBAUSTUFE: kein echtes dbt (nicht in requirements.txt, und ein echtes
-dbt-Projekt bringt eigene Projektstruktur, Adapter-Konfiguration und
-Macro-Sprache mit, die hier den Rahmen sprengen wuerde) - stattdessen eine
-minimale Umsetzung derselben Idee: SQL-Modelldateien unter models/, ein
-kleiner Runner, der sie in Abhaengigkeitsreihenfolge als Views anlegt (per
-Namenskonvention stg_ vor mart_ - echtes dbt loest das ueber {{ ref() }} und
-einen echten DAG, hier nur simuliert), und Tests als Assertion-Queries
-(erwartete Zeilenzahl 0), die vor jedem Report laufen und bei Verstoss laut
-scheitern statt still falsche Zahlen weiterzureichen.
-
-Die Tests haben beim ersten Lauf sofort einen echten Bug gefangen, nicht nur
-demonstriert: "Deleted" ist wie in f1lab.session.not_deleted_mask() bereits
-bekannt eine nullable Spalte (fehlender Wert = nicht gestrichen), aber die
-SQL-Bedingung "NOT Deleted" verwirft unter SQLs Dreiwertlogik jede Zeile mit
-Deleted=NULL statt sie zu behalten - stg_fact_lap_clean war dadurch komplett
-leer. Uebler: jeder einzelne der urspruenglichen Tests bestand trotzdem
-("0 Zeilen verletzen die Regel" ist auf einer leeren Tabelle immer wahr),
-bis ein expliziter Mindestgroessen-Test ergaenzt wurde. Gefixt durch
-Wiederverwendung von f1lab.not_deleted_mask() direkt bei der Extraktion,
-statt das NULL-Verhalten in SQL zu wiederholen.
-
-Nachtrag (2026-08-17): sechste Tabelle fact_overtake aus P38/P39
-(f1lab.overtake_events(), keine Telemetrie noetig - passt damit ins
-bestehende, telemetriefreie Extraktionsmuster von fact_lap/fact_pitstop,
-anders als P39s Ueberholorte gegen DRS-Zonen, die Telemetrie brauchen und
-deshalb bewusst nicht hier landen). Echte Inkrementalitaets-Frage dabei:
-die lokale Warehouse-Datei hatte schon Saison 2024 im Manifest geladen,
-bevor es fact_overtake gab - ein simples "schon geladen? dann ueberspringen"
-haette die neue Tabelle fuer alle bestehenden Runden leer gelassen.
-event_laden() prueft deshalb fact_lap/fact_pitstop (Manifest) und
-fact_overtake (Parquet-Datei) getrennt: fehlt nur Letzteres, wird die
-schon lokal gecachte FastF1-Session erneut geladen (kein Netz noetig) und
-NUR fact_overtake nachgezogen, ohne fact_lap/fact_pitstop neu zu schreiben.
-Neues Mart-Modell mart_overtakes_by_event.sql, ein weiterer Assertion-Test
-(Gainer/Loser nie NULL oder gleich).
-"""
+"""baut ein DuckDB data warehouse mit fakten- und dimensionstabellen aus F1-sessions"""
 from __future__ import annotations
 
 import sys
@@ -128,9 +42,9 @@ def bereits_geladen(con, season: int, rnd: int, sess: str) -> bool:
 
 
 def pitstops_extrahieren(laps: pd.DataFrame) -> pd.DataFrame:
-    """fact_pitstop: PitInTime steht auf der Runde vor der Box, PitOutTime
-    auf der direkt folgenden - ein Stopp ist ein Paar aufeinanderfolgender
-    Zeilen desselben Fahrers, siehe Docstring."""
+    """fact_pitstop: PitInTime steht auf der runde vor der box.
+    PitOutTime steht auf der direkt folgenden runde. ein stopp ist deshalb
+    ein paar aufeinanderfolgender zeilen desselben fahrers."""
     zeilen = []
     ein = laps[laps["PitInTime"].notna()]
     for r in ein.itertuples():
@@ -148,12 +62,8 @@ def pitstops_extrahieren(laps: pd.DataFrame) -> pd.DataFrame:
 
 
 def overtakes_extrahieren(session, season: int, rnd: int, sess: str) -> pd.DataFrame:
-    """fact_overtake: ein Datensatz je Ueberholvorgang (P39s
-    f1lab.overtake_events(), P20-Logik). Braucht wie fact_lap/fact_pitstop
-    keine Telemetrie - passt ins bestehende, telemetriefreie
-    Extraktionsmuster (anders als P39s Ueberholorte gegen DRS-Zonen, die
-    Telemetrie brauchen und deshalb bewusst NICHT hier landen, siehe
-    Docstring)."""
+    """fact_overtake: ein datensatz je ueberholvorgang aus
+    f1lab.overtake_events(). braucht wie fact_lap/fact_pitstop keine telemetrie."""
     events = f1lab.overtake_events(session)
     events = events.rename(columns={"gainer": "Gainer", "loser": "Loser",
                                     "lap": "Lap"})
@@ -178,11 +88,9 @@ def event_laden(season: int, rnd: int, sess: str):
     s = f1lab.load(season, rnd, sess, telemetry=False, weather=False, messages=False)
 
     if schon_geladen:
-        # Nachtrag (2026-08-17): fact_overtake kam nach fact_lap/fact_pitstop
-        # dazu - fuer Runden, die vor diesem Feature schon im Manifest
-        # standen, wird NUR das Fehlende nachgezogen (derselbe, lokal schon
-        # gecachte FastF1-Session-Load, kein Netz noetig), nicht die
-        # bestehenden fact_lap/fact_pitstop-Parquets neu geschrieben.
+        # fact_overtake kam spaeter dazu als fact_lap/fact_pitstop.
+        # fuer laengst geladene runden wird nur das fehlende nachgezogen.
+        # das laeuft ueber denselben lokal gecachten FastF1-load ohne netzzugriff.
         events = overtakes_extrahieren(s, season, rnd, sess)
         ov_pfad.parent.mkdir(parents=True, exist_ok=True)
         events.to_parquet(ov_pfad, index=False)
@@ -198,12 +106,8 @@ def event_laden(season: int, rnd: int, sess: str):
            "IsAccurate", "SpeedST", "SpeedFL",
            "LapTime_s", "Sector1Time_s", "Sector2Time_s", "Sector3Time_s"]
     fact_lap = laps[keep].copy()
-    # "Deleted" ist nullable: fehlender Wert heisst nicht gestrichen, nicht
-    # unbekannt (siehe f1lab.session.not_deleted_mask()). Als sauberes,
-    # nicht-nullable Bool in den Fakt schreiben statt das NULL-Verhalten in
-    # jedem SQL-Modell neu falsch zu machen - genau das ist beim ersten Lauf
-    # dieses Skripts passiert: "WHERE NOT Deleted" verwarf via SQL-Dreiwertlogik
-    # jede Runde mit Deleted=NULL, stg_fact_lap_clean war leer.
+    # Deleted ist nullable. ein fehlender wert heisst nicht gestrichen.
+    # als non-nullable bool schreiben. sonst stolpert SQL bei NULL ueber die dreiwertlogik.
     fact_lap["Deleted"] = ~f1lab.not_deleted_mask(laps["Deleted"]).to_numpy()
     fact_lap["Season"], fact_lap["Round"], fact_lap["Session"] = season, rnd, sess
     fact_lap["EventName"] = s.event["EventName"]
@@ -237,9 +141,8 @@ def event_laden(season: int, rnd: int, sess: str):
 
 
 def dims_schreiben(season: int, driver_frames: list[pd.DataFrame]) -> None:
-    """dim_driver/dim_team: kleine Tabellen, bei jedem Lauf komplett neu
-    geschrieben (kein Manifest noetig - Neuberechnung ist billig genug,
-    um Idempotenz durch schlichtes Ueberschreiben zu bekommen)."""
+    """dim_driver/dim_team: kleine tabellen. bei jedem lauf komplett neu
+    geschrieben statt ueber ein manifest verwaltet. neuberechnung ist billig genug."""
     alle = pd.concat(driver_frames, ignore_index=True).drop_duplicates(
         subset=["Abbreviation"])
 
@@ -255,17 +158,14 @@ def dims_schreiben(season: int, driver_frames: list[pd.DataFrame]) -> None:
     dim_team["Season"] = season
     dim_team.to_parquet(WH / "dim_team" / f"season={season}.parquet", index=False)
 
-    # dim_event behaelt f1lab.event_dimension()s eigene (kleingeschriebene)
-    # Spaltennamen bei, statt sie der PascalCase-Konvention der anderen
-    # Tabellen anzupassen - dieselbe Funktion liefert P02 und dem Kalender-
-    # Dashboard identische Spalten; zwei Schreibweisen fuer dieselbe
-    # Funktion waeren die schlechtere Inkonsistenz.
+    # dim_event behaelt event_dimension()s eigene kleingeschriebene spaltennamen.
+    # dieselbe funktion liefert P02 und dem kalender-dashboard identische spalten.
+    # zwei schreibweisen fuer dieselbe funktion waeren die schlechtere inkonsistenz.
     dim_event = f1lab.event_dimension([season])
     dim_event.to_parquet(WH / "dim_event" / f"season={season}.parquet", index=False)
 
 
 def views_anlegen(con) -> None:
-    """VORGEHEN 4."""
     for tabelle in ("fact_lap", "fact_pitstop", "fact_overtake"):
         con.execute(f"""CREATE OR REPLACE VIEW {tabelle} AS
             SELECT * FROM read_parquet('{WH}/{tabelle}/*/*.parquet',
@@ -276,8 +176,8 @@ def views_anlegen(con) -> None:
 
 
 def modelle_ausfuehren(con) -> list[str]:
-    """AUSBAUSTUFE: .sql-Dateien unter models/ als Views anlegen, stg_ vor
-    mart_ (Namenskonvention statt echtem DAG, siehe Docstring)."""
+    """legt .sql-Dateien unter models/ als views an. reihenfolge stg_ vor mart_.
+    namenskonvention statt echtem DAG."""
     dateien = sorted(MODELS_DIR.glob("*.sql"),
                      key=lambda p: (not p.stem.startswith("stg_"), p.stem))
     namen = []
@@ -289,15 +189,11 @@ def modelle_ausfuehren(con) -> list[str]:
 
 
 def tests_ausfuehren(con) -> None:
-    """AUSBAUSTUFE: Assertion-Queries statt dbt-YAML - jede muss 0 liefern.
+    """assertion-queries statt dbt-yaml. jede muss 0 liefern.
 
-    "nicht_leer" ist kein Randfall: beim ersten Lauf war stg_fact_lap_clean
-    durch den NULL-Bug bei Deleted (siehe Docstring oben) komplett leer, und
-    JEDER der anderen Tests bestand trotzdem - "0 Zeilen verletzen die
-    Regel" ist auf einer leeren Tabelle immer wahr. Ohne einen expliziten
-    Mindestgroessen-Test haetten die "gruenen" Tests eine kaputte Pipeline
-    stillschweigend als korrekt bestaetigt.
-    """
+    "nicht_leer" ist kein randfall. eine leere tabelle erfuellt jede
+    "0 zeilen verletzen die regel"-pruefung automatisch. ohne diesen
+    test wuerde eine kaputte pipeline unbemerkt bleiben."""
     tests = {
         "stg_fact_lap_clean_nicht_leer":
             "SELECT CASE WHEN count(*) < 1000 THEN 1 ELSE 0 END "
@@ -381,10 +277,8 @@ def main():
     """).df().to_string(index=False))
 
     print("\n      Boxenstopp-Ranking je Team (Median-Dauer, s):")
-    # DurationS ist PitOutTime-PitInTime, also die volle Boxengassenzeit
-    # (~20-25s), nicht die reine Standzeit (~2s) - siehe P16, derselbe
-    # Unterschied. Filter entsprechend, nicht auf die dort schon widerlegte
-    # 1.5-6s-Annahme.
+    # DurationS ist PitOutTime minus PitInTime. das ist die volle boxengassenzeit.
+    # nicht die reine standzeit. filterbereich entsprechend weiter gefasst.
     print(con.execute("""
         SELECT Team, count(*) AS stopps, round(median(DurationS), 2) AS median_s
         FROM fact_pitstop

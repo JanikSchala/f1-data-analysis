@@ -1,87 +1,5 @@
-"""
-P40 - Startplatz-Paritaet: hat die Startseite einen echten Effekt?
-====================================================================
-
-"Die schmutzige Seite" ist eine der aeltesten Behauptungen im Motorsport - weniger Gummi auf einer Grid-Haelfte soll Startplaetze dort benachteiligen. Zeigt sich das in echten Daten, und haelt es ueber mehrere Jahre an derselben Strecke?
-
-Kategorie:   Timing & Rundenanalyse
-Niveau:      Profi
-Aufwand:     4-5 h
-Schwerpunkt: Datenanalyse, Statistik
-
-WARUM DAS LOHNT
-Reine Positions-/Ergebnisdaten (kein Telemetrie-Download noetig), aber der
-ganze Cache auf einmal (so viele Saisons wie fuer eine Strecke vorliegen)
-- und eine Lektion in Stichprobengroesse: der naheliegende erste Versuch
-(eine Saison, alle Strecken gepoolt) findet nichts, weil die "saubere"
-Seite je Strecke wechselt und sich beim Poolen gegenseitig aufhebt. Erst
-je Strecke einzeln, ueber mehrere Jahre gepoolt, wird ein Effekt sichtbar
-- und dann muss er gegen Mehrfachtests UND gegen Saison-zu-Saison-
-Konsistenz geprueft werden, nicht nur gegen einen p-Wert.
-
-VORGEHEN
-  1. Startplatz gegen Position am Ende von Runde 1 fuer jeden Start im
-     ganzen Cache laden (f1lab.grid_lap1_positions, keine Telemetrie
-     noetig)
-  2. Boxenstarts ausschliessen (wie P31)
-  3. Parität zuordnen (gerade/ungerade Startplatz) und je Strecke mit
-     mindestens 4 Saisons im Cache testen: ungerade gegen gerade (t-Test)
-  4. Fuer die auffaelligsten Strecken pruefen, ob die Richtung des Effekts
-     in JEDER einzelnen Saison gleich ist, nicht nur im gepoolten Mittel
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Session.results (GridPosition)
-  - Laps.pick_laps(1), PitOutTime
-  - scipy.stats.ttest_ind
-
-Unerwarteter Fund unterwegs: anders als P38/P39 (reine lokale Timing-Daten,
-komplett offline reproduzierbar) braucht ``Session.results`` fuer manche
-Saisons echten Netzzugriff auf Ergast/jolpica, um GridPosition
-nachzuladen - `f1lab.enable_cache()` ohne ``offline=True`` erlaubt das,
-und der erste Durchlauf traf wiederholt das Rate-Limit (429). FastF1 faengt
-das intern ab und faellt auf eine gecachte Antwort zurueck, bricht also
-nicht ab - aber jeder Lauf, der neue 429-Antworten in eine erfolgreiche
-umwandelt, vergroessert den lokalen Cache dauerhaft. Drei Laeufe
-hintereinander lieferten deshalb wachsende Zahlen (2441 -> 3283 -> 3418
-Starts), bevor sie sich stabilisierten - dieselbe Netzwerk-Abhaengigkeit
-wie in P16 (11_Boxenstopps.py), hier aber unerwartet, weil GridPosition
-wie eine reine Lokaldaten-Spalte aussieht.
-
-AUSBAUSTUFE  [umgesetzt]
-Mehrfachtest-Korrektur: bei 25 getesteten Strecken sind bei reinem Zufall
-im Schnitt ~1.2 "signifikante" Treffer bei alpha=0.05 zu erwarten - wie
-viele der gefundenen ueberleben eine Bonferroni-Korrektur (alpha/25)?
-
-3418 Starts (ohne Boxenstarts) ueber 180 Rennen, 37 Strecken (stabilisierter
-Stand, siehe oben). Fuer die 25 Strecken mit mindestens 4 Saisons im Cache:
-fuenf zeigen einen signifikanten Paritaets-Effekt bei alpha=0.05 - Saudi-
-Arabien (p=0.004, ungerade +1.26 Positionen), Australien (p=0.011, +1.03),
-Niederlande (p=0.031, -0.93), Mexiko (p=0.040, -1.40), Belgien (p=0.041,
-+1.06). Das ist mehr als die ~1.2 Zufallstreffer bei 25 Tests, aber KEINE
-der fuenf Strecken uebersteht eine Bonferroni-Korrektur (alpha/25=0.0020) -
-selbst Saudi-Arabiens p=0.004 nicht ganz.
-
-Die AUSBAUSTUFE zeigt trotzdem einen echten Unterschied zwischen den fuenf
-Kandidaten: Saudi-Arabien und die Niederlande zeigen in JEDER einzelnen
-verfuegbaren Saison dieselbe Richtung (Saudi-Arabien 2021-2025 durchweg
-ungerade im Vorteil, +0.22 bis +2.40; Niederlande 2019-2025 durchweg
-gerade im Vorteil, -0.21 bis -2.32) - eine viel staerkere Evidenz als der
-gepoolte p-Wert allein. Mexiko haelt die Richtung in 4 von 5 Saisons (nur
-2022 kippt leicht positiv, +0.20). Australien und Belgien dagegen nicht:
-Australien kippt 2023 in die Gegenrichtung (-0.99) und der gepoolte Befund
-haengt spuerbar an einem einzelnen Ausreisser (2026, +4.21, die kuerzeste
-und unvollstaendigste Saison im Cache); Belgien kippt sogar zweimal
-(2020 -0.88, 2022 -1.39) bei sonst durchweg positiven, teils extremen
-Werten (2019 +3.22) - der unruhigste der fuenf Befunde trotz
-"signifikantem" p-Wert.
-
-Das Gesamtbild: eine echte, konsistente Paritaets-Wirkung existiert
-vermutlich an mindestens zwei Strecken (Saudi-Arabien, Niederlande), ist
-aber die Ausnahme, nicht die Regel - 20 von 25 getesteten Strecken zeigen
-keinen belastbaren Effekt, und selbst die staerksten Kandidaten ueberleben
-keine strenge statistische Korrektur. "Schmutzige Seite" ist damit weder
-Mythos noch Universalgesetz, sondern eine streckenspezifische Ausnahme.
-"""
+"""testet je strecke ob ungerade oder gerade startplaetze einen echten
+positionsvorteil nach runde 1 haben"""
 from __future__ import annotations
 
 import sys
@@ -93,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -117,7 +35,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def zeichne_strecken(ax, ergebnisse: pd.DataFrame) -> None:
-    """VORGEHEN 3-4: Paritaets-Effekt je Strecke, signifikante hervorgehoben."""
+    """paritaets-effekt je strecke. signifikante strecken hervorgehoben."""
     e = ergebnisse.sort_values("diff")
     farben = [SERIEN[1] if p < 0.05 else MUTED for p in e["p"]]
     ax.barh(e["gp"], e["diff"], color=farben, height=0.65)
@@ -133,7 +51,7 @@ def zeichne_strecken(ax, ergebnisse: pd.DataFrame) -> None:
 
 
 def zeichne_konsistenz(ax, saison_diffs: pd.DataFrame) -> None:
-    """AUSBAUSTUFE: haelt die Richtung des Effekts jede einzelne Saison?"""
+    """zeigt ob die richtung des effekts in jeder einzelnen saison haelt."""
     strecken = KONSISTENZ_STRECKEN
     breite = 0.8 / max(len(saison_diffs["season"].unique()), 1)
     for i, s in enumerate(sorted(saison_diffs["season"].unique())):
@@ -173,7 +91,7 @@ def main():
             m = f1lab.grid_lap1_positions(ses)
         except Exception:
             continue
-        time.sleep(0.2)      # ergast/jolpica etwas schonen (siehe Docstring)
+        time.sleep(0.2)      # schont ergast/jolpica gegen das rate-limit
         if m.empty:
             continue
         m["parity"] = np.where(m["grid"].astype(int) % 2 == 0,

@@ -1,103 +1,4 @@
-"""
-P23 - Qualifying-Ergebnis vorhersagen (Machine Learning)
-========================================================
-
-Gradient Boosting auf Features aus Freiem Training, Vorjahresform und Streckencharakteristik - Ziel: Quali-Position.
-
-Kategorie:   Machine Learning
-Niveau:      Profi
-Aufwand:     6-8 h
-Schwerpunkt: Datenanalyse
-Zusaetzliche Pakete: scikit-learn
-
-WARUM DAS LOHNT
-Ein ML-Projekt mit sauberer zeitlicher Validierung (kein Data Leakage!) ist das, was Data-Science-Rollen sehen wollen. Der Domaenenkontext macht es einpraegsam.
-
-VORGEHEN
-  1. Trainingsdaten ueber mehrere Saisons sammeln
-  2. Features: beste FP-Runde, Long-Run-Pace, Vorjahresposition, Teamform
-  3. Target: Quali-Position (oder Quali-Zeit als Prozent zur Pole)
-  4. TimeSeriesSplit statt zufaelligem Split - Rennen kommen chronologisch
-  5. Feature Importance interpretieren
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Session.laps FP1-FP3
-  - Session.results
-  - Laps.pick_quicklaps
-  - sklearn
-
-AUSBAUSTUFE  [umgesetzt]
-Ersetze die Zielgroesse durch die Quali-Zeit relativ zur Pole und vergleiche,
-ob Regression auf Zeit besser funktioniert als auf Position.
-
-Zwei der fuenf VORGEHEN-Punkte fehlten im Code der Vorlage komplett:
-
-VORGEHEN 2 nannte "Vorjahresposition" und "Teamform" als Features, gebaut
-wurden nur die FP-Kennzahlen. Beide ergaenzt: Vorjahresposition ist die
-Quali-Platzierung desselben Fahrers beim selben Event (ueber den
-Eventnamen gematcht, nicht die Rundennummer - die verschiebt sich zwischen
-Saisons) ein Jahr zuvor, fehlt fuer Rookies und neue Strecken (NaN bleibt
-NaN - HistGradientBoostingRegressor kann das nativ, kein Imputer noetig).
-Teamform ist der rollierende Mittelwert der Team-Quali-Positionen aus den
-letzten 3 Rennen DERSELBEN Saison, um einen Schritt verschoben (shift(1)),
-damit das aktuelle Rennen nicht in die eigene Formkurve einfliesst.
-
-VORGEHEN 5 versprach Feature-Importance-Interpretation, der Code der
-Vorlage druckte nur die MAE. Nachgeholt - aber nicht mit
-`.feature_importances_`: HistGradientBoostingRegressor hat dieses Attribut
-schlicht nicht (getestet: hasattr() liefert False), anders als
-GradientBoostingRegressor oder RandomForestRegressor. Permutation Importance
-(sklearn.inspection) auf dem letzten Testfold verwendet.
-
-AUSBAUSTUFE: Zwei Modelle, gleiche Features, unterschiedliches Target -
-Position direkt vs. Quali-Zeit relativ zur Pole (Zielsegment Q3/Q2/Q1 in
-dieser Prioritaet, je nachdem wie weit ein Fahrer kam). Fuer einen fairen
-Vergleich wird die Zeit-Vorhersage je Session in eine Rang-Vorhersage
-umgerechnet (Platz 1 = kleinste vorhergesagte Zeit) und in denselben
-Positions-MAE umgerechnet wie das direkte Modell.
-
-Der erste Lauf hatte einen echten Data-Leak: das Feature-Filter
-`c.endswith("_rel")` fing versehentlich die Zielspalte "zeit_rel" mit ein,
-weil ihr Name zufaellig auch auf "_rel" endet - das Positions-Modell hatte
-damit im Training Zugriff auf (fast) die Antwort und die Permutation
-Importance zeigte "zeit_rel" folgerichtig mit 0.87 als dominantes
-"Feature". Ergebnis danach unbrauchbar schoen (MAE 2.57). Gefixt durch ein
-praeziseres Filter (nur "FP*_rel"-Spalten). Mit sauberer Trennung dreht
-sich der AUSBAUSTUFE-Befund sogar um: Position direkt vorherzusagen (MAE
-3.52) schlaegt den Umweg ueber die Zeit-Vorhersage (MAE 5.20, schlechter
-als die Baseline von 4.98) - das Gegenteil der urspruenglich vermuteten
-Richtung. Plausibler Grund: kleine Fehler in der Zeitvorhersage kippen bei
-eng beieinanderliegenden Fahrern (typisch im Mittelfeld) leicht die
-Reihenfolge, waehrend das direkte Rang-Modell genau darauf optimiert statt
-auf einen Zeitwert, aus dem der Rang erst nachtraeglich rekonstruiert wird.
-Permutation Importance (ebenfalls neu berechnet, ohne Leak): team_form ist
-das mit Abstand wichtigste Feature (0.33), vor der besten FP2-Runde (0.07) -
-die aktuelle Team-Form draengt die einzelne Trainingsrunde deutlich in den
-Hintergrund.
-
-ZWEITE AUSBAUSTUFE: schlaegt ein kleines neuronales Netz (sklearn
-MLPRegressor, kein zusaetzlicher Dependency) das Gradient-Boosting-Modell?
-Erwartung vorab: nein - bei ~1300 Zeilen und 6-8 Features ist das klassische
-Terrain fuer baumbasierte Modelle, nicht fuer ein Netz. Zwei methodische
-Unterschiede muessen dafuer fair gemacht werden, sonst waere der Vergleich
-unehrlich zugunsten des Baums: HistGradientBoostingRegressor behandelt NaN
-nativ als eigenen Split (fehlender Vorjahreswert ist selbst ein Signal -
-Rookie oder neue Strecke), ein MLP kann das nicht und braucht eine explizite
-Imputation (Median), die dieses Signal wegglaettet. Und Baeume sind
-skaleninvariant, ein MLP nicht - StandardScaler vor dem Netz, nicht vor dem
-Baum. Beides steckt in ``mlp_pipeline()``.
-
-Ergebnis bestaetigt die Erwartung nur mit Einschraenkung: MLP MAE 3.66 gegen
-Baum-MAE 3.52 - das Netz liegt tatsaechlich dahinter, aber nur knapp
-(+0.14 Positionen), nicht abgeschlagen, und weit vor der Zeit->Rang-Variante
-oben (5.20) sowie der Baseline (4.98). Mit derselben Datenmenge und
-denselben Features holt ein kleines, sorgfaeltig regularisiertes Netz
-(early_stopping, zwei kleine Hidden-Layer) fast an den baumbasierten
-Vorsprung heran, den Feature-Filter und NaN-Handling dem Baum eigentlich
-verschaffen sollten - ein differenzierterer Befund als "NN verliert klar
-gegen Baum auf kleinen Tabellendaten", eher "beide sind in derselben
-Groessenordnung, der Baum gewinnt knapp".
-"""
+"""sagt die quali-position per gradient boosting und einem mlp aus fp-daten, vorjahresform und teamform vorher"""
 from __future__ import annotations
 
 import sys
@@ -139,8 +40,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def quali_zeit(row: pd.Series) -> float:
-    """Zeit aus dem am weitesten erreichten Segment - das bestimmt die
-    Platzierung, nicht zwingend die insgesamt schnellste Runde."""
+    """Zeit aus dem am weitesten erreichten Segment. Das bestimmt die Platzierung, nicht zwingend die insgesamt schnellste Runde."""
     for seg in ("Q3", "Q2", "Q1"):
         v = row[seg]
         if pd.notna(v):
@@ -149,8 +49,7 @@ def quali_zeit(row: pd.Series) -> float:
 
 
 def sammle_quali(jahre: range) -> pd.DataFrame:
-    """Reine Quali-Ergebnisse ueber alle Jahre - Grundlage fuer
-    Vorjahresposition und Teamform, kein FP-Laden noetig."""
+    """Reine Quali-Ergebnisse über alle Jahre als Grundlage für Vorjahresposition und Teamform. Kein FP-Laden nötig."""
     rows = []
     for jahr in jahre:
         sched = fastf1.get_event_schedule(jahr, include_testing=False)
@@ -177,8 +76,7 @@ def sammle_quali(jahre: range) -> pd.DataFrame:
 
 
 def teamform_anhaengen(quali: pd.DataFrame) -> pd.DataFrame:
-    """Rollierender Team-Formindex, um eine Runde verschoben (kein Blick
-    auf das eigene Rennen)."""
+    """Rollierender Team-Formindex, um eine Runde verschoben. Kein Blick auf das eigene Rennen."""
     quali = quali.sort_values(["season", "round"]).copy()
     je_team_rennen = (quali.groupby(["season", "round", "team"])["position"]
                       .mean().reset_index())
@@ -197,7 +95,7 @@ def vorjahr_anhaengen(quali: pd.DataFrame) -> pd.DataFrame:
 
 
 def fp_features(jahr: int, rnd: int) -> pd.DataFrame:
-    """VORGEHEN 2, FP-Teil: beste Runde und Long-Run-Pace je FP-Session."""
+    """beste Runde und Long-Run-Pace je FP-Session."""
     rows = {}
     for fp in ("FP1", "FP2", "FP3"):
         try:
@@ -237,8 +135,7 @@ def datensatz_bauen(quali_mit_form: pd.DataFrame) -> pd.DataFrame:
 
 
 def positions_mae_aus_zeit(data: pd.DataFrame, pred_zeit: np.ndarray) -> float:
-    """AUSBAUSTUFE: vorhergesagte Zeit je Session in einen Rang uebersetzen,
-    damit beide Modelle in derselben Einheit verglichen werden."""
+    """übersetzt die vorhergesagte Zeit je Session in einen Rang. So werden beide Modelle in derselben Einheit verglichen."""
     tmp = data[["season", "round", "position"]].copy()
     tmp["pred_zeit"] = pred_zeit
     tmp["pred_rang"] = tmp.groupby(["season", "round"])["pred_zeit"].rank()
@@ -246,13 +143,13 @@ def positions_mae_aus_zeit(data: pd.DataFrame, pred_zeit: np.ndarray) -> float:
 
 
 def mlp_pipeline(seed: int = 7) -> Pipeline:
-    """ZWEITE AUSBAUSTUFE: Imputation (Median) + Skalierung + kleines Netz.
+    """Imputation (Median) plus Skalierung vor dem MLP.
 
-    Anders als HistGradientBoostingRegressor braucht ein MLP beides: NaN
-    muessen weg (der Baum haette sie nativ als Split genutzt), und die
-    Features muessen skaliert sein (der Baum ist skaleninvariant, ein
-    Gradientenverfahren nicht). Zwei kleine Hidden-Layer, weil bei ~1300
-    Zeilen und 6-8 Features ein groesseres Netz nur auswendig lernt.
+    Anders als HistGradientBoostingRegressor braucht ein MLP beides. Der Baum
+    nutzt NaN nativ als Split. Ein MLP braucht dafür eine Imputation. Der Baum
+    ist skaleninvariant. Ein Gradientenverfahren ist es nicht. Zwei kleine
+    Hidden-Layer. Ein größeres Netz würde bei dieser Datenmenge nur auswendig
+    lernen.
     """
     return make_pipeline(
         SimpleImputer(strategy="median"),
@@ -280,10 +177,10 @@ def main():
     print(f"      {len(data)} Fahrer-Wochenenden, "
          f"{data[['season', 'round']].drop_duplicates().shape[0]} Events")
 
-    # Nur die FP-Kennzahlen ("FP1_best_rel" etc.) - "zeit_rel" ist das
-    # Ziel des zweiten Modells und darf hier nicht als Feature landen,
-    # sonst lernt das Positions-Modell nur noch diese eine Spalte (siehe
-    # Docstring, das ist beim ersten Lauf tatsaechlich passiert).
+    # Nur die FP-Kennzahlen ("FP1_best_rel" etc.). "zeit_rel" ist das Ziel des
+    # zweiten Modells und darf hier nicht als Feature landen. Sonst lernt das
+    # Positions-Modell nur noch diese eine Spalte. Das ist beim ersten Lauf
+    # tatsaechlich passiert.
     feat = ([c for c in data.columns if c.startswith("FP") and c.endswith("_rel")]
            + ["vorjahr_position", "team_form"])
     data = data.sort_values(["season", "round"]).reset_index(drop=True)

@@ -1,75 +1,4 @@
-"""
-P15 - Undercut-Simulator: Wann lohnt sich der frueher Stopp?
-============================================================
-
-Ein Modell aus Degradation, Pitloss und Out-Lap-Performance, das den Undercut-Gewinn in Sekunden ausrechnet.
-
-Kategorie:   Reifen & Strategie
-Niveau:      Profi
-Aufwand:     5-6 h
-Schwerpunkt: Strategie
-
-WARUM DAS LOHNT
-Das ist Race Strategy in Reinform. Ein funktionierender Simulator mit aus Daten geschaetzten Parametern ist das staerkste Einzelprojekt fuer eine Strategie-Rolle.
-
-VORGEHEN
-  1. Pitloss aus echten Daten schaetzen (Delta In-/Out-Lap zur Normalrunde)
-  2. Degradation je Compound aus Projekt 13 uebernehmen
-  3. Out-Lap-Malus und Warm-up-Verhalten quantifizieren
-  4. Simulation ueber Undercut-Fenster von 1-5 Runden
-  5. Sensitivitaets-Heatmap: Deg x Pitloss
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps PitInTime/PitOutTime
-  - TyreLife
-  - Laps.pick_box_laps
-  - eigene Simulation
-
-AUSBAUSTUFE  [umgesetzt]
-Erweitere um Verkehr: modelliere, wie viele Sekunden der Undercut kostet,
-wenn du hinter einem langsameren Auto herauskommst.
-
-Alle fuenf VORGEHEN-Punkte mit echten Werten aus Spanien 2024 R statt
-angenommenen Konstanten. Zwei Ueberraschungen dabei:
-
-(1) Der ueblicherweise angenommene Out-Lap-Malus von 0.5-1.0 s (VORGEHEN 3)
-laesst sich in den Daten nicht finden. f1lab.pit_loss() misst 23.1 s volle
-Boxengassenzeit (in-lap 4.9 s, out-lap 18.2 s ueber Normalrunde - dominiert
-vom Tempolimit, nicht vom kalten Reifen). Die erste NACH der Boxengasse
-gewertete Runde (TyreLife=1, schon in f1lab.clean_laps()) zeigt gegen den
-eigenen Degradations-Fit praktisch keinen Rest-Malus (Median -0.15 s ueber
-51 belastbare Stints, nicht von 0 unterscheidbar). Der Simulator nutzt
-deshalb 0.0 s als datengestuetzten Out-Lap-Malus statt der ueblichen
-Faustregel - das macht den Undercut in diesem Modell noch attraktiver, als
-die Faustregel vermuten laesst.
-
-(2) undercut_gain() waechst mit wachsendem n_laps unbegrenzt, sobald die
-neue Mischung dauerhaft flacher degradiert als die alte (SOFT 0.127 s/Runde
-gegen MEDIUM 0.089 s/Runde in Spanien) - es gibt kein inneres Optimum, "je
-laenger warten, desto besser" ist im Modell immer wahr. Das ist kein Bug,
-sondern eine Grenze des linearen Modells: es ignoriert, dass Degradation ab
-einem Punkt in einen Cliff kippt (P13), dass Reifen nicht ewig halten, und
-dass Verkehr/Undercut-Fenster real begrenzt sind. Statt eines erfundenen
-Optimums zeigt die Sensitivitaets-Grafik deshalb den Gewinn bei einem festen,
-strategisch ueblichen Fenster (3 Runden) ueber Degradations-Differenz und
-Out-Lap-Malus (VORGEHEN 5 nennt "Deg x Pitloss" - Pitloss faellt aber laut
-der eigenen Kommentierung in core.undercut_gain() aus der Rechnung heraus,
-weil er fuer beide Fahrer gleich anfaellt; die tatsaechlich wirksamen zwei
-Groessen sind Degradations-Differenz und Out-Lap-Malus).
-
-AUSBAUSTUFE Verkehr: die naheliegende Zahl - wie viel kostet Distanz zum
-Vordermann - ist ueber f1lab.dirty_air_effect() (P32) fuer alle 20 Fahrer
-in Spanien 2024 R geschaetzt. Ergebnis: kein einziger Fahrer-Fit erreicht
-das im Projekt sonst verwendete Belastbarkeits-Kriterium R^2 >= 0.3
-(DegradationFit.is_reliable) - Median-Steigung +0.0031 s je Prozentpunkt
-Nahanteil, Spanne -0.006 bis +0.009, hoechstes R^2 0.14. Eine echte
-Verkehrs-Erweiterung des Simulators braucht deshalb mehr als ein Rennen;
-mit diesem einen laesst sie sich nicht seriös parametrisieren. Als Beleg
-dafuer, wie selten der Fall im Rennen ueberhaupt vorkommt: von allen
-Boxenstopps mit mindestens 3 nachfolgenden gewerteten Runden gerieten nur
-zwei (Ocon, Zhou) ueberhaupt in echten Nahverkehr (>=50 % Nahanteil,
-zusammen drei betroffene Runden) direkt nach dem Stopp.
-"""
+"""simuliert den undercut-gewinn aus degradation, pitloss und out-lap-malus und prüft den einfluss von verkehr nach dem stopp"""
 from __future__ import annotations
 
 import sys
@@ -80,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # kein fenster, nur dateien
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -102,8 +31,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def pitloss_zerlegen(ses) -> tuple[float, float, float]:
-    """VORGEHEN 1: Pitloss wie f1lab.pit_loss(), aber in/out getrennt
-    ausgewiesen statt nur die Summe."""
+    """wie f1lab.pit_loss(), aber in-lap und out-lap getrennt statt nur die summe."""
     laps = ses.laps.copy()
     laps["sec"] = laps["LapTime"].dt.total_seconds()
     baseline = (f1lab.clean_laps(ses).groupby("Driver")["LapTime"]
@@ -117,9 +45,7 @@ def pitloss_zerlegen(ses) -> tuple[float, float, float]:
 
 
 def out_lap_malus_schaetzen(ses) -> np.ndarray:
-    """VORGEHEN 3: Residuum der ersten gewerteten Runde eines Stints
-    (TyreLife=Minimum) gegen den eigenen Degradations-Fit. Positiv heisst
-    langsamer als der Trend vorhersagt - das waere der gesuchte Malus."""
+    """residuum der ersten gewerteten runde eines stints gegen den eigenen degradations-fit. positiv heisst langsamer als der trend vorhersagt."""
     laps = f1lab.clean_laps(ses).copy()
     laps["sec"] = laps["LapTime"].dt.total_seconds()
     laps["corrected"] = f1lab.fuel_correct(
@@ -142,8 +68,7 @@ def out_lap_malus_schaetzen(ses) -> np.ndarray:
 
 
 def verkehr_nach_stopp(ses) -> pd.DataFrame:
-    """AUSBAUSTUFE, Teil 1: dirty_air_effect() je Fahrer, plus wie oft ein
-    Fahrer unmittelbar nach dem eigenen Stopp in echten Nahverkehr geraet."""
+    """dirty_air_effect() je fahrer plus wie oft ein fahrer unmittelbar nach dem eigenen stopp in echten nahverkehr gerät."""
     stint_map = ses.laps.set_index(["Driver", "LapNumber"])["Stint"]
     zeilen = []
     for drv in ses.drivers:
@@ -168,7 +93,7 @@ def verkehr_nach_stopp(ses) -> pd.DataFrame:
 
 
 def zeichne_fenster(ax, deg_alt: float, deg_neu: float, malus: float) -> None:
-    """VORGEHEN 4: Gewinn ueber das Undercut-Fenster, 1-8 Runden."""
+    """gewinn über das undercut-fenster, 1-8 runden."""
     ns = np.arange(1, 9)
     gains = [f1lab.undercut_gain(deg_alt, deg_neu, n, malus) for n in ns]
     ax.plot(ns, gains, marker="o", color=SERIEN[0], lw=2, ms=6)
@@ -184,11 +109,10 @@ def zeichne_fenster(ax, deg_alt: float, deg_neu: float, malus: float) -> None:
 
 
 def zeichne_sensitivitaet(ax, deg_neu: float) -> None:
-    """VORGEHEN 5 (angepasst, siehe Docstring): Gewinn bei 3 Runden ueber
-    Degradations-Differenz und Out-Lap-Malus."""
-    # Untergrenze bei deg_neu: darunter degradiert die "alte" Mischung
-    # langsamer als die neue - kein realistisches Undercut-Szenario, wuerde
-    # die Skala nur mit stark negativen Werten stauchen.
+    """gewinn bei 3 runden über degradations-differenz und out-lap-malus."""
+    # untergrenze bei deg_neu weil die "alte" mischung sonst langsamer
+    # degradiert als die neue. kein realistisches undercut-szenario und
+    # würde die skala nur mit stark negativen werten stauchen
     degs_alt = np.round(np.arange(deg_neu, 0.21, 0.01), 3)
     malusse = np.round(np.arange(0.0, 1.3, 0.1), 2)
     grid = np.array([[f1lab.undercut_gain(d, deg_neu, 3, m) for m in malusse]
@@ -212,8 +136,7 @@ def zeichne_sensitivitaet(ax, deg_neu: float) -> None:
 
 
 def zeichne_verkehr(ax, tab: pd.DataFrame) -> None:
-    """AUSBAUSTUFE, Teil 2: Steigung je Fahrer, gegen die im Projekt sonst
-    genutzte Belastbarkeitsschwelle R^2 >= 0.3."""
+    """steigung je fahrer gegen die im projekt sonst genutzte belastbarkeitsschwelle R^2 >= 0.3."""
     t = tab.sort_values("slope")
     farben = [SERIEN[0] if r >= 0.3 else MUTED for r in t["r2"]]
     ax.barh(t["driver"], t["slope"], color=farben, height=0.65)

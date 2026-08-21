@@ -1,70 +1,4 @@
-"""
-P31 - Startphasen-Analyse: Wer gewinnt die ersten 500 Meter?
-============================================================
-
-Beschleunigung von der Startaufstellung bis Kurve 1 - Reaktion, Traktion und Positionsgewinn.
-
-Kategorie:   Telemetrie
-Niveau:      Fortgeschritten
-Aufwand:     3-4 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Der Start ist die groesste Einzelchance im Rennen. Positionsdaten der ersten Runde sauber zu isolieren ist knifflig und zeigt Datensinn.
-
-VORGEHEN
-  1. Erste Runde aller Fahrer selektieren
-  2. Telemetrie auf die ersten Sekunden nach Startfreigabe schneiden
-  3. Zeit bis 100/200 km/h und Distanz nach 5 s berechnen
-  4. Positionsgewinn Grid -> Ende Runde 1 gegenueberstellen
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps.pick_laps
-  - Lap.get_car_data / Telemetry.add_distance
-  - Telemetry.slice_by_time
-  - Session.results GridPosition
-
-AUSBAUSTUFE  [umgesetzt]
-Starts derselben Fahrer ueber eine Saison vergleichen und pruefen, ob sich
-etwas an der Launch-Performance veraendert.
-
-Neun Rennen 2024 mit Telemetrie im Cache (Bahrain bis Monaco durchgehend,
-dann Monza - Runde 9 bis 16 fehlt telemetrisch komplett). Kein
-Kupplungs-Update ist dokumentiert bekannt, also wird hier nicht behauptet,
-eines gefunden zu haben - gemessen wird nur, ob und wie stark sich die
-Launch-Staerke innerhalb der Saison bewegt, ohne Ursache zu unterstellen.
-
-Panel 1 (Oesterreich 2024 allein) zeigt dabei den Cross-Check zu Panel 2:
-Positionsgewinn in Runde 1 korreliert kaum mit reiner Launch-Distanz - Leclerc
-verliert trotz guter Startdistanz zwoelf Plaetze, vermutlich Kurve-1-Chaos.
-Verkehr und Startplatz ueberlagern die reine Beschleunigung.
-
-Nebenbei: VORGEHEN Punkt 2 nennt Telemetry.slice_by_time als Baustein, die
-urspruengliche Fassung nutzte ihn aber nie - die Fensterung passierte per
-Hand ueber einen Zeit-Array-Vergleich. start_kennzahlen() unten schneidet
-jetzt tatsaechlich per slice_by_time auf die ersten acht Sekunden.
-
-Ein echter Datenfehler beim ersten Lauf gegen Oesterreich 2024: Zhou stand
-mit m_nach_5s = 0 in der Tabelle, kein Ausreisser, sondern PitOutTime war
-gesetzt - er startete aus der Box, nicht vom Grid. Ein Boxenstart hat eine
-komplett andere Anfangsgeschwindigkeit (Boxengassen-Limit statt Ampel-Start)
-und gehoert nicht in denselben Vergleich. lap1["PitOutTime"].notna() filtert
-das jetzt vor der Berechnung heraus, in beiden Funktionen.
-
-Ein zweiter, subtilerer Fehler waere fast unbemerkt geblieben: die rohe
-Distanz nach 5 s ueber die Saison geplottet zeigte einen dramatischen
-Einbruch zwischen Monaco und Monza - keine Launch-Schwaeche, sondern
-Streckengeometrie (Monza deckt in 5 s ein Vielfaches der Distanz von Monaco
-ab). Der Saisontrend zeigt deshalb nicht die rohe Distanz, sondern die
-Abweichung vom Feld-Mittel desselben Rennens - erst die ist ueber
-unterschiedliche Strecken hinweg vergleichbar.
-
-Die Startkennzahlen selbst (frueher start_kennzahlen()/renn_start()) sitzen
-seit der App-Integration in f1lab.start_performance() - dieselbe Funktion
-wie der Start-Reiter der Renndynamik-Seite im Dashboard. saison_scan() ruft
-sie jetzt nur noch einmal je Rennen auf, statt den Fahrer-Loop hier zu
-wiederholen.
-"""
+"""misst launch-distanz und positionsgewinn nach dem start und vergleicht die launch-staerke ueber die saison"""
 from __future__ import annotations
 
 import sys
@@ -75,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # schreibt nur dateien ohne fenster
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -97,8 +31,7 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def saison_scan(events: list[str], year: int = SEASON) -> pd.DataFrame:
-    """AUSBAUSTUFE: dieselben Startkennzahlen (f1lab.start_performance,
-    siehe VORGEHEN 1-4) ueber mehrere Rennen."""
+    """berechnet dieselben startkennzahlen ueber mehrere rennen."""
     zeilen = []
     for gp in events:
         ses = f1lab.load(year, gp, "R", telemetry=True)
@@ -128,10 +61,8 @@ def zeichne_positionsgewinn(ax, df: pd.DataFrame) -> None:
 
 
 def zeichne_saisontrend(ax, saison: pd.DataFrame, top_n: int = 3) -> None:
-    """Nicht die rohe Distanz, sondern die Abweichung vom Feld-Mittel dieses
-    Rennens - Monza deckt in 5 s um ein Vielfaches mehr Strecke ab als
-    Monaco, das ist Streckengeometrie, keine Launch-Qualitaet. Erst die
-    Abweichung vom selben Rennen ist ueber die Saison vergleichbar."""
+    """zeigt die abweichung vom feld-mittel des jeweiligen rennens statt der rohen distanz.
+    rohe distanz haengt stark von der streckengeometrie ab und ist ueber die saison nicht vergleichbar."""
     saison = saison.copy()
     saison["rel_m"] = saison.groupby("event")["m_nach_5s"].transform(
         lambda s: s - s.mean())

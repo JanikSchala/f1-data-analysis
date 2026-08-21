@@ -1,7 +1,7 @@
-"""FastF1-Anbindung: Sessions laden, Runden filtern, Stints extrahieren.
+"""FastF1-anbindung: sessions laden, runden filtern, stints extrahieren.
 
-Trennt die Datenbeschaffung von der Rechnung in :mod:`f1lab.core`. Alles hier
-braucht Netzzugriff beim ersten Aufruf, danach den Cache.
+trennt die datenbeschaffung von der rechnung in :mod:`f1lab.core`. alles hier
+braucht netzzugriff beim ersten aufruf, danach den cache.
 """
 from __future__ import annotations
 
@@ -39,44 +39,44 @@ from .core import (
 
 CACHE_DIR = Path.home() / "f1_cache"
 
-# TrackStatus-Codes aus dem Live-Timing-Feed
+# TrackStatus-codes aus dem live-timing-feed
 TRACK_STATUS = {
     "1": "gruen", "2": "gelb", "4": "safety car",
     "5": "rot", "6": "vsc", "7": "vsc endet",
 }
 
-# FastF1 legt je Session einen Ordner mit ausgeschriebenem Namen an. Fuer die
-# Bestandsaufnahme muss der Weg zurueck zur Kennung gehen, die get_session()
-# erwartet. Sprint-Quali heisst je nach Jahr anders, landet aber auf "SQ".
+# FastF1 legt je session einen ordner mit ausgeschriebenem namen an. fuer die
+# bestandsaufnahme muss der weg zurueck zur kennung gehen, die get_session()
+# erwartet. sprint-quali heisst je nach jahr anders, landet aber auf "SQ".
 SESSION_DIR_IDENT = {
     "Practice_1": "FP1", "Practice_2": "FP2", "Practice_3": "FP3",
     "Qualifying": "Q", "Sprint": "S", "Sprint_Qualifying": "SQ",
     "Sprint_Shootout": "SQ", "Race": "R",
 }
 
-# Ein Session-Ordner existiert schon, sobald FastF1 ihn einmal angefasst hat.
-# Erst diese Datei belegt, dass Timing-Daten wirklich drin liegen; Telemetrie
-# ist ein eigener, viel groesserer Download und fehlt oft.
+# ein session-ordner existiert schon, sobald FastF1 ihn einmal angefasst hat.
+# erst diese datei belegt, dass timing-daten wirklich drin liegen; telemetrie
+# ist ein eigener, viel groesserer download und fehlt oft.
 TIMING_MARKER = "_extended_timing_data.ff1pkl"
 TELEMETRY_MARKER = "car_data.ff1pkl"
 
-# "2024-09-01_Italian_Grand_Prix" -> Datum + Name
+# "2024-09-01_Italian_Grand_Prix" -> datum + name
 _EVENT_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})_(.+)$")
 
 _active_cache: Path | None = None
 
 
 def find_cache(path: Path | str | None = None) -> Path | None:
-    """Ersten vorhandenen Cache-Ordner suchen, ohne einen anzulegen.
+    """ersten vorhandenen cache-ordner suchen, ohne einen anzulegen.
 
-    Reihenfolge: explizites Argument, Umgebungsvariable ``F1_CACHE``, der
-    Standardpfad ``~/f1_cache``, und zuletzt ein ``f1_cache`` neben dem
-    Repository. Der letzte Fall deckt die Ablage ab, in der Repo und Cache
-    Geschwister in einem Projektordner sind.
+    reihenfolge: explizites argument, umgebungsvariable ``F1_CACHE``, der
+    standardpfad ``~/f1_cache``, und zuletzt ein ``f1_cache`` neben dem
+    repository. der letzte fall deckt die ablage ab, in der repo und cache
+    geschwister in einem projektordner sind.
 
     Returns:
-        Pfad oder None, wenn nirgends ein Cache liegt. Ein fehlender Cache
-        ist kein Fehler - er ist der Zustand vor dem ersten Warmup.
+        pfad oder None, wenn nirgends ein cache liegt. ein fehlender cache
+        ist kein fehler: er ist der zustand vor dem ersten warmup.
     """
     env = os.environ.get("F1_CACHE")
     kandidaten = [
@@ -93,14 +93,14 @@ def find_cache(path: Path | str | None = None) -> Path | None:
 
 def enable_cache(path: Path | str | None = None,
                  offline: bool = False) -> Path:
-    """Cache aktivieren. Ohne Cache dauert jede Session-Ladung Minuten.
+    """cache aktivieren. ohne cache dauert jede session-ladung minuten.
 
     Args:
-        path: Zielordner. Ohne Angabe der Standardpfad ``~/f1_cache``.
-        offline: Schaltet jeden Netzzugriff ab. Sessions, die nicht im Cache
+        path: zielordner. ohne angabe der standardpfad ``~/f1_cache``.
+        offline: schaltet jeden netzzugriff ab. sessions, die nicht im cache
             liegen, scheitern dann sofort, statt minutenlang zu laden und ins
-            Rate-Limit zu laufen - das ist fuer eine Oberflaeche das
-            gewuenschte Verhalten.
+            rate-limit zu laufen. das ist fuer eine oberflaeche das
+            gewuenschte verhalten.
     """
     global _active_cache
     p = Path(path) if path else CACHE_DIR
@@ -112,32 +112,32 @@ def enable_cache(path: Path | str | None = None,
 
 
 def cache_ready() -> bool:
-    """Ob enable_cache() in diesem Prozess schon lief.
+    """ob enable_cache() in diesem prozess schon lief.
 
-    Fuer Aufrufer, die eine Session laden koennen muessen, ohne eine von
-    aussen bereits gesetzte Cache-Konfiguration stillschweigend zu
-    ueberschreiben - siehe f1analyze/data.py: load_session() rief bislang
-    bei JEDEM Aufruf enable_cache() ohne Argumente auf und hat damit einen
-    von Tests (tests/conftest.py) absichtlich gesetzten Offline-Fixture-
-    Cache-Pfad wieder auf den Standardpfad zurueckgesetzt - ein echter,
-    lange unbemerkter Bug, weil die CLI-Tests dadurch nie wirklich offline
-    liefen, sondern nur zufaellig genug im lokal warmgelaufenen Cache
-    fuendig wurden (siehe CLAUDE.md, f1analyze-Nachtrag)."""
+    fuer aufrufer, die eine session laden koennen muessen, ohne eine von
+    aussen bereits gesetzte cache-konfiguration stillschweigend zu
+    ueberschreiben. siehe f1analyze/data.py: load_session() rief bislang
+    bei JEDEM aufruf enable_cache() ohne argumente auf und hat damit einen
+    von tests (tests/conftest.py) absichtlich gesetzten offline-fixture-
+    cache-pfad wieder auf den standardpfad zurueckgesetzt. ein echter,
+    lange unbemerkter bug: die CLI-tests liefen dadurch nie wirklich
+    offline, sondern wurden nur zufaellig genug im lokal warmgelaufenen
+    cache fuendig (siehe CLAUDE.md, f1analyze-nachtrag)."""
     return _active_cache is not None
 
 
 def cached_sessions(cache_dir: Path | str | None = None) -> pd.DataFrame:
-    """Bestandsaufnahme des Caches, allein aus der Ordnerstruktur.
+    """bestandsaufnahme des caches, allein aus der ordnerstruktur.
 
-    Liest den Cache so, wie FastF1 ihn anlegt
+    liest den cache so, wie FastF1 ihn anlegt
     (``<cache>/<Jahr>/<Datum>_<Event>/<Datum>_<Session>/``), und braucht dafuer
-    weder Netz noch einen Session-Download. Damit laesst sich eine Auswahl
+    weder netz noch einen session-download. damit laesst sich eine auswahl
     anbieten, die nur zeigt, was auch wirklich auswertbar ist.
 
     Returns:
-        Ein Datensatz je Session mit Saison, Event, Datum, Kennung und zwei
-        Flags: ``timing`` fuer Rundendaten, ``telemetry`` fuer den
-        Positions- und Fahrzeugkanal. Leerer Rahmen, wenn kein Cache da ist.
+        ein datensatz je session mit saison, event, datum, kennung und zwei
+        flags: ``timing`` fuer rundendaten, ``telemetry`` fuer den
+        positions- und fahrzeugkanal. leerer rahmen, wenn kein cache da ist.
     """
     cols = ["season", "event", "event_date", "ident", "timing", "telemetry"]
     root = find_cache(cache_dir)
@@ -180,17 +180,17 @@ def cached_sessions(cache_dir: Path | str | None = None) -> pd.DataFrame:
 def load(year: int, gp, identifier: str = "R",
          telemetry: bool = False, weather: bool = False,
          messages: bool = False):
-    """Session laden und cachen.
+    """session laden und cachen.
 
     Args:
-        year: Saison, Telemetrie gibt es erst ab 2018.
-        gp: Name ("Monza"), Land ("Italy") oder Rundennummer (14).
+        year: saison, telemetrie gibt es erst ab 2018.
+        gp: name ("Monza"), land ("Italy") oder rundennummer (14).
         identifier: FP1 FP2 FP3 Q S SQ R.
-        telemetry: Nur einschalten, wenn wirklich gebraucht - der Download
-            ist um ein Vielfaches groesser.
+        telemetry: nur einschalten, wenn wirklich gebraucht. der download
+            ist um ein vielfaches groesser.
 
-    Ein zuvor gesetzter Cache bleibt erhalten: wer :func:`enable_cache` mit
-    eigenem Pfad oder ``offline=True`` aufgerufen hat, soll das hier nicht
+    ein zuvor gesetzter cache bleibt erhalten: wer :func:`enable_cache` mit
+    eigenem pfad oder ``offline=True`` aufgerufen hat, soll das hier nicht
     stillschweigend zurueckgesetzt bekommen.
     """
     if _active_cache is None:
@@ -201,36 +201,36 @@ def load(year: int, gp, identifier: str = "R",
 
 
 def not_deleted_mask(deleted) -> pd.Series:
-    """True fuer Runden, die NICHT von der Rennleitung gestrichen wurden.
+    """true fuer runden, die NICHT von der rennleitung gestrichen wurden.
 
-    Die Spalte ``Deleted`` ist ein nullable Boolean. Neben True und False
-    steht dort None, wenn zu einer Runde nichts gemeldet wurde - was der
-    Normalfall ist. FastF1s ``pick_not_deleted()`` invertiert die Spalte
+    die spalte ``Deleted`` ist ein nullable boolean. neben true und false
+    steht dort None, wenn zu einer runde nichts gemeldet wurde. das ist der
+    normalfall. FastF1s ``pick_not_deleted()`` invertiert die spalte
     direkt mit ``~``, und genau daran scheitert pandas bei object-dtype:
 
         TypeError: bad operand type for unary ~
 
-    Deswegen hier explizit: fehlende Angabe heisst "nicht gestrichen".
+    deswegen hier explizit: fehlende angabe heisst "nicht gestrichen".
     """
     s = pd.Series(deleted)
     if s.empty:
         return s.astype(bool)
     # .where statt .fillna: fillna auf object-dtype loest in pandas 2.2
-    # eine Downcasting-Warnung aus, die in pandas 3 zum Verhaltenswechsel
-    # wird. .where ist in beiden Versionen eindeutig.
+    # eine downcasting-warnung aus, die in pandas 3 zum verhaltenswechsel
+    # wird. .where ist in beiden versionen eindeutig.
     return ~s.where(s.notna(), False).astype(bool)
 
 
 def clean_laps(session, threshold: float = 1.07) -> pd.DataFrame:
-    """Runden, auf denen sich Pace-Aussagen aufbauen lassen.
+    """runden, auf denen sich pace-aussagen aufbauen lassen.
 
-    Entfernt in dieser Reihenfolge:
-      - Boxenrunden (In- und Out-Lap sind keine Renn-Runden)
-      - unplausible Runden (FastF1 markiert sie ueber IsAccurate)
-      - alles ausser gruener Flagge (Safety Car verschiebt den Median
-        um mehrere Zehntel)
-      - von der Rennleitung gestrichene Runden
-      - Ausreisser ueber threshold mal Bestzeit
+    entfernt in dieser reihenfolge:
+      - boxenrunden (in- und out-lap sind keine renn-runden)
+      - unplausible runden (FastF1 markiert sie ueber IsAccurate)
+      - alles ausser gruener flagge (safety car verschiebt den median
+        um mehrere zehntel)
+      - von der rennleitung gestrichene runden
+      - ausreisser ueber threshold mal bestzeit
     """
     laps = (session.laps
             .pick_wo_box()
@@ -257,19 +257,19 @@ class PaceEntry:
 def race_pace(session, threshold: float = 1.07, min_laps: int = 8,
               n_resamples: int = 1000,
               kg_per_lap: float = FUEL_KG_PER_LAP) -> list[PaceEntry]:
-    """Bereinigte, treibstoffkorrigierte Race Pace je Fahrer, sortiert vom
-    Schnellsten.
+    """bereinigte, treibstoffkorrigierte race pace je fahrer, sortiert vom
+    schnellsten.
 
-    Jeder Eintrag traegt ein Bootstrap-Intervall. Ueberlappen sich zwei
-    Intervalle, ist der Unterschied mit diesen Daten nicht belegbar - das
-    ist bei benachbarten Fahrern regelmaessig der Fall.
+    jeder eintrag traegt ein bootstrap-intervall. ueberlappen sich zwei
+    intervalle, ist der unterschied mit diesen daten nicht belegbar. das
+    ist bei benachbarten fahrern regelmaessig der fall.
 
-    Ohne :func:`fuel_correct` haengt der Median zusaetzlich davon ab, *wann*
-    im Rennen die sauberen Runden eines Fahrers liegen - zwei Fahrer mit
-    identischem Tempo koennten sonst unterschiedlich abschneiden, nur weil
-    eine Safety-Car-Phase dem einen mehr fruehe (schwere), dem anderen mehr
-    spaete (leichte) Runden uebrig laesst. ``kg_per_lap=0`` schaltet die
-    Korrektur ab (fuer den Vergleich in P04).
+    ohne :func:`fuel_correct` haengt der median zusaetzlich davon ab, *wann*
+    im rennen die sauberen runden eines fahrers liegen. zwei fahrer mit
+    identischem tempo koennten sonst unterschiedlich abschneiden, nur weil
+    eine safety-car-phase dem einen mehr fruehe (schwere), dem anderen mehr
+    spaete (leichte) runden uebrig laesst. ``kg_per_lap=0`` schaltet die
+    korrektur ab (fuer den vergleich in P04).
     """
     laps = clean_laps(session, threshold).copy()
     laps["sec"] = fuel_correct(
@@ -291,7 +291,7 @@ def race_pace(session, threshold: float = 1.07, min_laps: int = 8,
 
 
 def pace_table(session, **kwargs) -> pd.DataFrame:
-    """race_pace() als DataFrame mit Delta zum Schnellsten."""
+    """race_pace() als DataFrame mit delta zum schnellsten."""
     entries = race_pace(session, **kwargs)
     if not entries:
         return pd.DataFrame()
@@ -308,7 +308,7 @@ def pace_table(session, **kwargs) -> pd.DataFrame:
 
 # --------------------------------------------------------------- Stints
 def stints(session) -> pd.DataFrame:
-    """Ein Datensatz je Stint: Fahrer, Compound, Start, Ende, Laenge."""
+    """ein datensatz je stint: fahrer, compound, start, ende, laenge."""
     df = (session.laps
           .groupby(["Driver", "Stint", "Compound"], dropna=False)["LapNumber"]
           .agg(start="min", end="max", laps="count")
@@ -319,10 +319,10 @@ def stints(session) -> pd.DataFrame:
 
 def degradation(session, threshold: float = 1.10,
                 min_laps: int = 6) -> pd.DataFrame:
-    """Degradation je Stint, mit herausgerechnetem Treibstoffeffekt.
+    """degradation je stint, mit herausgerechnetem treibstoffeffekt.
 
-    Ohne die Korrektur wird die Degradation systematisch unterschaetzt: das
-    Auto wird leichter, waehrend der Reifen abbaut, und beide Effekte heben
+    ohne die korrektur wird die degradation systematisch unterschaetzt: das
+    auto wird leichter, waehrend der reifen abbaut, und beide effekte heben
     sich teilweise auf.
     """
     laps = clean_laps(session, threshold).copy()
@@ -344,10 +344,10 @@ def degradation(session, threshold: float = 1.10,
             "team": str(g["Team"].iloc[0]),
             "stint": int(stint),
             "compound": str(g["Compound"].iloc[0]),
-            # FreshTyre (siehe P13-Erweiterung, bislang nirgends gelesen):
-            # ein wiederverwendeter Satz hat Vorverschleiss, den TyreLife
-            # allein nicht abbildet - konstant innerhalb eines Stints,
-            # deshalb der Wert der ersten Runde.
+            # FreshTyre (siehe P13-erweiterung, bislang nirgends gelesen):
+            # ein wiederverwendeter satz hat vorverschleiss, den TyreLife
+            # allein nicht abbildet. konstant innerhalb eines stints,
+            # deshalb der wert der ersten runde.
             "fresh": bool(g["FreshTyre"].iloc[0]),
             "laps": fit.n,
             "deg_s_per_lap": round(fit.slope, 4),
@@ -359,7 +359,7 @@ def degradation(session, threshold: float = 1.10,
 
 
 def degradation_by_compound(session, **kwargs) -> pd.DataFrame:
-    """Mittlere Degradation je Reifenmischung, nur belastbare Fits."""
+    """mittlere degradation je reifenmischung, nur belastbare fits."""
     deg = degradation(session, **kwargs)
     if deg.empty:
         return deg
@@ -372,24 +372,24 @@ def degradation_by_compound(session, **kwargs) -> pd.DataFrame:
 def race_config_from_session(session, fit_min_laps: int = 6,
                              optimizer_min_stint: int = 4,
                              require_two_compounds: bool = True) -> RaceConfig:
-    """RaceConfig fuer den Strategie-Optimierer (P35) aus echter Degradation
-    (P13) und echtem Pitloss dieser Session, statt Parameter von Hand zu
+    """RaceConfig fuer den strategie-optimierer (P35) aus echter degradation
+    (P13) und echtem pitloss dieser session, statt parameter von hand zu
     setzen.
 
-    Je Mischung: Median von Steigung und Achsenabschnitt ueber alle
-    belastbaren Stint-Fits (``DegradationFit.is_reliable``), ``max_age`` aus
-    der laengsten tatsaechlich gefahrenen Stint-Laenge dieser Mischung - eine
-    vorsichtige Untergrenze, kein gemessenes Limit: niemand testet in einem
-    echten Rennen, wie lange ein Reifen wirklich haelt.
+    je mischung: median von steigung und achsenabschnitt ueber alle
+    belastbaren stint-fits (``DegradationFit.is_reliable``), ``max_age`` aus
+    der laengsten tatsaechlich gefahrenen stint-laenge dieser mischung. eine
+    vorsichtige untergrenze, kein gemessenes limit: niemand testet in einem
+    echten rennen, wie lange ein reifen wirklich haelt.
 
-    ``base_time`` ergibt sich aus ``fit.intercept + fit.slope``: der Fit
-    extrapoliert auf Reifenalter 0 (``intercept``), TyreLife ist bei FastF1
-    aber einsbasiert - die erste echte Runde auf dem Satz hat TyreLife 1,
+    ``base_time`` ergibt sich aus ``fit.intercept + fit.slope``: der fit
+    extrapoliert auf reifenalter 0 (``intercept``), TyreLife ist bei FastF1
+    aber einsbasiert. die erste echte runde auf dem satz hat TyreLife 1,
     also ``intercept + 1 * slope``.
 
     Raises:
-        ValueError: keine belastbaren Fits, oder (mit
-            ``require_two_compounds``) nur eine Mischung belastbar.
+        ValueError: keine belastbaren fits, oder (mit
+            ``require_two_compounds``) nur eine mischung belastbar.
     """
     deg = degradation(session, min_laps=fit_min_laps)
     ok = deg[deg["reliable"]] if not deg.empty else deg
@@ -418,20 +418,19 @@ def race_config_from_session(session, fit_min_laps: int = 6,
 
 # --------------------------------------------------------------- Boxenstopps
 def pit_loss(session) -> float:
-    """Zeitverlust eines Boxenstopps auf dieser Strecke, in Sekunden.
+    """zeitverlust eines boxenstopps auf dieser strecke, in sekunden.
 
-    Vergleicht In- und Out-Laps mit der normalen Rundenzeit desselben
-    Fahrers. Enthaelt damit Anfahrt, Standzeit und Ausfahrt.
+    vergleicht in- und out-laps mit der normalen rundenzeit desselben
+    fahrers. enthaelt damit anfahrt, standzeit und ausfahrt.
 
-    Runden unter rotem Flag ausgeschlossen: ``PitInTime``/``PitOutTime``
-    stehen dann oft auf Runden, in denen Autos waehrend der
-    Session-Unterbrechung geparkt bzw. wieder losgeschickt werden - keine
-    echten Boxenstopps, aber mit Rundenzeiten von zig Minuten (Monaco 2024 R,
-    roter Start nach der Startunfall-Massenkarambolage: ein einzelner
-    solcher Fall zog den Median auf ueber 2400 Sekunden). ``TrackStatus``
-    traegt bei FastF1 alle waehrend der Runde durchlaufenen Zustaende als
-    Zeichenkette (z.B. "1254") - "5" irgendwo darin heisst rotes Flag zu
-    irgendeinem Zeitpunkt in dieser Runde.
+    runden unter rotem flag ausgeschlossen: ``PitInTime``/``PitOutTime``
+    stehen dann oft auf runden, in denen autos waehrend der
+    session-unterbrechung geparkt bzw. wieder losgeschickt werden. keine
+    echten boxenstopps, aber mit rundenzeiten von zig minuten (ein einzelner
+    solcher fall kann den median stark verzerren). ``TrackStatus`` traegt
+    bei FastF1 alle waehrend der runde durchlaufenen zustaende als
+    zeichenkette (z.b. "1254"). "5" irgendwo darin heisst rotes flag zu
+    irgendeinem zeitpunkt in dieser runde.
     """
     laps = session.laps.copy()
     laps["sec"] = laps["LapTime"].dt.total_seconds()
@@ -451,15 +450,15 @@ def pit_loss(session) -> float:
 
 # --------------------------------------------------------------- Track Status
 def track_status_phases(session) -> pd.DataFrame:
-    """Safety-Car-, VSC- und Gelbphasen als Intervalle mit Rundennummern.
+    """safety-car-, VSC- und gelbphasen als intervalle mit rundennummern.
 
-    ``session.track_status`` ist ein Log von Zustandswechseln, keine
-    Zeitreihe: "SCDeployed" steht dort typischerweise genau einmal, auch wenn
-    das Safety Car neun Runden lang draussen bleibt. Ein Intervall muss
-    deshalb bis zum naechsten Wechsel reichen, nicht nur bis zum letzten
-    Auftreten desselben Codes (siehe :func:`f1lab.core.status_intervals` -
-    die urspruengliche Fassung gruppierte nach gleichem Code und ergab so
-    fast durchweg Intervalle der Laenge 0, siehe P18).
+    ``session.track_status`` ist ein log von zustandswechseln, keine
+    zeitreihe: "SCDeployed" steht dort typischerweise genau einmal, auch wenn
+    das safety car neun runden lang draussen bleibt. ein intervall muss
+    deshalb bis zum naechsten wechsel reichen, nicht nur bis zum letzten
+    auftreten desselben codes (siehe :func:`f1lab.core.status_intervals`.
+    die urspruengliche fassung gruppierte nach gleichem code und ergab so
+    fast durchweg intervalle der laenge 0, siehe P18).
     """
     ts = session.track_status.copy()
     ts["label"] = ts["Status"].map(TRACK_STATUS).fillna(ts["Status"])
@@ -491,8 +490,8 @@ def track_status_phases(session) -> pd.DataFrame:
     return phases
 
 
-# --------------------------------------------------------------- Dimensionen
-# FastF1 liefert Positionen in Zehntelmetern (siehe core.py-Doku zu X/Y/Z).
+# --------------------------------------------------------------- dimensionen
+# FastF1 liefert positionen in zehntelmetern (siehe core.py-doku zu X/Y/Z).
 POS_UNITS_PER_M = 10.0
 
 EVENT_DIM_COLS = ["season", "round", "event_name", "official_name", "country",
@@ -501,15 +500,15 @@ EVENT_DIM_COLS = ["season", "round", "event_name", "official_name", "country",
 
 
 def event_dimension(years) -> pd.DataFrame:
-    """Rennkalender mehrerer Saisons als Dimensionstabelle.
+    """rennkalender mehrerer saisons als dimensionstabelle.
 
-    Eine Zeile je Rennwochenende, Jahre untereinander. Saisons, die die API
-    nicht kennt, werden uebersprungen statt den Aufbau abzubrechen - bei der
-    laufenden Saison steht der Kalender teils erst spaet.
+    eine zeile je rennwochenende, jahre untereinander. saisons, die die API
+    nicht kennt, werden uebersprungen statt den aufbau abzubrechen. bei der
+    laufenden saison steht der kalender teils erst spaet.
 
-    Das Sprint-Format heisst je nach Jahr anders ("sprint",
-    "sprint_shootout", "sprint_qualifying"), deshalb wird auf das Teilwort
-    geprueft und nicht auf Gleichheit.
+    das sprint-format heisst je nach jahr anders ("sprint",
+    "sprint_shootout", "sprint_qualifying"), deshalb wird auf das teilwort
+    geprueft und nicht auf gleichheit.
     """
     frames = []
     for year in years:
@@ -550,22 +549,22 @@ def event_dimension(years) -> pd.DataFrame:
 
 
 def circuit_geometry(session) -> dict:
-    """Kurvenzahl, Streckenlaenge und Hoehenprofil einer geladenen Session.
+    """kurvenzahl, streckenlaenge und hoehenprofil einer geladenen session.
 
-    Braucht Telemetrie: die Kurvenliste kommt zwar aus der MultiViewer-API,
-    Laenge und Hoehe aber aus dem Positionskanal der schnellsten Runde.
-    Deshalb ist das hier bewusst getrennt von :func:`event_dimension`, die
-    ohne jeden Session-Download auskommt.
+    braucht telemetrie: die kurvenliste kommt zwar aus der MultiViewer-API,
+    laenge und hoehe aber aus dem positionskanal der schnellsten runde.
+    deshalb ist das hier bewusst getrennt von :func:`event_dimension`, die
+    ohne jeden session-download auskommt.
 
-    Gemessen wird die *gefahrene Linie*, nicht die offizielle Streckenlaenge -
-    die Ideallinie schneidet Kurven und faellt dadurch typisch ein bis zwei
-    Prozent kuerzer aus als die Angabe im Reglement.
+    gemessen wird die *gefahrene linie*, nicht die offizielle streckenlaenge.
+    die ideallinie schneidet kurven und faellt dadurch typisch ein bis zwei
+    prozent kuerzer aus als die angabe im reglement.
     """
     out = {"corners": pd.NA, "length_m": pd.NA,
            "elev_gain_m": pd.NA, "elev_span_m": pd.NA}
 
-    # Kurvenliste und Positionsdaten kommen aus verschiedenen Quellen und
-    # fallen unabhaengig voneinander aus - deshalb einzeln abgesichert.
+    # kurvenliste und positionsdaten kommen aus verschiedenen quellen und
+    # fallen unabhaengig voneinander aus. deshalb einzeln abgesichert.
     with contextlib.suppress(Exception):
         out["corners"] = int(len(session.get_circuit_info().corners))
 
@@ -585,12 +584,12 @@ def circuit_geometry(session) -> dict:
 
 
 def circuit_dimension(events, identifier: str = "Q") -> pd.DataFrame:
-    """Circuit-Dimension aus einer Liste von (Jahr, GP)-Paaren.
+    """circuit-dimension aus einer liste von (jahr, GP)-paaren.
 
-    Streckengeometrie ist pro Layout konstant, es genuegt also *eine* Session
-    je Strecke - nicht das ganze Archiv. Sessions, deren Telemetrie nicht im
-    Cache liegt, werden mit leeren Kennzahlen zurueckgegeben statt den Aufbau
-    abzubrechen; die Zeile bleibt erhalten, damit sichtbar ist, was fehlt.
+    streckengeometrie ist pro layout konstant, es genuegt also *eine* session
+    je strecke, nicht das ganze archiv. sessions, deren telemetrie nicht im
+    cache liegt, werden mit leeren kennzahlen zurueckgegeben statt den aufbau
+    abzubrechen. die zeile bleibt erhalten, damit sichtbar ist, was fehlt.
     """
     rows = []
     for year, gp in events:
@@ -611,12 +610,12 @@ def circuit_dimension(events, identifier: str = "Q") -> pd.DataFrame:
 
 
 def lap_speed_profile(session) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Distanz, Streckenkruemmung und echte Geschwindigkeit der schnellsten
-    Runde - Eingabe fuer die Rundenzeit-Simulation (siehe P37,
+    """distanz, streckenkruemmung und echte geschwindigkeit der schnellsten
+    runde. eingabe fuer die rundenzeit-simulation (siehe P37,
     :func:`f1lab.core.simulate_lap`/:func:`calibrate_lap_model`).
 
     Returns:
-        (Distanz [m], Kruemmung [1/m], Geschwindigkeit [m/s])
+        (distanz [m], kruemmung [1/m], geschwindigkeit [m/s])
     """
     lap = session.laps.pick_fastest()
     tel = lap.get_telemetry().add_distance()
@@ -627,12 +626,12 @@ def lap_speed_profile(session) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def corner_labels(session) -> pd.DataFrame:
-    """Kurven der Session, auf die Distanz einer Referenzrunde projiziert.
+    """kurven der session, auf die distanz einer referenzrunde projiziert.
 
-    Die XY-Position jeder Kurve (aus get_circuit_info(), unabhaengig von
-    jedem Fahrer) wird auf den naechstgelegenen Punkt der schnellsten Runde
-    der Session projiziert - das gibt jeder Kurve eine Distanz entlang der
-    Strecke, mit der sich Telemetrie faehrerbergreifend vergleichen laesst.
+    die XY-position jeder kurve (aus get_circuit_info(), unabhaengig von
+    jedem fahrer) wird auf den naechstgelegenen punkt der schnellsten runde
+    der session projiziert. das gibt jeder kurve eine distanz entlang der
+    strecke, mit der sich telemetrie faehrerbergreifend vergleichen laesst.
     """
     ci = session.get_circuit_info()
     ref = session.laps.pick_fastest().get_telemetry().add_distance()
@@ -652,8 +651,8 @@ def corner_labels(session) -> pd.DataFrame:
 
 
 def marshal_sector_labels(session) -> pd.DataFrame:
-    """Marshal-Sektorgrenzen, auf dieselbe Referenzrunde projiziert wie
-    :func:`corner_labels` - dieselbe Idee, andere Punktliste (siehe P11).
+    """marshal-sektorgrenzen, auf dieselbe referenzrunde projiziert wie
+    :func:`corner_labels`. dieselbe idee, andere punktliste (siehe P11).
     """
     ci = session.get_circuit_info()
     ref = session.laps.pick_fastest().get_telemetry().add_distance()
@@ -669,11 +668,11 @@ def marshal_sector_labels(session) -> pd.DataFrame:
 
 
 def marshal_light_labels(session) -> pd.DataFrame:
-    """Positionen der Gelbflaggen-Lichttafeln, auf dieselbe Referenzrunde
-    projiziert wie :func:`corner_labels`/:func:`marshal_sector_labels` -
-    dieselbe Idee, dritte Punktliste. ``CircuitInfo.marshal_lights`` liefert
+    """positionen der gelbflaggen-lichttafeln, auf dieselbe referenzrunde
+    projiziert wie :func:`corner_labels`/:func:`marshal_sector_labels`.
+    dieselbe idee, dritte punktliste. ``CircuitInfo.marshal_lights`` liefert
     kein ``Distance`` (anders als ``corners``), deshalb dieselbe
-    naechste-Nachbar-Projektion wie bei den anderen beiden."""
+    naechste-nachbar-projektion wie bei den anderen beiden."""
     ci = session.get_circuit_info()
     ref = session.laps.pick_fastest().get_telemetry().add_distance()
     ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
@@ -688,17 +687,17 @@ def marshal_light_labels(session) -> pd.DataFrame:
 
 
 def corner_speeds(session, window_m: float = 60.0) -> pd.DataFrame:
-    """Minimalgeschwindigkeit je Kurve und Fahrer (siehe P11/P12).
+    """minimalgeschwindigkeit je kurve und fahrer (siehe P11/P12).
 
-    Kurven kommen aus :func:`corner_labels` (auf eine Referenzrunde
-    projiziert); je Fahrer wird die Minimalgeschwindigkeit in einem Fenster
-    von +/- window_m um die Kurvendistanz gesucht - nicht per exakter
-    naechster-Nachbar-Zuordnung, weil benachbarte Kurven sich sonst
-    gegenseitig Telemetriepunkte wegnehmen koennten.
+    kurven kommen aus :func:`corner_labels` (auf eine referenzrunde
+    projiziert). je fahrer wird die minimalgeschwindigkeit in einem fenster
+    von +/- window_m um die kurvendistanz gesucht, nicht per exakter
+    naechster-nachbar-zuordnung: benachbarte kurven koennten sich sonst
+    gegenseitig telemetriepunkte wegnehmen.
 
     Returns:
-        DataFrame Fahrer x Kurve (Kuerzel wie "T7"), NaN wo kein
-        Telemetriepunkt im Fenster liegt.
+        DataFrame fahrer x kurve (kuerzel wie "T7"), NaN wo kein
+        telemetriepunkt im fenster liegt.
     """
     corners = corner_labels(session)
     rows = {}
@@ -722,13 +721,13 @@ def corner_speeds(session, window_m: float = 60.0) -> pd.DataFrame:
     return pd.DataFrame(rows).T
 
 
-# --------------------------------------------------------------- Bremszonen
+# --------------------------------------------------------------- bremszonen
 def driver_braking_zones(session, driver: str, min_length_m: float = 20.0
                          ) -> pd.DataFrame:
-    """Bremszonen der schnellsten Runde eines Fahrers (siehe P08).
+    """bremszonen der schnellsten runde eines fahrers (siehe P08).
 
-    Braucht Telemetrie. Leerer Rahmen, wenn der Fahrer keine gewertete
-    schnellste Runde hat (z.B. nach einem Ausfall vor der ersten Runde).
+    braucht telemetrie. leerer rahmen, wenn der fahrer keine gewertete
+    schnellste runde hat (z.b. nach einem ausfall vor der ersten runde).
     """
     lap = session.laps.pick_drivers(driver).pick_fastest()
     if lap is None or pd.isna(lap["LapTime"]):
@@ -741,8 +740,8 @@ def driver_braking_zones(session, driver: str, min_length_m: float = 20.0
 
 def compare_braking_zones(zones_a: pd.DataFrame, zones_b: pd.DataFrame,
                           tolerance_m: float = 150.0) -> pd.DataFrame:
-    """Bremszonen zweier Fahrer paaren und den Abstand ihrer Bremspunkte
-    zeigen (siehe P07/P08). Nutzt :func:`f1lab.core.match_by_distance`.
+    """bremszonen zweier fahrer paaren und den abstand ihrer bremspunkte
+    zeigen (siehe P07/P08). nutzt :func:`f1lab.core.match_by_distance`.
     """
     if zones_a.empty or zones_b.empty:
         return pd.DataFrame()
@@ -758,11 +757,11 @@ def compare_braking_zones(zones_a: pd.DataFrame, zones_b: pd.DataFrame,
 # --------------------------------------------------------------- DRS
 def drs_zones(session, driver: str, min_length_m: float = 100.0
              ) -> pd.DataFrame:
-    """DRS-Aktivzonen der schnellsten Runde eines Fahrers (siehe P10).
+    """DRS-aktivzonen der schnellsten runde eines fahrers (siehe P10).
 
-    Filtert alles unter ``min_length_m`` als Rauschen - ohne den Filter
-    meldet dieselbe Flankenlogik am Start/Ziel-Bereich mehrere kurze
-    Wackel-Zonen, Rest-Aktivierung vom Ende der Vorrunde.
+    filtert alles unter ``min_length_m`` als rauschen. ohne den filter
+    meldet dieselbe flankenlogik am start/ziel-bereich mehrere kurze
+    wackel-zonen, rest-aktivierung vom ende der vorrunde.
     """
     lap = session.laps.pick_drivers(driver).pick_fastest()
     if lap is None or pd.isna(lap["LapTime"]):
@@ -774,7 +773,7 @@ def drs_zones(session, driver: str, min_length_m: float = 100.0
 
 
 def drs_usage(session) -> pd.DataFrame:
-    """DRS-Zeitanteil und Topspeed-Gewinn je Fahrer (siehe P10 VORGEHEN 1/3/4)."""
+    """DRS-zeitanteil und topspeed-gewinn je fahrer (siehe P10 VORGEHEN 1/3/4)."""
     rows = []
     for drv in session.drivers:
         try:
@@ -806,30 +805,30 @@ def drs_usage(session) -> pd.DataFrame:
                                           ignore_index=True)
 
 
-# --------------------------------------------------------------- Position
+# --------------------------------------------------------------- position
 def position_progression(session) -> pd.DataFrame:
-    """Position je Runde und Fahrer, pivotiert (siehe P20 VORGEHEN 1)."""
+    """position je runde und fahrer, pivotiert (siehe P20 VORGEHEN 1)."""
     return session.laps.pivot_table(index="LapNumber", columns="Driver",
                                     values="Position", aggfunc="first")
 
 
 def overtake_events(session) -> pd.DataFrame:
-    """Einzelne Ueberholvorgaenge (Fahrer A ueberholt Fahrer B in Runde N),
-    ohne Boxenstopp-Effekt und nur auf gruener Flagge (siehe P20 VORGEHEN
-    3/4). :func:`overtakes_matrix` aggregiert genau diese Liste zu einer
-    Matrix, :func:`overtake_locations` (P39) sucht je Ereignis die Stelle
-    auf der Strecke.
+    """einzelne ueberholvorgaenge (fahrer A ueberholt fahrer B in runde N),
+    ohne boxenstopp-effekt und nur auf gruener flagge (siehe P20 VORGEHEN
+    3/4). :func:`overtakes_matrix` aggregiert genau diese liste zu einer
+    matrix, :func:`overtake_locations` (P39) sucht je ereignis die stelle
+    auf der strecke.
 
-    Zwei Faelle zaehlen nicht als echtes Duell: ein Boxenstopp verschiebt
-    die Position ohne Ueberholen auf der Strecke, und ein
-    Safety-Car-Restart wirbelt das Feld durcheinander, ohne dass Position
-    durch Tempo gewonnen wurde. Die Positionstabelle selbst bleibt ueber
-    die volle, ungefilterte Rundenliste - sonst fehlen Rundennummern in der
-    Reihe, sobald eine Runde komplett herausfaellt, und lap - 1 zeigt ins
-    Leere.
+    zwei faelle zaehlen nicht als echtes duell: ein boxenstopp verschiebt
+    die position ohne ueberholen auf der strecke, und ein
+    safety-car-restart wirbelt das feld durcheinander, ohne dass position
+    durch tempo gewonnen wurde. die positionstabelle selbst bleibt ueber
+    die volle, ungefilterte rundenliste. sonst fehlen rundennummern in der
+    reihe, sobald eine runde komplett herausfaellt, und lap - 1 zeigt ins
+    leere.
 
     Returns:
-        DataFrame mit Spalten ``gainer``, ``loser``, ``lap``.
+        DataFrame mit spalten ``gainer``, ``loser``, ``lap``.
     """
     laps = session.laps
     pos = laps.pivot_table(index="LapNumber", columns="Driver",
@@ -861,8 +860,8 @@ def overtake_events(session) -> pd.DataFrame:
 
 
 def overtakes_matrix(session) -> pd.DataFrame:
-    """Wer ueberholt wen wie oft (siehe P20 VORGEHEN 3/4). Zeile ueberholt
-    Spalte. Aggregiert :func:`overtake_events`."""
+    """wer ueberholt wen wie oft (siehe P20 VORGEHEN 3/4). zeile ueberholt
+    spalte. aggregiert :func:`overtake_events`."""
     laps = session.laps
     drivers = list(laps.pivot_table(index="LapNumber", columns="Driver",
                                     values="Position", aggfunc="first").columns)
@@ -874,36 +873,36 @@ def overtakes_matrix(session) -> pd.DataFrame:
 
 def overtake_locations(session, drs_session=None, drs_referenz: str | None = None,
                        naehe_m: float = 30.0) -> pd.DataFrame:
-    """Ort jedes Ueberholvorgangs auf der Strecke, gegen die DRS-Zonen
+    """ort jedes ueberholvorgangs auf der strecke, gegen die DRS-zonen
     geprueft (siehe P39).
 
-    Fuer jedes Ereignis aus :func:`overtake_events`: in der Telemetrie des
-    Ueberholers (``gainer``) fuer genau diese Runde die letzte Stelle
+    fuer jedes ereignis aus :func:`overtake_events`: in der telemetrie des
+    ueberholers (``gainer``) fuer genau diese runde die letzte stelle
     suchen, an der ``DriverAhead`` (FastF1s eigener, GPS-basierter
-    "Auto direkt davor"-Kanal) noch dem Ueberholten (``loser``) entspricht -
-    das ist die Stelle kurz vor dem Positionswechsel. Nur uebernommen, wenn
+    "auto direkt davor"-kanal) noch dem ueberholten (``loser``) entspricht.
+    das ist die stelle kurz vor dem positionswechsel. nur uebernommen, wenn
     dort auch ``DistanceToDriverAhead`` unter ``naehe_m`` liegt (sonst war
-    ``loser`` zwar irgendwann auf der Runde davor, aber nicht mehr in dem
-    Moment, der als Wechsel gezaehlt wird - z.B. bei mehreren
-    Positionswechseln in derselben Runde).
+    ``loser`` zwar irgendwann auf der runde davor, aber nicht mehr in dem
+    moment, der als wechsel gezaehlt wird, z.b. bei mehreren
+    positionswechseln in derselben runde).
 
-    Die DRS-Zonen kommen bewusst NICHT aus der Renn-Session selbst: DRS
-    braucht in einem Rennen einen Rueckstand unter 1s auf das Auto davor,
-    eine schnellste Rennrunde entsteht aber typisch in freier Fahrt ohne
-    Vordermann - dann bleibt DRS auf der ganzen Runde zu, und
-    :func:`drs_zones` faende keine einzige Zone, obwohl die Zonen
-    physisch existieren (siehe P39 fuer den Monza-Fall, an dem das
-    auffiel). Im Qualifying ist DRS ohne Abstandsregel verfuegbar, deshalb
-    Default: die Qualifying-Session desselben Events (ueber die
-    Rundennummer, nicht den Streckennamen - robuster gegen
-    Schreibweisen). ``drs_session`` laesst sich trotzdem explizit setzen,
-    falls keine Qualifying-Telemetrie im Cache liegt.
+    die DRS-zonen kommen bewusst NICHT aus der renn-session selbst: DRS
+    braucht in einem rennen einen rueckstand unter 1s auf das auto davor,
+    eine schnellste rennrunde entsteht aber typisch in freier fahrt ohne
+    vordermann. dann bleibt DRS auf der ganzen runde zu, und
+    :func:`drs_zones` faende keine einzige zone, obwohl die zonen
+    physisch existieren (siehe P39 fuer den Monza-fall, an dem das
+    auffiel). im qualifying ist DRS ohne abstandsregel verfuegbar, deshalb
+    default: die qualifying-session desselben events (ueber die
+    rundennummer, nicht den streckennamen, robuster gegen
+    schreibweisen). ``drs_session`` laesst sich trotzdem explizit setzen,
+    falls keine qualifying-telemetrie im cache liegt.
 
     Returns:
         DataFrame mit ``gainer``, ``loser``, ``lap``, ``distance_m``,
-        ``in_drs_zone``. Ereignisse ohne verwertbare Telemetriestelle
-        fehlen in der Rueckgabe (nicht als Zeile mit NaN) - die Differenz
-        zu :func:`overtake_events` ist die Abdeckung dieser Methode.
+        ``in_drs_zone``. ereignisse ohne verwertbare telemetriestelle
+        fehlen in der rueckgabe (nicht als zeile mit NaN). die differenz
+        zu :func:`overtake_events` ist die abdeckung dieser methode.
     """
     events = overtake_events(session)
     if events.empty:
@@ -956,26 +955,26 @@ def overtake_locations(session, drs_session=None, drs_referenz: str | None = Non
 
 
 def undercut_duels(session, fenster: int = 3, nachlauf: int = 2) -> pd.DataFrame:
-    """Echte, paarweise Undercut-Versuche und ob sie gelangen (siehe P42).
+    """echte, paarweise undercut-versuche und ob sie gelangen (siehe P42).
 
-    Anders als eine flaechendeckende Vorher-Nachher-Positionszaehlung (die
-    JEDEN Boxenstopp automatisch als Verlust gegen das ganze Feld zaehlt,
-    weil nicht-stoppende Autos in der Zwischenzeit einfach weiterfahren -
-    siehe CLAUDE.md, verworfener erster Versuch) vergleicht das hier gezielt
-    gegen einen konkreten Rivalen: fuer jeden Boxenstopp (Fahrer A, Runde L)
-    der Fahrer, der zu Rundenbeginn genau eine Position vor A lag (der
-    eigentliche Gegner des Stopps) - nur gezaehlt, wenn dieser Rivale nicht
-    selbst in derselben Runde stoppt (sonst kein Undercut-Versuch) und
-    innerhalb von ``fenster`` Runden danach selbst an die Box faehrt (sonst
-    ist die Verfolgung kein Undercut, sondern nur zufaellig zeitversetzte
-    Stopps). Erfolg heisst: ``nachlauf`` Runden nach dem spaeteren der
-    beiden Stopps liegt A vor dem Rivalen.
+    anders als eine flaechendeckende vorher-nachher-positionszaehlung (die
+    JEDEN boxenstopp automatisch als verlust gegen das ganze feld zaehlt,
+    weil nicht-stoppende autos in der zwischenzeit einfach weiterfahren,
+    siehe CLAUDE.md, verworfener erster versuch) vergleicht das hier gezielt
+    gegen einen konkreten rivalen: fuer jeden boxenstopp (fahrer A, runde L)
+    der fahrer, der zu rundenbeginn genau eine position vor A lag (der
+    eigentliche gegner des stopps). nur gezaehlt, wenn dieser rivale nicht
+    selbst in derselben runde stoppt (sonst kein undercut-versuch) und
+    innerhalb von ``fenster`` runden danach selbst an die box faehrt (sonst
+    ist die verfolgung kein undercut, sondern nur zufaellig zeitversetzte
+    stopps). erfolg heisst: ``nachlauf`` runden nach dem spaeteren der
+    beiden stopps liegt A vor dem rivalen.
 
     Args:
-        fenster: wie viele Runden nach As Stopp der Rivale noch selbst
-            stoppen darf, damit es als Undercut-Versuch zaehlt.
-        nachlauf: wie viele gruene Runden nach dem letzten der beiden
-            Stopps abgewartet wird, bevor die Position verglichen wird.
+        fenster: wie viele runden nach As stopp der rivale noch selbst
+            stoppen darf, damit es als undercut-versuch zaehlt.
+        nachlauf: wie viele gruene runden nach dem letzten der beiden
+            stopps abgewartet wird, bevor die position verglichen wird.
 
     Returns:
         DataFrame mit ``driver``, ``lap``, ``rival``, ``rival_lap``,
@@ -1024,24 +1023,24 @@ def undercut_duels(session, fenster: int = 3, nachlauf: int = 2) -> pd.DataFrame
 
 
 def qualifying_track_evolution(session) -> pd.DataFrame:
-    """Paarweise Fahrer-Deltas zwischen Q1/Q2/Q3 als Mass fuer Streckenentwicklung
+    """paarweise fahrer-deltas zwischen Q1/Q2/Q3 als mass fuer streckenentwicklung
     (siehe P43).
 
-    Vergleicht je Fahrer die schnellste gewertete Rundenzeit eines Segments
-    gegen die des naechsten - nur fuer Fahrer, die in BEIDEN Segmenten eine
-    Zeit gesetzt haben. Dieser paarweise Vergleich haelt Auto- und
-    Fahrerqualitaet konstant: ein reiner Vergleich der Segment-Durchschnitte
-    waere verzerrt, weil in Q2/Q3 nur die schnelleren Autos uebrig bleiben -
-    "im Schnitt schneller" wuerde dann teilweise nur "die langsameren Autos
-    sind raus" messen, nicht Streckenentwicklung.
+    vergleicht je fahrer die schnellste gewertete rundenzeit eines segments
+    gegen die des naechsten, nur fuer fahrer, die in BEIDEN segmenten eine
+    zeit gesetzt haben. dieser paarweise vergleich haelt auto- und
+    fahrerqualitaet konstant: ein reiner vergleich der segment-durchschnitte
+    waere verzerrt, weil in Q2/Q3 nur die schnelleren autos uebrig bleiben.
+    "im schnitt schneller" wuerde dann teilweise nur "die langsameren autos
+    sind raus" messen, nicht streckenentwicklung.
 
     Args:
-        session: geladene Qualifying-Session (braucht Session-Status-Daten
+        session: geladene qualifying-session (braucht session-status-daten
             fuer ``Laps.split_qualifying_sessions()``).
 
     Returns:
         DataFrame mit ``driver``, ``segment`` ("Q1->Q2"/"Q2->Q3``),
-        ``delta_s`` (positiv heisst: das spaetere Segment war schneller).
+        ``delta_s`` (positiv heisst: das spaetere segment war schneller).
     """
     laps = session.laps
     try:
@@ -1069,27 +1068,27 @@ def qualifying_track_evolution(session) -> pd.DataFrame:
     return pd.DataFrame(zeilen, columns=["driver", "segment", "delta_s"])
 
 
-# --------------------------------------------------------------- Start
+# --------------------------------------------------------------- start
 def _zeit_bei_speed(t: np.ndarray, v: np.ndarray, ziel: float, t0: float
                     ) -> float | None:
-    """Erste Zeit (relativ zu t0), zu der v mindestens ziel erreicht."""
+    """erste zeit (relativ zu t0), zu der v mindestens ziel erreicht."""
     mask = v >= ziel
     return round(float(t[mask.argmax()] - t0), 2) if mask.any() else None
 
 
 def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
-    """Startkennzahlen je Fahrer: Zeit bis 100/200 km/h, Distanz nach 5s,
-    Positionsgewinn Grid -> Ende Runde 1 (siehe P31).
+    """startkennzahlen je fahrer: zeit bis 100/200 km/h, distanz nach 5s,
+    positionsgewinn grid -> ende runde 1 (siehe P31).
 
-    Boxenstarts (PitOutTime auf Runde 1 gesetzt) werden ausgeschlossen - ein
-    Start aus der Box hat eine komplett andere Ausgangsgeschwindigkeit
-    (Boxengassen-Limit statt Ampel-Start) und ist nicht vergleichbar.
+    boxenstarts (PitOutTime auf runde 1 gesetzt) werden ausgeschlossen. ein
+    start aus der box hat eine komplett andere ausgangsgeschwindigkeit
+    (boxengassen-limit statt ampel-start) und ist nicht vergleichbar.
 
-    Liest ``session.results`` fuer die Startaufstellung - das kann fuer
-    manche Saisons echten Ergast/jolpica-Netzzugriff ausloesen, obwohl es
-    wie eine reine Lokaldaten-Spalte aussieht (siehe P40, dort in einem
-    Saison-Scan entdeckt). Fuer eine einzelne Session unkritisch, bei vielen
-    Sessions hintereinander siehe dortige Drosselung.
+    liest ``session.results`` fuer die startaufstellung. das kann fuer
+    manche saisons echten Ergast/jolpica-netzzugriff ausloesen, obwohl es
+    wie eine reine lokaldaten-spalte aussieht (siehe P40, dort in einem
+    saison-scan entdeckt). fuer eine einzelne session unkritisch, bei vielen
+    sessions hintereinander siehe dortige drosselung.
     """
     rows = []
     for drv in session.drivers:
@@ -1130,13 +1129,13 @@ def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
 
 
 def grid_lap1_positions(session) -> pd.DataFrame:
-    """Startplatz gegen Position am Ende von Runde 1, ohne Boxenstarts
-    (siehe P40 - die telemetriefreie Variante von P31s Startkennzahlen,
-    fuer Saison-Scans ueber viele Rennen ohne Telemetrie-Download).
+    """startplatz gegen position am ende von runde 1, ohne boxenstarts
+    (siehe P40, die telemetriefreie variante von P31s startkennzahlen,
+    fuer saison-scans ueber viele rennen ohne telemetrie-download).
 
     Returns:
         DataFrame mit ``driver_number``, ``grid``, ``lap1``, ``gewinn``
-        (grid - lap1, positiv = Positionen gewonnen).
+        (grid - lap1, positiv = positionen gewonnen).
     """
     grid = session.results[["DriverNumber", "GridPosition"]].dropna()
     lap1 = session.laps.pick_laps(1)
@@ -1148,15 +1147,15 @@ def grid_lap1_positions(session) -> pd.DataFrame:
     return m
 
 
-# --------------------------------------------------------------- Verfolgung
+# --------------------------------------------------------------- verfolgung
 def close_following(session, driver: str, nah_schwelle_m: float = 50.0
                     ) -> pd.DataFrame:
-    """Abstand zum Vordermann je gruener Runde, treibstoffkorrigiert
+    """abstand zum vordermann je gruener runde, treibstoffkorrigiert
     (siehe P32 VORGEHEN 1-2).
 
-    add_driver_ahead() laeuft einmal auf die gesamte Renntelemetrie des
-    Fahrers, nicht einmal je Runde - um ein Vielfaches schneller bei
-    identischem Ergebnis (siehe P05/P20/P32).
+    add_driver_ahead() laeuft einmal auf die gesamte renntelemetrie des
+    fahrers, nicht einmal je runde. um ein vielfaches schneller bei
+    identischem ergebnis (siehe P05/P20/P32).
     """
     laps = (session.laps.pick_drivers(driver).pick_wo_box().pick_accurate()
            .pick_track_status("1").sort_values("LapStartTime"))
@@ -1194,19 +1193,19 @@ def close_following(session, driver: str, nah_schwelle_m: float = 50.0
 
 
 def dirty_air_effect(df: pd.DataFrame) -> tuple[float, float, float, pd.DataFrame]:
-    """Rundenzeit (bereits treibstoffkorrigiert) gegen Nahanteil regressieren,
-    nach Herausrechnen der Reifendegradation (siehe P32).
+    """rundenzeit (bereits treibstoffkorrigiert) gegen nahanteil regressieren,
+    nach herausrechnen der reifendegradation (siehe P32).
 
-    Nutzt :func:`fit_degradation` fuer die Degradations-Bereinigung - dieselbe
-    Funktion wie in P13/Dashboard, nur hier auf Nahanteil statt Compound
+    nutzt :func:`fit_degradation` fuer die degradations-bereinigung, dieselbe
+    funktion wie in P13/dashboard, nur hier auf nahanteil statt compound
     angewendet.
 
     Args:
-        df: Ergebnis von :func:`close_following`.
+        df: ergebnis von :func:`close_following`.
 
     Returns:
-        (slope, intercept, r2, df mit zusaetzlicher Spalte ``sec_corr``).
-        slope/intercept/r2 sind NaN, wenn zu wenige Runden vorliegen.
+        (slope, intercept, r2, df mit zusaetzlicher spalte ``sec_corr``).
+        slope/intercept/r2 sind NaN, wenn zu wenige runden vorliegen.
     """
     d = df.dropna(subset=["gap_median_m", "tyre_life"]).copy()
     d = d[d["gap_median_m"] < 500]
@@ -1224,20 +1223,20 @@ def dirty_air_effect(df: pd.DataFrame) -> tuple[float, float, float, pd.DataFram
     return float(slope), float(inter), r2, d
 
 
-# --------------------------------------------------------------- Mini-Sektoren
+# --------------------------------------------------------------- mini-sektoren
 def mini_sectors(session, drivers: list[str], n: int = 25) -> dict:
-    """Zerlegt die Runde in n gleich lange Distanz-Abschnitte und ermittelt
-    je Abschnitt, welcher der uebergebenen Fahrer dort am wenigsten Zeit
+    """zerlegt die runde in n gleich lange distanz-abschnitte und ermittelt
+    je abschnitt, welcher der uebergebenen fahrer dort am wenigsten zeit
     gebraucht hat (siehe P06).
 
-    Nur wenige Fahrer uebergeben (MAX_SERIEN aus f1lab.design) - bei allen
-    20 waere weder die Farbdarstellung noch die Frage "wer dominiert wo"
-    sinnvoll, siehe P06-Docstring.
+    nur wenige fahrer uebergeben (MAX_SERIEN aus f1lab.design). bei allen
+    20 waere weder die farbdarstellung noch die frage "wer dominiert wo"
+    sinnvoll, siehe P06-docstring.
 
     Returns:
-        dict mit ``telemetrie`` (Distanz/Zeit/X/Y je Fahrer),
-        ``edges`` (Grenzen der Abschnitte) und ``gewinner`` (Fahrer je
-        Abschnitt, laenge n).
+        dict mit ``telemetrie`` (distanz/zeit/X/Y je fahrer),
+        ``edges`` (grenzen der abschnitte) und ``gewinner`` (fahrer je
+        abschnitt, laenge n).
     """
     telemetrie = {}
     for drv in drivers:
@@ -1264,14 +1263,14 @@ def mini_sectors(session, drivers: list[str], n: int = 25) -> dict:
            "gewinner": dauer.idxmin(axis=1).to_numpy(), "dauer": dauer}
 
 
-# --------------------------------------------------------------- Teamkollegen
+# --------------------------------------------------------------- teamkollegen
 def teammate_duels(session) -> list[dict]:
-    """Team-Duelle einer Session: schneller Teamkollege gegen langsamer,
-    aus Quali-Bestzeit (gueltig, nicht gestrichen) oder Race Pace
+    """team-duelle einer session: schneller teamkollege gegen langsamer,
+    aus quali-bestzeit (gueltig, nicht gestrichen) oder race pace
     (siehe P05).
 
-    Race-Sessions nutzen :func:`pace_table` (bereinigt, treibstoffkorrigiert),
-    alle anderen die schnellste gueltige Runde je Fahrer.
+    race-sessions nutzen :func:`pace_table` (bereinigt, treibstoffkorrigiert),
+    alle anderen die schnellste gueltige runde je fahrer.
     """
     if session.name in ("Race", "Sprint"):
         pace = pace_table(session)
@@ -1302,10 +1301,10 @@ def _duelle(tab: pd.DataFrame, team_col: str, driver_col: str,
     return out
 
 
-# ------------------------------------------------------------------- Wetter
+# ------------------------------------------------------------------- wetter
 def weather_join(session) -> pd.DataFrame:
-    """Gruene, gewertete, boxenlose Runden mit dem naechstgelegenen
-    Wettermesspunkt verknuepft, plus treibstoffkorrigierte Rundenzeit
+    """gruene, gewertete, boxenlose runden mit dem naechstgelegenen
+    wettermesspunkt verknuepft, plus treibstoffkorrigierte rundenzeit
     (siehe P17)."""
     laps = (session.laps.pick_wo_box().pick_accurate()
            .pick_track_status("1")).copy()
@@ -1319,13 +1318,13 @@ def weather_join(session) -> pd.DataFrame:
 
 
 def temperature_effect(merged: pd.DataFrame) -> dict:
-    """Streckentemperatur-Effekt auf trockenen Runden: erst die naive
-    gepoolte Regression, dann kontrolliert um Fahrer-Niveau und Reifenalter
-    (siehe P17 - der Effekt geht in der gepoolten Fassung fast immer in der
-    Streuung durch Fahrer/Reifenalter unter).
+    """streckentemperatur-effekt auf trockenen runden: erst die naive
+    gepoolte regression, dann kontrolliert um fahrer-niveau und reifenalter
+    (siehe P17, der effekt geht in der gepoolten fassung fast immer in der
+    streuung durch fahrer/reifenalter unter).
 
-    Gibt ein leeres Ergebnis (``n=0``) zurueck, wenn zu wenige trockene
-    Runden mit vollstaendigen Werten vorliegen.
+    gibt ein leeres ergebnis (``n=0``) zurueck, wenn zu wenige trockene
+    runden mit vollstaendigen werten vorliegen.
     """
     dry = merged[~merged["Rainfall"]].dropna(
         subset=["TrackTemp", "corr", "TyreLife"]).copy()
@@ -1355,8 +1354,8 @@ def temperature_effect(merged: pd.DataFrame) -> dict:
     sigma2 = (resid ** 2).sum() / (len(y) - 3)
     se = np.sqrt(np.diag(np.linalg.inv(x_voll.T @ x_voll)) * sigma2)
 
-    # Partial-Residual-Plot: TyreLife-Anteil herausgerechnet, damit die
-    # TrackTemp-Wirkung isoliert sichtbar wird.
+    # partial-residual-plot: TyreLife-anteil herausgerechnet, damit die
+    # TrackTemp-wirkung isoliert sichtbar wird.
     dry["partial"] = y - c_voll[1] * dry["TyreLife"]
 
     return {
@@ -1368,7 +1367,7 @@ def temperature_effect(merged: pd.DataFrame) -> dict:
 
 
 def weather_phases(session) -> pd.DataFrame:
-    """Wetter-Phasen ueber das Rainfall-Flag segmentiert (siehe P17)."""
+    """wetter-phasen ueber das Rainfall-flag segmentiert (siehe P17)."""
     w = session.weather_data
     gruppe = (w["Rainfall"] != w["Rainfall"].shift()).cumsum()
     return (w.groupby(gruppe)
@@ -1378,14 +1377,14 @@ def weather_phases(session) -> pd.DataFrame:
 
 
 def wet_dry_classifier(session) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
-    """Logistische Regression auf Feld-Aggregaten je Runde (Rundenzeit-
-    Streuung, mittlere Speed-Trap-Geschwindigkeit), Leave-one-out-
-    kreuzvalidiert gegen die tatsaechlich mehrheitlich gefahrene Mischung
-    (siehe P17 AUSBAUSTUFE). Keine Compound-Spalte als Feature - nur was
-    auch ohne Boxenfunk beobachtbar waere.
+    """logistische regression auf feld-aggregaten je runde (rundenzeit-
+    streuung, mittlere speed-trap-geschwindigkeit), leave-one-out-
+    kreuzvalidiert gegen die tatsaechlich mehrheitlich gefahrene mischung
+    (siehe P17 AUSBAUSTUFE). keine compound-spalte als feature, nur was
+    auch ohne boxenfunk beobachtbar waere.
 
-    Braucht mindestens eine Runde je Klasse (nass/trocken), sonst wirft
-    ``LeaveOneOut`` einen Fehler - das prueft der Aufrufer.
+    braucht mindestens eine runde je klasse (nass/trocken), sonst wirft
+    ``LeaveOneOut`` einen fehler. das prueft der aufrufer.
     """
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import LeaveOneOut, cross_val_predict
@@ -1409,9 +1408,9 @@ def wet_dry_classifier(session) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     return je_runde, y, pred
 
 
-# ------------------------------------------------------------- Race Control
+# ------------------------------------------------------------- race control
 def field_spread(session) -> pd.Series:
-    """Sekunden zwischen erstem und letztem Fahrer je Runde (siehe P18)."""
+    """sekunden zwischen erstem und letztem fahrer je runde (siehe P18)."""
     laps = session.laps
     return (laps.dropna(subset=["Position"])
             .groupby("LapNumber")["Time"]
@@ -1419,10 +1418,10 @@ def field_spread(session) -> pd.Series:
 
 
 def sc_compaction(neutral: pd.DataFrame, spread: pd.Series) -> pd.DataFrame:
-    """Baseline (letzte 3 gruene Runden vor der Phase) gegen die staerkste
-    Kompaktierung waehrend Safety-Car-/VSC-Phasen (siehe P18 - der Mittelwert
-    waere vom Ausloese-Zwischenfall verzerrt, deshalb das Minimum statt dem
-    Durchschnitt waehrend der Phase)."""
+    """baseline (letzte 3 gruene runden vor der phase) gegen die staerkste
+    kompaktierung waehrend safety-car-/VSC-phasen (siehe P18, der mittelwert
+    waere vom ausloese-zwischenfall verzerrt, deshalb das minimum statt dem
+    durchschnitt waehrend der phase)."""
     zeilen = []
     for p in neutral.itertuples():
         vorher = spread.reindex(range(p.lap_start - 3, p.lap_start)).dropna()
@@ -1438,16 +1437,16 @@ def sc_compaction(neutral: pd.DataFrame, spread: pd.Series) -> pd.DataFrame:
 
 
 def sc_deployment_sectors(session) -> pd.DataFrame:
-    """In welchem Timing-Sektor stand jeder Fahrer im Moment einer Safety-
-    Car-Deployment-Meldung (siehe P18-Erweiterung)? Nutzt
+    """in welchem timing-sektor stand jeder fahrer im moment einer safety-
+    car-deployment-meldung (siehe P18-erweiterung)? nutzt
     ``Sector1/2/3SessionTime`` (session-relativ, bislang ungenutzt) direkt
-    gegen ``track_status['Time']`` (ebenfalls session-relativ) - kein
-    ``t0_date``/Telemetrie noetig, anders als ein Abgleich gegen die
-    Race-Control-Meldungszeit (die ist absolut datiert).
+    gegen ``track_status['Time']`` (ebenfalls session-relativ), kein
+    ``t0_date``/telemetrie noetig, anders als ein abgleich gegen die
+    race-control-meldungszeit (die ist absolut datiert).
 
-    Fuer jeden Fahrer wird die zum Deployment-Zeitpunkt laufende Runde ueber
-    das juengste ``LapStartTime`` vor dem Zeitpunkt bestimmt, dann der
-    Zeitpunkt gegen die drei Sektor-Enden dieser Runde eingeordnet.
+    fuer jeden fahrer wird die zum deployment-zeitpunkt laufende runde ueber
+    das juengste ``LapStartTime`` vor dem zeitpunkt bestimmt, dann der
+    zeitpunkt gegen die drei sektor-enden dieser runde eingeordnet.
     """
     ts = session.track_status
     deploy = ts.loc[ts["Status"] == "4", "Time"]
@@ -1474,23 +1473,23 @@ def sc_deployment_sectors(session) -> pd.DataFrame:
     return pd.DataFrame(zeilen)
 
 
-# VORGEHEN 2 (P19): reale FIA-Meldungen nennen Strafmass und Fahrer in
-# umgekehrter Reihenfolge zur naheliegenden Annahme ("10 SECOND ... FOR CAR
-# 14 (ALO)", nicht "CAR 14 (ALO) ... 10 SECOND") - 49/49 Treffer Saison 2024.
+# VORGEHEN 2 (P19): reale FIA-meldungen nennen strafmass und fahrer in
+# umgekehrter reihenfolge zur naheliegenden annahme ("10 SECOND ... FOR CAR
+# 14 (ALO)", nicht "CAR 14 (ALO) ... 10 SECOND").
 PENALTY = re.compile(
     r"(\d+ SECOND (?:TIME|STOP/GO) PENALTY|DRIVE.?THROUGH PENALTY|REPRIMAND)"
     r" FOR CAR (\d+) \(([A-Z]{3})\)(?: - (.*))?", re.I)
 TRACKLIM = re.compile(r"CAR (\d+) \(([A-Z]{3})\).*TRACK LIMITS AT TURN (\d+)", re.I)
-# Fuer die Gegenpruefung zusaetzlich die im Text genannte betroffene Runde -
-# NICHT dieselbe Runde, in der die Meldung gepostet wurde (die Loeschung
-# wird oft erst 1-2 Runden spaeter verbucht). Nicht jede Meldung nennt sie
-# explizit: "(NEXT LAP)"-Faelle bleiben aussen vor.
+# fuer die gegenpruefung zusaetzlich die im text genannte betroffene runde,
+# NICHT dieselbe runde, in der die meldung gepostet wurde (die loeschung
+# wird oft erst 1-2 runden spaeter verbucht). nicht jede meldung nennt sie
+# explizit: "(NEXT LAP)"-faelle bleiben aussen vor.
 TRACKLIM_RUNDE = re.compile(
     r"CAR (\d+) \(([A-Z]{3})\).*TRACK LIMITS AT TURN (\d+) LAP (\d+)", re.I)
 
 
 def parse_penalties(rcm: pd.DataFrame) -> pd.DataFrame:
-    """Strafmeldungen der Rennleitung parsen (siehe P19)."""
+    """strafmeldungen der rennleitung parsen (siehe P19)."""
     zeilen = []
     for m in rcm.itertuples():
         treffer = PENALTY.search(str(m.Message))
@@ -1502,13 +1501,13 @@ def parse_penalties(rcm: pd.DataFrame) -> pd.DataFrame:
 
 
 def blue_flags(session, rcm: pd.DataFrame) -> pd.DataFrame:
-    """Blaue Flaggen je Fahrer, direkt aus den strukturierten Spalten
-    ``Category``/``Flag``/``RacingNumber`` statt aus Freitext geparst -
-    robuster als eine Regex auf ``Message``, weil FastF1 Fahrzeugnummer und
-    Flaggenfarbe hier schon getrennt mitliefert (siehe P19-Erweiterung).
-    Eine blaue Flagge ist kein Vergehen, sondern die Aufforderung, einen
-    schnelleren (meist ueberrundenden) Fahrer durchzulassen - viele blaue
-    Flaggen fuer denselben Fahrer heissen deshalb "wurde oft ueberrundet",
+    """blaue flaggen je fahrer, direkt aus den strukturierten spalten
+    ``Category``/``Flag``/``RacingNumber`` statt aus freitext geparst.
+    robuster als eine regex auf ``Message``, weil FastF1 fahrzeugnummer und
+    flaggenfarbe hier schon getrennt mitliefert (siehe P19-erweiterung).
+    eine blaue flagge ist kein vergehen, sondern die aufforderung, einen
+    schnelleren (meist ueberrundenden) fahrer durchzulassen. viele blaue
+    flaggen fuer denselben fahrer heissen deshalb "wurde oft ueberrundet",
     nicht "hat oft gestoert".
     """
     blau = rcm[(rcm["Category"] == "Flag") & (rcm["Flag"] == "BLUE")].copy()
@@ -1522,17 +1521,17 @@ def blue_flags(session, rcm: pd.DataFrame) -> pd.DataFrame:
 
 
 def deleted_reason_crosscheck(session, rcm: pd.DataFrame) -> pd.DataFrame:
-    """Umgekehrte Richtung zu :func:`track_limit_crosscheck` (siehe P19-
-    Erweiterung): Laps mit ``Deleted=True`` und einem Track-Limits-Grund in
-    ``DeletedReason`` (bislang nirgends gelesen, nur in Docstrings erwaehnt),
-    die zu KEINER per Regex geparsten Race-Control-Meldung passen. Deckt
-    damit Faelle auf, in denen der Meldungs-Regex etwas verpasst - die
-    andere Richtung als ``track_limit_crosscheck``, die FastF1s
-    Deleted-Spalte als unvollstaendig entlarvt.
+    """umgekehrte richtung zu :func:`track_limit_crosscheck` (siehe P19-
+    erweiterung): laps mit ``Deleted=True`` und einem track-limits-grund in
+    ``DeletedReason`` (bislang nirgends gelesen, nur in docstrings erwaehnt),
+    die zu KEINER per regex geparsten race-control-meldung passen. deckt
+    damit faelle auf, in denen der meldungs-regex etwas verpasst. die
+    andere richtung als ``track_limit_crosscheck``, die FastF1s
+    Deleted-spalte als unvollstaendig entlarvt.
 
-    ``DeletedReason`` traegt dasselbe Textformat wie die Meldung selbst
+    ``DeletedReason`` traegt dasselbe textformat wie die meldung selbst
     ("TRACK LIMITS AT TURN <n> LAP <m>") und wird hier direkt geparst,
-    unabhaengig vom Meldungstext.
+    unabhaengig vom meldungstext.
     """
     laps = session.laps
     grund = laps["DeletedReason"].astype(str)
@@ -1556,7 +1555,7 @@ def deleted_reason_crosscheck(session, rcm: pd.DataFrame) -> pd.DataFrame:
 
 
 def parse_track_limits(rcm: pd.DataFrame) -> pd.DataFrame:
-    """Track-Limit-Meldungen je Fahrer und Kurve parsen (siehe P19)."""
+    """track-limit-meldungen je fahrer und kurve parsen (siehe P19)."""
     zeilen = []
     for m in rcm.itertuples():
         treffer = TRACKLIM.search(str(m.Message))
@@ -1569,13 +1568,13 @@ def parse_track_limits(rcm: pd.DataFrame) -> pd.DataFrame:
 
 def track_limit_crosscheck(
         session, rcm: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, int]:
-    """Track-Limit-Meldungen gegen Laps.Deleted gegenpruefen (siehe P19).
+    """track-limit-meldungen gegen Laps.Deleted gegenpruefen (siehe P19).
 
-    Nutzt die im Text genannte betroffene Runde, nicht die Runde, in der
-    die Meldung gepostet wurde. Gibt (fehlend, deleted, n_mit_runde) zurueck:
-    ``fehlend`` sind Meldungen, die im Text stehen, aber zu keiner
-    Deleted=True-Runde passen - FastF1s Deleted-Spalte ist fuer
-    Track-Limit-Auswertungen leicht unvollstaendig (siehe Docstring P19).
+    nutzt die im text genannte betroffene runde, nicht die runde, in der
+    die meldung gepostet wurde. gibt (fehlend, deleted, n_mit_runde) zurueck:
+    ``fehlend`` sind meldungen, die im text stehen, aber zu keiner
+    Deleted=True-runde passen. FastF1s Deleted-spalte ist fuer
+    track-limit-auswertungen leicht unvollstaendig (siehe docstring P19).
     """
     treffer = []
     for m in rcm.itertuples():

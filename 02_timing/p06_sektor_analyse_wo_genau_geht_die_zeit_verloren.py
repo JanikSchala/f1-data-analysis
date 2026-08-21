@@ -1,53 +1,5 @@
-"""
-P06 - Sektor-Analyse: Wo genau geht die Zeit verloren?
-======================================================
-
-Sektorzeiten und Speed-Traps zerlegen die Rundenzeit in Aussagen ueber Abtrieb, Topspeed und Traktion.
-
-Kategorie:   Timing & Rundenanalyse
-Niveau:      Einsteiger
-Aufwand:     2 h
-Schwerpunkt: Datenanalyse, Strategie
-
-WARUM DAS LOHNT
-Sektor-Deltas sind die schnellste Diagnose fuer Auto-Charakteristik. Perfekt, um analytisches Denken zu demonstrieren, ohne dass es kompliziert wird.
-
-VORGEHEN
-  1. Beste Sektorzeit je Fahrer ermitteln
-  2. Theoretisch beste Runde je Fahrer bilden (Summe der Bestsektoren)
-  3. Delta zur tatsaechlich gefahrenen Bestzeit = ungenutztes Potenzial
-  4. Speed-Traps gegen Sektorzeiten plotten
-
-GENUTZTE FASTF1-BAUSTEINE
-  - Laps.pick_fastest
-  - Sector1Time/2/3
-  - SpeedI1/I2/FL/ST
-  - Lap.get_telemetry (Mini-Sektoren)
-  - matplotlib LineCollection
-
-AUSBAUSTUFE  [umgesetzt]
-Mini-Sektor-Analyse: die Runde per Telemetrie-Distanz in 25 gleich lange
-Abschnitte teilen, fuer jeden die Zeit interpolieren (nicht die Geschwindigkeit
-mitteln - Zeit ist additiv ueber einen Abschnitt, eine gemittelte
-Geschwindigkeit waere bei ungleich verteilten Messpunkten verzerrt) und die
-Strecke danach einfaerben, wer den Abschnitt gewonnen hat.
-
-Bewusst nur die drei schnellsten Fahrer statt des ganzen Feldes: mehr als
-MAX_SERIEN=3 unterscheidbare Farben verbietet f1lab.design, und inhaltlich
-ist "wer dominiert welchen Abschnitt" ohnehin nur unter echten Anwaertern
-eine Diagnose - Rang 15 gegen Rang 3 in einem Mini-Sektor sagt vor allem
-etwas ueber die Ausgangslage, nicht uebers Auto.
-
-Monaco 2024 Q, LEC/PIA/SAI (die drei schnellsten): 9 der 25 Mini-Sektoren
-gehen an Piastri, je 8 an Leclerc und Sainz - trotz 0.25s Rueckstand auf
-Leclercs Gesamtzeit. Verteilte Staerke schlaegt sich nicht eins zu eins in
-der Rundenzeit nieder, weil die Abschnitte unterschiedlich lang sind und
-Piastris Vorteile in kuerzeren Abschnitten liegen.
-
-Die Mini-Sektor-Berechnung selbst sitzt seit der App-Integration in
-f1lab.mini_sectors() - dieselbe Funktion, die auch der Vergleichs-Reiter der
-Telemetrie-Seite im Dashboard nutzt.
-"""
+"""zerlegt rundenzeiten in sektoren und mini-sektoren um ungenutztes potenzial
+und speed-trap-staerken zu finden"""
 from __future__ import annotations
 
 import sys
@@ -58,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
-matplotlib.use("Agg")                      # kein Fenster, nur Dateien
+matplotlib.use("Agg")                      # nur dateien statt fenster
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -80,7 +32,8 @@ plt.rcParams.update(matplotlib_stil())
 
 
 def sektor_tabelle(laps: pd.DataFrame) -> pd.DataFrame:
-    """VORGEHEN 1-3: theoretisch beste Runde gegen tatsaechliche Bestzeit."""
+    """theoretisch beste runde (summe der bestsektoren) gegen tatsaechliche
+    bestzeit."""
     sec = (laps.groupby("Driver")[["Sector1Time", "Sector2Time", "Sector3Time"]]
            .min().apply(lambda s: s.dt.total_seconds()))
     sec["theoretisch"] = sec.sum(axis=1)
@@ -103,7 +56,7 @@ def zeichne_potenzial(ax, sec: pd.DataFrame) -> None:
 
 
 def zeichne_speedtraps(ax, laps: pd.DataFrame, sec: pd.DataFrame) -> None:
-    """VORGEHEN 4: Speed-Traps gegen Sektorzeiten - Topspeed gegen Rueckstand."""
+    """topspeed an den speed-traps gegen rueckstand auf die bestzeit."""
     speeds = laps.groupby("Driver")[["SpeedI1", "SpeedI2", "SpeedFL", "SpeedST"]].max()
     d = sec.join(speeds)
     rueckstand = d["real"] - d["real"].min()

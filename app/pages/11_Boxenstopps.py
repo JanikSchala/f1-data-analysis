@@ -1,16 +1,17 @@
-"""Boxenstopp-Performance-Ranking einer ganzen Saison, aus Ergast/jolpica.
+"""boxenstopp-performance-ranking einer ganzen saison, aus Ergast/jolpica.
 
-Anders als jede andere Seite hier braucht das eine echte Netzwerkverbindung -
-Ergast/jolpica ist eine eigene API, kein Teil des lokalen FastF1-Caches, den
-der Rest der App ausschliesslich offline liest. Das Ergebnis wird deshalb
-mit persist="disk" gecacht: nur der erste Aufruf je Saison braucht Netz,
-danach kommt es aus Streamlits eigenem Diskcache. Der Saison-Scan (Paging,
-Retry) bleibt seitenlokal, aus demselben Grund wie in 9_Teamkollegen.py: er
-wird nur hier gebraucht (siehe P05-Begruendung dort).
+anders als jede andere seite hier braucht das eine echte
+netzwerkverbindung. Ergast/jolpica ist eine eigene API, kein teil des
+lokalen FastF1-caches, den der rest der app ausschliesslich offline liest.
+das ergebnis wird deshalb mit persist="disk" gecacht: nur der erste aufruf
+je saison braucht netz, danach kommt es aus streamlits eigenem diskcache.
+der saison-scan (paging, retry) bleibt seitenlokal, aus demselben grund wie
+in 9_Teamkollegen.py: er wird nur hier gebraucht (siehe P05-begruendung
+dort).
 
-Kennzahlen wie in P16: Ergasts `duration`-Feld ist die volle Boxengassen-
-Zeit (Einfahrt- bis Ausfahrt-Zeitschranke), nicht die reine Standzeit -
-Filter 15-35s statt der urspruenglich angenommenen 1.5-6.0s.
+kennzahlen wie in P16: Ergasts `duration`-feld ist die volle
+boxengassen-zeit (einfahrt- bis ausfahrt-zeitschranke), nicht die reine
+standzeit. DAUER_MIN/DAUER_MAX unten filtern danach.
 """
 from __future__ import annotations
 
@@ -123,7 +124,7 @@ k[2].metric("Median-Spannweite",
                 "Team-Median - siehe P16, meist unter 5% der Stoppzeit "
                 "selbst.")
 
-# --- Ranking ----------------------------------------------------------------
+# --- ranking ----------------------------------------------------------------
 st.markdown("##### Ranking nach Median")
 order = rank.sort_values("Median", ascending=False)
 teams = list(order.index)
@@ -157,7 +158,7 @@ tabelle(rank.round(2).reset_index().rename(columns={
     "constructorName": "Team", "Median": "Median [s]", "Bester": "Bester [s]",
     "IQR": "IQR [s]", "Stopps": "Stopps"}))
 
-# --- AUSBAUSTUFE: Druck ------------------------------------------------------
+# --- AUSBAUSTUFE: druck ------------------------------------------------------
 links, rechts = st.columns(2)
 
 with links:
