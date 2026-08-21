@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 
-from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
+from f1lab.design import BG, FG, GRID, MUTED, SERIEN, matplotlib_stil
 
 plt.rcParams.update(matplotlib_stil())
 
@@ -76,7 +76,7 @@ def build_pdf(race_session, quali_session, pace_df: pd.DataFrame,
                fontsize=22, color=FG, transform=ax.transAxes)
         ax.text(0.5, 0.5, str(race_session.event.year), ha="center",
                fontsize=14, color=MUTED, transform=ax.transAxes)
-        fig.patch.set_facecolor("#15151e")
+        fig.patch.set_facecolor(BG)
         pdf.savefig(fig)
         plt.close(fig)
 
