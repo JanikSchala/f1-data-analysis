@@ -213,8 +213,8 @@ make_assets.py        erzeugt die Grafiken oben
 check_setup.py        prüft Umgebung, Pakete, Cache und API-Zugriff
 ```
 
-Jedes Skript läuft eigenständig. Der Kopf-Docstring nennt Ziel, Vorgehen, die
-genutzten FastF1-Bausteine und eine Ausbaustufe.
+Jedes Skript läuft eigenständig, mit knappen Kommentaren statt eines
+ausführlichen Kopf-Docstrings.
 
 ---
 
