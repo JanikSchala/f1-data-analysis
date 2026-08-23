@@ -242,11 +242,16 @@ else:
                f"{staerkster['driver']} Stint {staerkster['stint']}",
                f"{staerkster['vor']:+.2f} -> {staerkster['nach']:+.2f} s/Runde")
 
-    wahl = st.selectbox(
-        "Stint anzeigen", cliffs,
-        format_func=lambda c: f"{c['driver']} Stint {c['stint']} "
-                              f"(Knick bei Reifenalter {c['knick']})",
+    # ohne key= vergleicht Streamlit bei jedem rerun den alten gegen den
+    # neuen widget-wert. cliffs-eintraege selbst als optionen wuerden dabei
+    # ihr "laps"-DataFrame mitvergleichen und an dessen unklarem
+    # wahrheitswert abstuerzen, deshalb hier nur ueber den index waehlen.
+    idx = st.selectbox(
+        "Stint anzeigen", range(len(cliffs)),
+        format_func=lambda i: f"{cliffs[i]['driver']} Stint {cliffs[i]['stint']} "
+                              f"(Knick bei Reifenalter {cliffs[i]['knick']})",
         index=cliffs.index(staerkster))
+    wahl = cliffs[idx]
 
     g = wahl["laps"]
     vor = g[g["TyreLife"] <= wahl["knick"]]

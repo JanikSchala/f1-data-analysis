@@ -121,17 +121,28 @@ class Auswahl:
 
 
 # --- aufbau ---------------------------------------------------------------
+def konfiguriere_app() -> None:
+    """seitenkonfiguration und stil, einmal fuer die ganze app.
+
+    muss vor st.navigation(...) im einstiegspunkt laufen, nicht mehr pro
+    seite wie vor der umstellung auf st.navigation - set_page_config()
+    darf nur einmal je skriptlauf aufgerufen werden, der einstiegspunkt
+    laeuft aber bei jedem rerun mit, jede ausgewaehlte seite haengt sich
+    daran nur noch per .run() an.
+    """
+    st.set_page_config(page_title="F1 Analyse", page_icon="\N{CHEQUERED FLAG}",
+                       layout="wide")
+    st.markdown(_CSS, unsafe_allow_html=True)
+
+
 def setup(titel: str, beschreibung: str = "") -> Path | None:
-    """seitenkonfiguration, stil, cache: der immer gleiche seitenkopf.
+    """cache aktivieren und den seitenkopf zeigen: der immer gleiche teil
+    jeder einzelnen seite.
 
     der cache laeuft im offline-modus, die app zieht nie selbst daten nach.
     das erledigt der warmup aus p01, weil es stunden dauern kann und ins
     rate-limit der API laeuft.
     """
-    st.set_page_config(page_title=f"F1 Analyse - {titel}", page_icon="\N{CHEQUERED FLAG}",
-                       layout="wide")
-    st.markdown(_CSS, unsafe_allow_html=True)
-
     pfad = f1lab.find_cache()
     if pfad is not None:
         f1lab.enable_cache(pfad, offline=True)
