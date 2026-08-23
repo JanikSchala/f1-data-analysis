@@ -183,59 +183,79 @@ def _quali_datensatz(jahre: tuple[int, ...]) -> pd.DataFrame:
     return data.dropna(subset=["position"])
 
 
+@st.cache_data(persist="disk", show_spinner=False)
+def _quali_ergebnisse(jahre: tuple[int, ...]):
+    """datensatz, 5-fold-cv und permutation importance in einem cache.
+
+    vorher lief die cv-schleife (15 modell-fits je aufruf) roh im
+    tab-koerper. st.tabs rendert alle tabs bei jedem rerun, das training
+    startete also bei jeder interaktion irgendwo auf der seite neu.
+    """
+    data = _quali_datensatz(jahre)
+    if data.empty:
+        return {"data": data}
+
+    feat = ([c for c in data.columns
+            if c.startswith("FP") and c.endswith("_rel")]
+           + ["vorjahr_position", "team_form"])
+    data = data.sort_values(["season", "round"]).reset_index(drop=True)
+    X, y_pos, y_zeit = data[feat], data["position"], data["zeit_rel"]
+
+    cv = TimeSeriesSplit(n_splits=5)
+    mae_pos, mae_zeit, mae_mlp = [], [], []
+    letzter_test_idx = None
+    for tr, te in cv.split(X):
+        m_pos = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
+        m_pos.fit(X.iloc[tr], y_pos.iloc[tr])
+        mae_pos.append(mean_absolute_error(
+            y_pos.iloc[te], m_pos.predict(X.iloc[te])))
+
+        m_zeit = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
+        gueltig = y_zeit.iloc[tr].notna()
+        m_zeit.fit(X.iloc[tr][gueltig], y_zeit.iloc[tr][gueltig])
+        mae_zeit.append(_positions_mae_aus_zeit(
+            data.iloc[te], m_zeit.predict(X.iloc[te])))
+
+        m_mlp = _mlp_pipeline()
+        m_mlp.fit(X.iloc[tr], y_pos.iloc[tr])
+        mae_mlp.append(mean_absolute_error(
+            y_pos.iloc[te], m_mlp.predict(X.iloc[te])))
+
+        letzter_test_idx = te
+    baseline = mean_absolute_error(y_pos, np.full(len(y_pos), y_pos.median()))
+
+    m_final = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
+    tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
+    m_final.fit(X.iloc[tr_final], y_pos.iloc[tr_final])
+    imp = permutation_importance(m_final, X.iloc[letzter_test_idx],
+                                 y_pos.iloc[letzter_test_idx],
+                                 n_repeats=20, random_state=7)
+    imp_s = pd.Series(imp.importances_mean, index=feat).sort_values()
+
+    return {"data": data, "mae_pos": mae_pos, "mae_zeit": mae_zeit,
+           "mae_mlp": mae_mlp, "baseline": baseline, "imp_s": imp_s}
+
+
 with tab_quali:
-    with st.spinner(f"Quali-Datensatz {JAHRE[0]}-{JAHRE[-1]} wird aus dem "
-                   "lokalen Cache gebaut (nur beim ersten Aufruf - "
-                   "mehrere hundert Sessions, dauert einige Minuten) ..."):
-        data = _quali_datensatz(JAHRE)
+    with st.spinner(f"Quali-Datensatz {JAHRE[0]}-{JAHRE[-1]} und "
+                   "5-Fold-Validierung werden gebaut (nur beim ersten "
+                   "Aufruf - mehrere hundert Sessions, dauert einige "
+                   "Minuten) ..."):
+        erg_q = _quali_ergebnisse(JAHRE)
+    data = erg_q["data"]
 
     if data.empty:
         st.info(f"Fuer {JAHRE[0]}-{JAHRE[-1]} liegen nicht genug FP- und "
                "Quali-Sessions im Cache.")
     else:
-        feat = ([c for c in data.columns
-                if c.startswith("FP") and c.endswith("_rel")]
-               + ["vorjahr_position", "team_form"])
-        data = data.sort_values(["season", "round"]).reset_index(drop=True)
-        X, y_pos, y_zeit = data[feat], data["position"], data["zeit_rel"]
+        mae_pos, mae_zeit, mae_mlp = erg_q["mae_pos"], erg_q["mae_zeit"], erg_q["mae_mlp"]
+        baseline, imp_s = erg_q["baseline"], erg_q["imp_s"]
 
         k = st.columns(3)
         k[0].metric("Fahrer-Wochenenden", len(data))
         k[1].metric("Events", data[["season", "round"]].drop_duplicates().shape[0])
         k[2].metric("Mit Vorjahreswert",
                    f"{data['vorjahr_position'].notna().mean():.0%}")
-
-        with st.spinner("TimeSeriesSplit-Validierung (5 Folds, inkl. MLP) ..."):
-            cv = TimeSeriesSplit(n_splits=5)
-            mae_pos, mae_zeit, mae_mlp = [], [], []
-            letzter_test_idx = None
-            for tr, te in cv.split(X):
-                m_pos = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
-                m_pos.fit(X.iloc[tr], y_pos.iloc[tr])
-                mae_pos.append(mean_absolute_error(
-                    y_pos.iloc[te], m_pos.predict(X.iloc[te])))
-
-                m_zeit = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
-                gueltig = y_zeit.iloc[tr].notna()
-                m_zeit.fit(X.iloc[tr][gueltig], y_zeit.iloc[tr][gueltig])
-                mae_zeit.append(_positions_mae_aus_zeit(
-                    data.iloc[te], m_zeit.predict(X.iloc[te])))
-
-                m_mlp = _mlp_pipeline()
-                m_mlp.fit(X.iloc[tr], y_pos.iloc[tr])
-                mae_mlp.append(mean_absolute_error(
-                    y_pos.iloc[te], m_mlp.predict(X.iloc[te])))
-
-                letzter_test_idx = te
-            baseline = mean_absolute_error(y_pos, np.full(len(y_pos), y_pos.median()))
-
-            m_final = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
-            tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
-            m_final.fit(X.iloc[tr_final], y_pos.iloc[tr_final])
-            imp = permutation_importance(m_final, X.iloc[letzter_test_idx],
-                                         y_pos.iloc[letzter_test_idx],
-                                         n_repeats=20, random_state=7)
-            imp_s = pd.Series(imp.importances_mean, index=feat).sort_values()
 
         links, rechts = st.columns([1, 1.3])
         with links:
@@ -776,72 +796,96 @@ def _renn_datensatz(jahre: tuple[int, ...]) -> pd.DataFrame:
     return races.dropna(subset=["grid", "position"])
 
 
+@st.cache_data(persist="disk", show_spinner=False)
+def _renn_ergebnisse(jahre: tuple[int, ...]):
+    """datensatz, klassifikation, regression und kalibrierung in einem cache.
+
+    dieselbe umstellung wie bei _quali_ergebnisse: die cv-schleife lief
+    vorher roh im tab-koerper und damit bei jedem rerun neu.
+    """
+    races = _renn_datensatz(jahre)
+    if races.empty:
+        return {"races": races}
+
+    feat = ["grid", "driver_form", "team_form", "dnf_rate"]
+    races = races.sort_values(["season", "round"]).reset_index(drop=True)
+    X = races[feat]
+    y_podium = races["podium"].astype(int)
+
+    cv = TimeSeriesSplit(n_splits=5)
+    auc_scores, brier_scores = [], []
+    alle_y_true, alle_y_prob = [], []
+    letzter_test_idx = None
+    for tr, te in cv.split(X):
+        m = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
+        m.fit(X.iloc[tr], y_podium.iloc[tr])
+        prob = m.predict_proba(X.iloc[te])[:, 1]
+        auc_scores.append(roc_auc_score(y_podium.iloc[te], prob))
+        brier_scores.append(brier_score_loss(y_podium.iloc[te], prob))
+        alle_y_true.append(y_podium.iloc[te].to_numpy())
+        alle_y_prob.append(prob)
+        letzter_test_idx = te
+
+    y_true_ges = np.concatenate(alle_y_true)
+    y_prob_ges = np.concatenate(alle_y_prob)
+    basisrate = y_podium.mean()
+    brier_baseline = brier_score_loss(
+        y_true_ges, np.full(len(y_true_ges), basisrate))
+    acc_baseline = ((races["grid"] <= 3).astype(int) == y_podium).mean()
+
+    fertig = races[~races["dnf"]].copy()
+    Xf, yf = fertig[feat], fertig["position"]
+    mae_scores, mae_baseline_scores = [], []
+    for tr, te in cv.split(Xf):
+        m2 = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
+        m2.fit(Xf.iloc[tr], yf.iloc[tr])
+        mae_scores.append(mean_absolute_error(
+            yf.iloc[te], m2.predict(Xf.iloc[te])))
+        mae_baseline_scores.append(mean_absolute_error(
+            yf.iloc[te], fertig["grid"].iloc[te]))
+
+    beob, vorh = calibration_curve(y_true_ges, y_prob_ges, n_bins=10,
+                                   strategy="uniform")
+
+    m_final = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
+    tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
+    m_final.fit(X.iloc[tr_final], y_podium.iloc[tr_final])
+    imp = permutation_importance(m_final, X.iloc[letzter_test_idx],
+                                 y_podium.iloc[letzter_test_idx],
+                                 scoring="roc_auc", n_repeats=20,
+                                 random_state=7)
+    imp_s = pd.Series(imp.importances_mean, index=feat).sort_values()
+
+    return {"races": races, "auc_scores": auc_scores, "brier_scores": brier_scores,
+           "basisrate": basisrate, "brier_baseline": brier_baseline,
+           "acc_baseline": acc_baseline, "mae_scores": mae_scores,
+           "mae_baseline_scores": mae_baseline_scores, "beob": beob, "vorh": vorh,
+           "imp_s": imp_s}
+
+
 with tab_renn:
-    with st.spinner(f"Rennergebnisse {RENN_JAHRE[0]}-{RENN_JAHRE[-1]} werden "
-                   "aus dem lokalen Cache gebaut (nur beim ersten Aufruf - "
-                   "ein Ladevorgang je Rennen, dauert einige Minuten) ..."):
-        races = _renn_datensatz(RENN_JAHRE)
+    with st.spinner(f"Rennergebnisse {RENN_JAHRE[0]}-{RENN_JAHRE[-1]} und "
+                   "5-Fold-Validierung werden gebaut (nur beim ersten "
+                   "Aufruf - ein Ladevorgang je Rennen, dauert einige "
+                   "Minuten) ..."):
+        erg_r = _renn_ergebnisse(RENN_JAHRE)
+    races = erg_r["races"]
 
     if races.empty:
         st.info(f"Fuer {RENN_JAHRE[0]}-{RENN_JAHRE[-1]} liegen nicht genug "
                "Rennsessions im Cache.")
     else:
-        feat = ["grid", "driver_form", "team_form", "dnf_rate"]
-        races = races.sort_values(["season", "round"]).reset_index(drop=True)
-        X = races[feat]
-        y_podium = races["podium"].astype(int)
+        auc_scores, brier_scores = erg_r["auc_scores"], erg_r["brier_scores"]
+        basisrate, brier_baseline = erg_r["basisrate"], erg_r["brier_baseline"]
+        acc_baseline = erg_r["acc_baseline"]
+        mae_scores, mae_baseline_scores = erg_r["mae_scores"], erg_r["mae_baseline_scores"]
+        beob, vorh, imp_s = erg_r["beob"], erg_r["vorh"], erg_r["imp_s"]
 
         k = st.columns(4)
         k[0].metric("Fahrer-Rennen", len(races))
         k[1].metric("Rennen", races[["season", "round"]].drop_duplicates().shape[0])
         k[2].metric("DNF-Quote", f"{races['dnf'].mean():.1%}")
         k[3].metric("Podium-Quote", f"{races['podium'].mean():.1%}")
-
-        with st.spinner("TimeSeriesSplit-Validierung (5 Folds, Klassifikation "
-                       "+ Regression) ..."):
-            cv = TimeSeriesSplit(n_splits=5)
-            auc_scores, brier_scores = [], []
-            alle_y_true, alle_y_prob = [], []
-            letzter_test_idx = None
-            for tr, te in cv.split(X):
-                m = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
-                m.fit(X.iloc[tr], y_podium.iloc[tr])
-                prob = m.predict_proba(X.iloc[te])[:, 1]
-                auc_scores.append(roc_auc_score(y_podium.iloc[te], prob))
-                brier_scores.append(brier_score_loss(y_podium.iloc[te], prob))
-                alle_y_true.append(y_podium.iloc[te].to_numpy())
-                alle_y_prob.append(prob)
-                letzter_test_idx = te
-
-            y_true_ges = np.concatenate(alle_y_true)
-            y_prob_ges = np.concatenate(alle_y_prob)
-            basisrate = y_podium.mean()
-            brier_baseline = brier_score_loss(
-                y_true_ges, np.full(len(y_true_ges), basisrate))
-            acc_baseline = ((races["grid"] <= 3).astype(int) == y_podium).mean()
-
-            fertig = races[~races["dnf"]].copy()
-            Xf, yf = fertig[feat], fertig["position"]
-            mae_scores, mae_baseline_scores = [], []
-            for tr, te in cv.split(Xf):
-                m2 = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
-                m2.fit(Xf.iloc[tr], yf.iloc[tr])
-                mae_scores.append(mean_absolute_error(
-                    yf.iloc[te], m2.predict(Xf.iloc[te])))
-                mae_baseline_scores.append(mean_absolute_error(
-                    yf.iloc[te], fertig["grid"].iloc[te]))
-
-            beob, vorh = calibration_curve(y_true_ges, y_prob_ges, n_bins=10,
-                                           strategy="uniform")
-
-            m_final = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
-            tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
-            m_final.fit(X.iloc[tr_final], y_podium.iloc[tr_final])
-            imp = permutation_importance(m_final, X.iloc[letzter_test_idx],
-                                         y_podium.iloc[letzter_test_idx],
-                                         scoring="roc_auc", n_repeats=20,
-                                         random_state=7)
-            imp_s = pd.Series(imp.importances_mean, index=feat).sort_values()
 
         links, mitte, rechts = st.columns(3)
         with links:

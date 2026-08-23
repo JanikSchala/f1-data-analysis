@@ -123,6 +123,21 @@ st.markdown("""
 | **Rennverlauf** | Wo lagen Safety Car und VSC, und was hat das verschoben? | `track_status_phases` |
 | **Telemetrie** | Wo wird gebremst, wie hart, und wie sieht die Strecke aus? | `braking_zones`, `circuit_geometry` |
 | **Kalender** | Wie sieht der Kalender aus, und wie vermisst man eine Strecke? | `event_dimension`, `circuit_dimension` |
+| **Renndynamik** | Wer ueberholt wen, wie laeuft der Start, und wie stark bremst Verkehr das Feld? | `overtakes_matrix`, `start_performance`, `dirty_air_effect` |
+| **Teamkollegen** | Wer gewinnt das teaminterne Duell ueber eine ganze Saison? | `elo_expected`, `elo_update` |
+| **Strecke** | Wie sieht die Strecke aus, und hat sich ihr Layout ueber die Jahre veraendert? | `corner_labels`, `corner_speeds`, `circuit_geometry` |
+| **Boxenstopps** | Welches Team boxt am schnellsten, ueber eine ganze Saison? | Ergast/jolpica (Boxengassen-Zeiten) |
+| **Wetter** | Wie veraendern Regen und Streckentemperatur die Pace? | `weather_join`, `temperature_effect`, `wet_dry_classifier` |
+| **Race Control** | Wann griff die Rennleitung ein, und wer wurde bestraft? | `track_status_phases`, `parse_penalties` |
+| **Historie** | Wer kann noch Weltmeister werden, und wie hat sich F1 ueber 75 Jahre veraendert? | Ergast/jolpica (WM-Stand, historische Trends) |
+| **Machine Learning** | Laesst sich Qualifying, Fahrstil oder ein Ausfall vorhersagen? | sklearn/torch-Modelle auf f1lab-Daten |
+| **Strategie-Optimierer** | Was ist der rechnerisch beste Boxenstopp-Plan fuer dieses Rennen? | `optimal_strategy`, `SafetyCarProcess` |
+| **Rundenzeit-Simulation** | Laesst sich eine Rundenzeit aus Streckengeometrie und Fahrzeugparametern berechnen? | `simulate_lap`, `calibrate_lap_model` |
+| **Ueberholschwierigkeit** | Ist eine Strecke strukturell schwer zu ueberholen? | `overtakes_matrix`, `circuit_dimension` |
+| **Startplatz-Paritaet** | Hat die "schmutzige Seite" der Startaufstellung einen echten Effekt? | `grid_lap1_positions` |
+| **Verkehr-Simulation** | Wie stark aendert Verkehr eine Boxenstopp-Strategie wirklich? | `gap_evolution`, `traffic_cost` |
+| **Streckenentwicklung** | Wird die Strecke von Q1 zu Q3 wirklich schneller? | `qualifying_track_evolution` |
+| **Sprint vs. Rennen** | Wird im Sprint wirklich weniger ueberholt als im Rennen? | `overtakes_matrix` (Sprint vs. Rennen) |
 """)
 
 with st.expander("Warum nur gespeicherte Daten?"):
