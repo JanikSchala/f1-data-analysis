@@ -510,14 +510,23 @@ def track_geometry(season=2024):
     sc = ax.scatter(geo["length_m"] / 1000, geo["corners"], s=190, c=span,
                     cmap="viridis", norm=norm, edgecolor=BG, linewidth=2,
                     zorder=3)
+    # nur die extreme beschriften (laenge, kurvenzahl, hoehenspanne) - alle
+    # 24 Strecken zu labeln ueberlappt sich zu unlesbarem Kauderwelsch bei
+    # dicht beieinanderliegenden Punkten (siehe P02s strecken_profil()).
+    zeigen = (set(geo.nlargest(2, "length_m").index)
+             | set(geo.nsmallest(2, "length_m").index)
+             | set(geo.nlargest(1, "elev_span_m").index)
+             | set(geo.nlargest(1, "corners").index)
+             | set(geo.nsmallest(1, "corners").index))
     x_mitte = (geo["length_m"].min() + geo["length_m"].max()) / 2000
-    for _, r in geo.iterrows():
+    for i in zeigen:
+        r = geo.loc[i]
         rechts = r["length_m"] / 1000 > x_mitte
         ax.annotate(r["circuit"], (r["length_m"] / 1000, r["corners"]),
                     textcoords="offset points",
                     xytext=(-10, 0) if rechts else (10, 0),
                     ha="right" if rechts else "left", va="center",
-                    color=FG, fontsize=8)
+                    color=FG, fontsize=9)
     ax.set_xlabel("Streckenlaenge [km] - gefahrene Ideallinie")
     ax.set_ylabel("Kurven")
     ax.set_title(f"Streckengeometrie {season}: Laenge, Kurvenzahl und "
@@ -620,11 +629,14 @@ def warehouse_pace():
     """).df()
     con.close()
 
+    # als delta-vom-schnellsten statt absolutem rel_pace plotten - die werte
+    # clustern alle nahe 1.000, eine bei 0 startende achse macht jeden
+    # balken optisch gleich lang und das ranking damit unsichtbar.
+    delta_pct = (rang["mittel_rel_pace"] - 1.0) * 100
     fig, ax = plt.subplots(figsize=(9, 7))
-    ax.barh(rang["Driver"], rang["mittel_rel_pace"], color=SERIEN[0], height=0.65)
+    ax.barh(rang["Driver"], delta_pct, color=SERIEN[0], height=0.65)
     ax.invert_yaxis()
-    ax.axvline(1.0, color=MUTED, lw=1, ls="--")
-    ax.set_xlabel("Mittlere relative Race Pace (1.000 = Event-Schnellster)")
+    ax.set_xlabel("Mittlere relative Race Pace ggue. Event-Schnellster [%]")
     ax.set_title("Saison-Pace-Ranking direkt aus dem DuckDB-Warehouse",
                  loc="left", color=FG, fontsize=13, pad=10)
     for side in ("top", "right"):
