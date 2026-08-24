@@ -26,11 +26,14 @@ matplotlib.use("Agg")                      # kein fenster, nur dateien
 import fastf1.plotting as f1plt
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from fastf1.ergast import Ergast
 from fastf1.utils import delta_time
 from matplotlib.collections import LineCollection
+from scipy.stats import binomtest
 
 import f1lab
-from f1lab.design import BG, FG, matplotlib_stil
+from f1lab.design import BG, FG, GRID, MUTED, SERIEN, matplotlib_stil
 
 warnings.filterwarnings("ignore")
 
@@ -57,7 +60,7 @@ def save(fig, name: str) -> None:
 
 # ---------------------------------------------------------------- 1
 def gear_map(year=2024, gp="Belgium"):
-    print(f"[1/5] Gangwechsel-Karte  {gp} {year}")
+    print(f"[1/9] Gangwechsel-Karte  {gp} {year}")
     ses = f1lab.load(year, gp, "Q", telemetry=True)
     lap = ses.laps.pick_fastest()
     tel = lap.get_telemetry()
@@ -99,7 +102,7 @@ def gear_map(year=2024, gp="Belgium"):
 
 # ---------------------------------------------------------------- 2
 def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
-    print(f"[2/5] Telemetrie-Overlay  {gp} {year}  {d1} vs {d2}")
+    print(f"[2/9] Telemetrie-Overlay  {gp} {year}  {d1} vs {d2}")
     ses = f1lab.load(year, gp, "Q", telemetry=True)
     lap1 = ses.laps.pick_drivers(d1).pick_fastest()
     lap2 = ses.laps.pick_drivers(d2).pick_fastest()
@@ -156,7 +159,7 @@ def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
 
 # ---------------------------------------------------------------- 3
 def race_pace(year=2024, gp="Spain"):
-    print(f"[3/5] Race-Pace-Ranking  {gp} {year}")
+    print(f"[3/9] Race-Pace-Ranking  {gp} {year}")
     ses = f1lab.load(year, gp, "R")
 
     # dieselbe funktion wie in den tests
@@ -194,7 +197,7 @@ def race_pace(year=2024, gp="Spain"):
 
 # ---------------------------------------------------------------- 4
 def strategy(year=2024, gp="Hungary"):
-    print(f"[4/5] Strategieuebersicht  {gp} {year}")
+    print(f"[4/9] Strategieuebersicht  {gp} {year}")
     ses = f1lab.load(year, gp, "R")
     st = f1lab.stints(ses)
     order = [d for d in ses.results.sort_values("Position")["Abbreviation"]
@@ -232,7 +235,7 @@ def strategy(year=2024, gp="Hungary"):
 
 # ---------------------------------------------------------------- 5
 def degradation(year=2024, gp="Bahrain"):
-    print(f"[5/5] Reifendegradation  {gp} {year}")
+    print(f"[5/9] Reifendegradation  {gp} {year}")
     ses = f1lab.load(year, gp, "R")
 
     deg = f1lab.degradation(ses)
@@ -283,12 +286,209 @@ def degradation(year=2024, gp="Bahrain"):
     }
 
 
+# ---------------------------------------------------------------- 6
+def undercut(year=2024):
+    print(f"[6/9] Undercut-Erfolgsquote  Saison {year}")
+    schedule = f1lab.event_dimension([year])
+    rows = []
+    for _, row in schedule.iterrows():
+        try:
+            ses = f1lab.load(year, int(row["round"]), "R", telemetry=False)
+        except Exception:
+            continue
+        d = f1lab.undercut_duels(ses)
+        if not d.empty:
+            rows.append(d)
+    duelle = pd.concat(rows, ignore_index=True)
+    n = len(duelle)
+    erfolge = int(duelle["erfolg"].sum())
+    test = binomtest(erfolge, n, 0.5)
+    ci = test.proportion_ci(confidence_level=0.95)
+    rate = erfolge / n * 100
+
+    fig, ax = plt.subplots(figsize=(9, 3.2))
+    ax.barh([0], [rate], color=SERIEN[1], height=0.5)
+    ax.errorbar([rate], [0],
+               xerr=[[rate - ci.low * 100], [ci.high * 100 - rate]],
+               color=FG, capsize=6, lw=1.5, fmt="none")
+    ax.axvline(50, color=MUTED, lw=1.5, ls="--", label="50%-Erwartung")
+    ax.set_xlim(0, 60)
+    ax.set_yticks([])
+    ax.set_xlabel("Undercut-Erfolgsquote [%], 95%-Konfidenzintervall")
+    ax.set_title(f"Saison {year}: {erfolge}/{n} echte Undercut-Duelle "
+                 f"erfolgreich ({rate:.1f}%)", loc="left", color=FG,
+                 fontsize=13, pad=10)
+    ax.legend(loc="lower right", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.grid(axis="x", alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+    plt.tight_layout()
+    save(fig, "undercut.png")
+
+    KPI["undercut"] = {
+        "saison": year, "duelle": n, "erfolge": erfolge,
+        "quote_pct": round(rate, 1),
+        "ki_95_pct": [round(ci.low * 100, 1), round(ci.high * 100, 1)],
+        "p_wert_gegen_50pct": test.pvalue,
+    }
+
+
+# ---------------------------------------------------------------- 7
+def safety_car(year=2024, gp="Canada"):
+    print(f"[7/9] Safety-Car-Kompaktierung  {gp} {year}")
+    ses = f1lab.load(year, gp, "R", telemetry=False)
+    phasen = f1lab.track_status_phases(ses)
+    neutral = phasen[phasen["label"].isin(["safety car", "vsc"])]
+    spread = f1lab.field_spread(ses)
+    komp = f1lab.sc_compaction(neutral, spread)
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(spread.index, spread.to_numpy(), color=MUTED, lw=1.4,
+            label="Feldstreckung [s]")
+    for p in neutral.itertuples():
+        ax.axvspan(p.lap_start, p.lap_end, color=SERIEN[1], alpha=0.18)
+    for _, k in komp.iterrows():
+        ax.annotate(f"-{k['kompaktierung_pct']:.0f}%",
+                    xy=(k["ende"], k["minimum_s"]),
+                    xytext=(0, -14), textcoords="offset points",
+                    ha="center", color=SERIEN[1], fontsize=9,
+                    fontweight="bold")
+    ax.set_xlabel("Runde")
+    ax.set_ylabel("Sekunden zwischen erstem und letztem Fahrer")
+    ax.set_title(f"{ses.event['EventName']} {year} - Safety-Car/VSC-Phasen "
+                 f"(rot) stauchen das Feld zusammen", loc="left", color=FG,
+                 fontsize=13, pad=10)
+    ax.legend(loc="upper right", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+    plt.tight_layout()
+    save(fig, "safety_car.png")
+
+    KPI["safety_car"] = {
+        "event": str(ses.event["EventName"]), "jahr": year,
+        "phasen": int(len(neutral)),
+        "kompaktierung": [
+            {"start": int(r["start"]), "ende": int(r["ende"]),
+             "baseline_s": round(float(r["baseline_s"]), 1),
+             "minimum_s": round(float(r["minimum_s"]), 1),
+             "kompaktierung_pct": round(float(r["kompaktierung_pct"]), 1)}
+            for _, r in komp.iterrows()],
+    }
+
+
+# ---------------------------------------------------------------- 8
+def lap_simulation(ref=(2024, "Bahrain", "Q")):
+    print(f"[8/9] Rundenzeit-Simulation  {ref[1]} {ref[0]} {ref[2]}")
+    ses_ref = f1lab.load(*ref, telemetry=True)
+    dist, kappa, speed_real = f1lab.lap_speed_profile(ses_ref)
+    t_real = float(ses_ref.laps.pick_fastest()["LapTime"].total_seconds())
+
+    params = f1lab.calibrate_lap_model(dist, kappa, speed_real)
+    v_sim, t_sim = f1lab.simulate_lap(dist, kappa, params["mu_g"],
+                                      params["a_accel"], params["a_brake"],
+                                      params["v_top"])
+
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.plot(dist, speed_real * 3.6, color=MUTED, lw=1.8,
+            label="Echte Telemetrie")
+    ax.plot(dist, v_sim * 3.6, color=SERIEN[0], lw=1.8, ls="--",
+            label="Simulation (an diese Runde kalibriert)")
+    ax.set_xlabel("Distanz [m]")
+    ax.set_ylabel("Speed [km/h]")
+    ax.set_title(f"{ref[1]} {ref[0]} {ref[2]} - physikalisches "
+                 f"Punktmassenmodell: real {t_real:.2f}s, simuliert "
+                 f"{t_sim:.2f}s ({100 * (t_sim - t_real) / t_real:+.1f}%)",
+                 loc="left", color=FG, fontsize=13, pad=10)
+    ax.legend(loc="upper right", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+    plt.tight_layout()
+    save(fig, "rundenzeit_simulation.png")
+
+    KPI["lap_simulation"] = {
+        "event": ref[1], "jahr": ref[0], "session": ref[2],
+        "rundenzeit_real_s": round(t_real, 3),
+        "rundenzeit_simuliert_s": round(float(t_sim), 3),
+        "abweichung_pct": round(100 * (t_sim - t_real) / t_real, 2),
+        "parameter": {k: round(float(v), 3) for k, v in params.items()},
+    }
+
+
+# ---------------------------------------------------------------- 9
+def historic_lap_times():
+    print("[9/9] 75 Jahre F1: Rundenzeit-Entwicklung dreier Strecken")
+    erg = Ergast(result_type="pandas", auto_cast=True)
+    strecken = {"monza": "Monza", "spa": "Spa-Francorchamps",
+                "silverstone": "Silverstone"}
+    rows = []
+    for circuit_id, name in strecken.items():
+        for year in range(1950, 2025, 4):
+            try:
+                res = erg.get_race_results(season=year, circuit=circuit_id)
+            except Exception:
+                continue
+            if not res.content or res.content[0].empty:
+                continue
+            df = res.content[0]
+            sieger = df[df["position"] == 1]
+            if sieger.empty:
+                continue
+            sieger = sieger.iloc[0]
+            if pd.isna(sieger["totalRaceTime"]) or not sieger["laps"]:
+                continue
+            sekunden = sieger["totalRaceTime"].total_seconds() / sieger["laps"]
+            if sekunden < 30:      # bekannte kaputte Ergast-Werte fuer sehr alte Rennen
+                continue
+            rows.append({"strecke": name, "season": year,
+                         "rundenzeit_s": sekunden})
+    rz = pd.DataFrame(rows)
+
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    for i, (strecke, g) in enumerate(rz.groupby("strecke")):
+        g = g.sort_values("season")
+        ax.plot(g["season"], g["rundenzeit_s"], marker="o", ms=4, lw=1.6,
+               color=SERIEN[i % len(SERIEN)], label=strecke)
+    ax.axvline(1979, color=MUTED, lw=1, ls=":")
+    ax.text(1979, ax.get_ylim()[1], " Spa fehlt 1971-82,\n kehrt verkuerzt zurueck",
+           fontsize=8, color=MUTED, va="top")
+    ax.set_ylabel("Rundenzeit des Siegers [s]")
+    ax.set_xlabel("Saison")
+    ax.set_title("75 Jahre F1: dieselbe Strecke ist selten dieselbe Strecke",
+                loc="left", color=FG, fontsize=13, pad=10)
+    ax.legend(loc="upper right", frameon=False, labelcolor=FG, fontsize=9)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+    plt.tight_layout()
+    save(fig, "historische_trends.png")
+
+    KPI["historie"] = {
+        "strecken": {
+            strecke: {
+                "erste_saison": int(g["season"].min()),
+                "letzte_saison": int(g["season"].max()),
+                "rundenzeit_erste_s": round(float(
+                    g.sort_values("season")["rundenzeit_s"].iloc[0]), 1),
+                "rundenzeit_letzte_s": round(float(
+                    g.sort_values("season")["rundenzeit_s"].iloc[-1]), 1),
+            }
+            for strecke, g in rz.groupby("strecke")},
+    }
+
+
 # ----------------------------------------------------------------
 if __name__ == "__main__":
     print(f"\nErzeuge README-Grafiken mit f1lab {f1lab.__version__}.")
     print("Der erste Lauf dauert einige Minuten.\n")
 
-    for fn in (gear_map, telemetry_overlay, race_pace, strategy, degradation):
+    for fn in (gear_map, telemetry_overlay, race_pace, strategy, degradation,
+               undercut, safety_car, lap_simulation, historic_lap_times):
         try:
             fn()
         except Exception as exc:

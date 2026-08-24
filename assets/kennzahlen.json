@@ -94,6 +94,75 @@
     },
     "annahme_fuel": "1.8 kg pro Runde, 0.03 s pro kg"
   },
+  "undercut": {
+    "saison": 2024,
+    "duelle": 161,
+    "erfolge": 38,
+    "quote_pct": 23.6,
+    "ki_95_pct": [
+      17.3,
+      30.9
+    ],
+    "p_wert_gegen_50pct": 1.171362793433002e-11
+  },
+  "safety_car": {
+    "event": "Canadian Grand Prix",
+    "jahr": 2024,
+    "phasen": 2,
+    "kompaktierung": [
+      {
+        "start": 25,
+        "ende": 29,
+        "baseline_s": 87.5,
+        "minimum_s": 19.7,
+        "kompaktierung_pct": 77.5
+      },
+      {
+        "start": 54,
+        "ende": 58,
+        "baseline_s": 189.5,
+        "minimum_s": 100.0,
+        "kompaktierung_pct": 47.3
+      }
+    ]
+  },
+  "lap_simulation": {
+    "event": "Bahrain",
+    "jahr": 2024,
+    "session": "Q",
+    "rundenzeit_real_s": 89.165,
+    "rundenzeit_simuliert_s": 89.628,
+    "abweichung_pct": 0.52,
+    "parameter": {
+      "mu_g": 25.746,
+      "a_accel": 7.364,
+      "a_brake": 29.165,
+      "v_top": 83.159,
+      "rmse_ms": 6.303
+    }
+  },
+  "historie": {
+    "strecken": {
+      "Monza": {
+        "erste_saison": 1950,
+        "letzte_saison": 2022,
+        "rundenzeit_erste_s": 128.5,
+        "rundenzeit_letzte_s": 91.1
+      },
+      "Silverstone": {
+        "erste_saison": 1950,
+        "letzte_saison": 2022,
+        "rundenzeit_erste_s": 114.3,
+        "rundenzeit_letzte_s": 159.0
+      },
+      "Spa-Francorchamps": {
+        "erste_saison": 1954,
+        "letzte_saison": 2022,
+        "rundenzeit_erste_s": 274.5,
+        "rundenzeit_letzte_s": 117.1
+      }
+    }
+  },
   "_meta": {
     "erzeugt_mit": "f1lab 0.1.0",
     "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, die von tests/ geprueft werden."

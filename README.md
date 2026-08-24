@@ -133,6 +133,78 @@ mit derselben Mischung ganz andere Stintlängen hinbekommen als andere.
 
 ---
 
+### Der Undercut gewinnt seltener, als man denkt
+
+![Undercut-Erfolgsquote Saison 2024](assets/undercut.png)
+
+Die verbreitete Intuition: früher an die Box gehen, auf frischen Reifen einen
+Freiflug fahren und den Rivalen so überholen, bevor der überhaupt gestoppt hat.
+Gemessen an echten, paarweisen Duellen (Boxenstopp gegen den einen Fahrer, der
+zu Rundenbeginn direkt davor lag) sieht das anders aus.
+
+Saison 2024, alle 24 Rennen: **161 echte Undercut-Duelle, nur 38 erfolgreich —
+23.6 % Erfolgsquote** (95 %-Konfidenzintervall 17.3–30.9 %, statistisch klar
+verschieden von 50/50). Die Verteidigung gewinnt in diesen Daten gut drei von
+vier direkten Duellen.
+
+*Code: [`05_reifen_strategie/p42_undercut_erfolgsquote_echte_rivalen_duelle.py`](05_reifen_strategie/p42_undercut_erfolgsquote_echte_rivalen_duelle.py)*
+
+---
+
+### Safety Car staucht das Feld zusammen
+
+![Safety-Car-Kompaktierung Kanada 2024](assets/safety_car.png)
+
+Wie stark neutralisiert eine Safety-Car- oder VSC-Phase tatsächlich das Feld?
+Gemessen als Sekunden zwischen erstem und letztem Fahrer auf derselben Runde,
+Baseline aus den letzten drei grünen Runden davor gegen das Minimum während
+der Phase.
+
+Kanada 2024, zwei Neutralisationen: Runde 25–29 komprimiert das Feld von
+87.5 s auf 19.7 s (**−77.5 %**), Runde 54–58 von 189.5 s auf 100.0 s
+(**−47.3 %**) — je nachdem, wie zerstreut das Feld beim Auslösen gerade war.
+
+*Code: [`07_race_control/p18_safety_car_und_track_status_chronik.py`](07_race_control/p18_safety_car_und_track_status_chronik.py)*
+
+---
+
+### Eine Rundenzeit aus reiner Physik
+
+![Rundenzeit-Simulation Bahrain 2024 Qualifying](assets/rundenzeit_simulation.png)
+
+Kein Nachschlagen echter Rundenzeiten: ein quasi-stationäres Punktmassenmodell
+(dasselbe Grundverfahren wie OptimumLap und ähnliche Rundenzeit-Simulatoren)
+rechnet aus Streckenkrümmung und vier Fahrzeugparametern eine Runde komplett
+selbst aus. Die Krümmung kommt aus der echten Ideallinie, die vier Parameter
+(Kurvengrenzbeschleunigung, Längsbeschleunigung, Bremsverzögerung,
+Höchstgeschwindigkeit) werden per kleinste Quadrate an die echte
+Geschwindigkeitsspur einer Referenzrunde kalibriert — nicht von Hand geraten.
+
+Bahrain 2024 Qualifying: Simulation trifft die echte Rundenzeit auf
+**0.52 % genau** (89.63 s simuliert gegen 89.165 s real), mit plausiblen
+Parametern (2.62 g Kurvengrenze, ~3.0 g Bremsverzögerung, 299 km/h
+Höchstgeschwindigkeit).
+
+*Code: [`04_strecke/p37_rundenzeit_simulation_punktmassenmodell.py`](04_strecke/p37_rundenzeit_simulation_punktmassenmodell.py)*
+
+---
+
+### 75 Jahre F1: dieselbe Strecke ist selten dieselbe Strecke
+
+![75 Jahre Rundenzeit-Entwicklung](assets/historische_trends.png)
+
+Rundenzeit des Siegers auf drei Strecken, die seit Jahrzehnten im Kalender
+stehen — die naheliegende Annahme "Strecke unverändert, also nur die Autos
+schneller" hält nicht durch. Silverstone wird über 75 Jahre **langsamer**
+(114.3 s → 159.0 s, 1950 vs. 2022): die Strecke ist seither deutlich länger
+geworden. Spa (274.5 s → 117.1 s) fehlt 1971–82 komplett aus dem Kalender und
+kehrt 1983 in stark verkürzter Form zurück. Nur Monza (128.5 s → 91.1 s)
+zeigt ungefähr das erwartete Bild reinen Fortschritts.
+
+*Code: [`08_historie/p22_75_jahre_f1_historische_trendanalyse.py`](08_historie/p22_75_jahre_f1_historische_trendanalyse.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
 Die 44 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
