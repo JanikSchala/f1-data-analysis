@@ -1,5 +1,8 @@
 # F1 Data Analysis
 
+[![Tests](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/tests.yml/badge.svg)](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/tests.yml)
+[![f1analyze CI](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/f1analyze-ci.yml/badge.svg)](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/f1analyze-ci.yml)
+
 Analyse von Formel-1-Renndaten mit [FastF1](https://github.com/theOehrly/Fast-F1) —
 Timing, Telemetrie, Reifenstrategie, Machine Learning und Data Engineering.
 
