@@ -710,7 +710,7 @@ def solve_policy(cfg: RaceConfig, prozess: SafetyCarProcess) -> tuple[float, dic
                         politik[(lap, ci, alter, maske, s)] = aktion
         naechste = aktuell
 
-    erlaubt = range(n_c)
+    erlaubt = list(range(n_c))
     if cfg.start_compound is not None:
         erlaubt = [i for i, t in enumerate(cfg.tyres)
                    if t.compound == cfg.start_compound]
