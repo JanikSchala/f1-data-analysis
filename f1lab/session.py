@@ -470,6 +470,11 @@ def track_status_phases(session) -> pd.DataFrame:
     session_ende_s = (session_ende.total_seconds()
                       if pd.notna(session_ende) else np.nan)
     end_s = np.where(np.isnan(end_s), session_ende_s, end_s)
+    # die letzte runden-zeit kann vor dem start der letzten status-phase
+    # liegen (z.B. eine spaete meldung nach der zieldurchfahrt, gesehen bei
+    # einer session mit rotem start). ohne diese klammer wuerde daraus eine
+    # negative dauer.
+    end_s = np.maximum(end_s, start_s)
 
     phases = pd.DataFrame({
         "label": labels,
