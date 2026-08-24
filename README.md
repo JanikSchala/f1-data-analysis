@@ -471,6 +471,10 @@ Der erste Ladevorgang einer Session dauert 30–120 Sekunden, danach kommt alles
 Session-Kürzel: `FP1` `FP2` `FP3` `Q` `S` (Sprint) `SQ` `R`.
 Events per Name (`"Monza"`), Land (`"Italy"`) oder Rundennummer (`14`).
 
+Optional: `pre-commit install` richtet einen Git-Hook ein, der `ruff check`
+und `mypy f1lab` vor jedem Commit laufen lässt — dieselben zwei Prüfungen,
+die auch die CI vor den Tests fährt.
+
 ---
 
 ## Projektindex

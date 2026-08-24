@@ -1,0 +1,25 @@
+# macht die Projektregel "vor Push: Tests gruen, ruff check . sauber"
+# (siehe CLAUDE.md) technisch verbindlich statt reiner Handdisziplin.
+# nur ruff-check + mypy hier - dieselben zwei Schritte, die auch
+# .github/workflows/tests.yml vor pytest laufen laesst. kein ruff-format:
+# der Code ist bewusst handformatiert (siehe die vielen manuellen
+# Zeilenumbrueche), ein Auto-Formatter wuerde das grossflaechig umwerfen.
+#
+# Installation einmalig:
+#     pip install pre-commit
+#     pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.1
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      - id: mypy-f1lab
+        name: mypy (f1lab)
+        entry: .venv/bin/python -m mypy f1lab --ignore-missing-imports
+        language: system
+        pass_filenames: false
+        files: ^f1lab/
