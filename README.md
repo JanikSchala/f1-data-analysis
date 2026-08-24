@@ -205,6 +205,101 @@ zeigt ungefähr das erwartete Bild reinen Fortschritts.
 
 ---
 
+### Streckengeometrie einer ganzen Saison
+
+![Streckenprofil Saison 2024](assets/streckenprofil.png)
+
+Länge, Kurvenzahl und Höhenspanne aller 24 Strecken der Saison 2024 in einem
+Blick — automatisch aus der echten GPS-Ideallinie jeder Strecke vermessen,
+nicht aus einer Tabelle abgetippt.
+
+Spa-Francorchamps ist mit Abstand die längste Strecke der Saison und hat mit
+**102,4 m** auch die größte Höhenspanne, Monaco die kürzeste.
+
+*Code: [`01_grundlagen/p02_saison_kalender_event_metadaten_als_datenbank.py`](01_grundlagen/p02_saison_kalender_event_metadaten_als_datenbank.py)*
+
+---
+
+### Streckentemperatur kostet echte Zehntel — aber erst nach der Bereinigung
+
+![Streckentemperatur-Effekt Japan 2024](assets/wetter_effekt.png)
+
+Eine naive, gepoolte Regression von Rundenzeit gegen Streckentemperatur
+findet praktisch nichts (R² = 0,028) — Fahrerunterschiede und Reifenalter
+überdecken den Effekt komplett. Erst nach Bereinigung um Fahrer-Median und
+Reifenalter wird er sichtbar.
+
+Japan 2024: R² springt von 0,199 (nur Reifenalter) auf **0,413** (+
+Temperatur), Koeffizient **+0,215 s pro °C**.
+
+*Code: [`06_wetter/p17_wetter_impact_wie_regen_und_streckentemperatur_d.py`](06_wetter/p17_wetter_impact_wie_regen_und_streckentemperatur_d.py)*
+
+---
+
+### Fahrstil-Clustering: fährt jeder anders?
+
+![Fahrstil-Cluster Saison 2024](assets/fahrstil_cluster.png)
+
+Aus reiner Pedal-/Schaltstatistik (Vollgasanteil, Bremsanteil, Rollphasen,
+Throttle-Modulation, Überlappung von Gas und Bremse) über vier Strecken der
+Saison 2024 gruppiert k-Means 21 Fahrer in Cluster — der Silhouette Score
+wählt die Anzahl, statt sie anzunehmen.
+
+Gewählt wird **k = 5**, der Score bleibt dabei mit 0,236 aber moderat: die
+Fahrstile trennen sich sichtbar, aber nicht scharf.
+
+*Code: [`09_machine_learning/p24_fahrstil_clustering_wer_faehrt_wie.py`](09_machine_learning/p24_fahrstil_clustering_wer_faehrt_wie.py)*
+
+---
+
+### Eine Saison-Rangliste, direkt aus dem Data Warehouse
+
+![Saison-Pace-Ranking aus dem DuckDB-Warehouse](assets/warehouse_pace.png)
+
+Keine neue Berechnung — eine einzige SQL-Abfrage gegen das DuckDB-Sternschema
+(`fact_lap`, `dim_driver`, `dim_event`, …), das aus 24 geladenen Rennen der
+Saison 2024 aufgebaut wird.
+
+Mittlere relative Race Pace über die ganze Saison (1,000 = jeweils
+Event-Schnellster): **Verstappen führt mit 1,0027**, knapp vor Norris
+(1,0030) und Leclerc (1,0062).
+
+*Code: [`10_data_engineering/p26_f1_data_warehouse_sternschema_in_duckdb.py`](10_data_engineering/p26_f1_data_warehouse_sternschema_in_duckdb.py)*
+
+---
+
+### Positionsverlauf, wie ihn auch der automatische Rennbericht zeigt
+
+![Positionsverlauf Ungarn 2024](assets/positionsverlauf.png)
+
+Runde für Runde, wer wo im Feld liegt — exakt die Funktion, die auch der
+automatisch generierte PDF-Rennbericht für jedes Rennen zeichnet, damit
+Dashboard, Report und README nie unterschiedliche Bilder derselben Session
+zeigen.
+
+Ungarn 2024: Piastri gewinnt vor Norris, das Podium komplettiert Hamilton.
+
+*Code: [`11_visualisierung/p29_automatischer_rennbericht_als_pdf.py`](11_visualisierung/p29_automatischer_rennbericht_als_pdf.py)*
+
+---
+
+### Ein Live-Feed, den es gerade nicht gibt
+
+![Live-Timing-Board Bahrain 2024](assets/live_board.png)
+
+Live-Timing existiert nur, während eine Session tatsächlich läuft. Statt das
+zu ignorieren, spielt dieser Code eine echte, bereits abgeschlossene Session
+Runde für Runde in ihrer tatsächlichen zeitlichen Reihenfolge in eine
+SQLite-Zeitreihe ein — dieselbe Logik, die auch einen echten Feed
+verarbeiten würde.
+
+Bahrain 2024: **1.087 Datenpunkte**, rollierende Pace über die komplette
+Renndistanz, Podium hervorgehoben.
+
+*Code: [`12_live_timing/p30_live_timing_aufzeichnen_und_in_echtzeit_auswerte.py`](12_live_timing/p30_live_timing_aufzeichnen_und_in_echtzeit_auswerte.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
 Die 44 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als

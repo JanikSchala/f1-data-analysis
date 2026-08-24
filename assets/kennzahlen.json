@@ -163,6 +163,92 @@
       }
     }
   },
+  "streckenprofil": {
+    "saison": 2024,
+    "strecken_vermessen": 24,
+    "laengste": "Spa-Francorchamps",
+    "kuerzeste": "Monaco",
+    "groesste_hoehenspanne": "Spa-Francorchamps",
+    "hoehenspanne_m": 102.4
+  },
+  "wetter": {
+    "event": "Japanese Grand Prix",
+    "jahr": 2024,
+    "n_runden": 755,
+    "naive_regression": {
+      "steigung_s_pro_grad": 0.268,
+      "r2": 0.028
+    },
+    "kontrolliert": {
+      "r2_nur_reifenalter": 0.199,
+      "r2_plus_temperatur": 0.413,
+      "koeffizient_s_pro_grad": 0.2147
+    }
+  },
+  "fahrstil_cluster": {
+    "saison": 2024,
+    "strecken": [
+      "Bahrain",
+      "Spain",
+      "Monza",
+      "Suzuka"
+    ],
+    "fahrer": 21,
+    "gewaehltes_k": 5,
+    "silhouette_scores": {
+      "2": 0.223,
+      "3": 0.224,
+      "4": 0.206,
+      "5": 0.236
+    }
+  },
+  "warehouse_pace": {
+    "top5": [
+      {
+        "fahrer": "VER",
+        "mittel_rel_pace": 1.0027,
+        "events": 23
+      },
+      {
+        "fahrer": "NOR",
+        "mittel_rel_pace": 1.003,
+        "events": 24
+      },
+      {
+        "fahrer": "LEC",
+        "mittel_rel_pace": 1.0062,
+        "events": 24
+      },
+      {
+        "fahrer": "PIA",
+        "mittel_rel_pace": 1.0067,
+        "events": 24
+      },
+      {
+        "fahrer": "SAI",
+        "mittel_rel_pace": 1.0068,
+        "events": 23
+      }
+    ],
+    "quelle": "10_data_engineering/f1_warehouse/f1.duckdb, view mart_driver_pace"
+  },
+  "positionsverlauf": {
+    "event": "Hungarian Grand Prix",
+    "jahr": 2024,
+    "top5_endstand": [
+      "PIA",
+      "NOR",
+      "HAM",
+      "LEC",
+      "VER"
+    ]
+  },
+  "live_timing": {
+    "event": "Bahrain Grand Prix",
+    "jahr": 2024,
+    "datenpunkte": 1087,
+    "hinweis": "Replay derselben Session in ihrer tatsaechlichen Rundenreihenfolge, ersetzt einen echten Live-Feed (siehe P30-Docstring)."
+  },
   "_meta": {
     "erzeugt_mit": "f1lab 0.1.0",
     "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, die von tests/ geprueft werden."
