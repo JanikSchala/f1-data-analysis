@@ -30,6 +30,3 @@ htmlcov/
 # System
 .DS_Store
 .ipynb_checkpoints/
-
-# Lokaler Projektkontext, nicht oeffentlich
-CLAUDE.md
