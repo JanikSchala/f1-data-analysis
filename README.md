@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/tests.yml/badge.svg)](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/tests.yml)
 [![f1analyze CI](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/f1analyze-ci.yml/badge.svg)](https://github.com/JanikSchala/f1-data-analysis/actions/workflows/f1analyze-ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Analyse von Formel-1-Renndaten mit [FastF1](https://github.com/theOehrly/Fast-F1) —
 Timing, Telemetrie, Reifenstrategie, Machine Learning und Data Engineering.
@@ -22,6 +24,37 @@ cd f1-data-analysis
 source .venv/bin/activate
 python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
 ```
+
+---
+
+## Inhalt
+
+- [Projektübersicht](#projektübersicht)
+- [Was drinsteckt](#was-drinsteckt)
+  - [Telemetrie auf Streckenebene](#telemetrie-auf-streckenebene)
+  - [Fahrervergleich mit Zeitdelta](#fahrervergleich-mit-zeitdelta)
+  - [Race Pace, sauber gerechnet](#race-pace-sauber-gerechnet)
+  - [Reifenstrategie](#reifenstrategie)
+  - [Degradation quantifiziert](#degradation-quantifiziert)
+  - [Der Undercut gewinnt seltener, als man denkt](#der-undercut-gewinnt-seltener-als-man-denkt)
+  - [Safety Car staucht das Feld zusammen](#safety-car-staucht-das-feld-zusammen)
+  - [Eine Rundenzeit aus reiner Physik](#eine-rundenzeit-aus-reiner-physik)
+  - [75 Jahre F1: dieselbe Strecke ist selten dieselbe Strecke](#75-jahre-f1-dieselbe-strecke-ist-selten-dieselbe-strecke)
+  - [Streckengeometrie einer ganzen Saison](#streckengeometrie-einer-ganzen-saison)
+  - [Streckentemperatur kostet echte Zehntel — aber erst nach der Bereinigung](#streckentemperatur-kostet-echte-zehntel--aber-erst-nach-der-bereinigung)
+  - [Fahrstil-Clustering: fährt jeder anders?](#fahrstil-clustering-fährt-jeder-anders)
+  - [Eine Saison-Rangliste, direkt aus dem Data Warehouse](#eine-saison-rangliste-direkt-aus-dem-data-warehouse)
+  - [Positionsverlauf, wie ihn auch der automatische Rennbericht zeigt](#positionsverlauf-wie-ihn-auch-der-automatische-rennbericht-zeigt)
+  - [Ein Live-Feed, den es gerade nicht gibt](#ein-live-feed-den-es-gerade-nicht-gibt)
+- [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
+- [Aufbau](#aufbau)
+- [Methodische Entscheidungen](#methodische-entscheidungen)
+- [Grenzen](#grenzen)
+- [Setup](#setup)
+- [Projektindex](#projektindex)
+- [Reproduzieren](#reproduzieren)
+- [Weiterführende Ressourcen](#weiterführende-ressourcen)
+- [Hinweis](#hinweis)
 
 ---
 
@@ -526,3 +559,5 @@ FastF1 ist ein inoffizielles Open-Source-Projekt und steht in keiner Verbindung 
 den Formel-1-Gesellschaften. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD
 CHAMPIONSHIP, GRAND PRIX und verwandte Marken sind Marken der Formula One
 Licensing B.V.
+
+Der Code in diesem Repository steht unter der [MIT-Lizenz](LICENSE).
