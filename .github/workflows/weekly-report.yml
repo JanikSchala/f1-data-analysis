@@ -24,8 +24,8 @@ jobs:
             --year "$(date +%Y)" \
             --out out/race_report.pdf
         # -u (unbuffered): stdout wird ohne TTY blockweise gepuffert - beim
-        # ersten echten Testlauf dieses Workflows (siehe CLAUDE.md) fehlten
-        # dadurch FastF1s eigene INFO/WARNING-Zeilen komplett im Log, obwohl
+        # ersten echten Testlauf dieses Workflows fehlten dadurch FastF1s
+        # eigene INFO/WARNING-Zeilen komplett im Log, obwohl
         # der Absturz selbst reproduzierbar war. Ohne sie liess sich nicht
         # klaeren, welcher interne Ladeschritt scheitert.
       - uses: actions/upload-artifact@v4

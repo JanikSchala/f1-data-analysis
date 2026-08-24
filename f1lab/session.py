@@ -122,7 +122,7 @@ def cache_ready() -> bool:
     cache-pfad wieder auf den standardpfad zurueckgesetzt. ein echter,
     lange unbemerkter bug: die CLI-tests liefen dadurch nie wirklich
     offline, sondern wurden nur zufaellig genug im lokal warmgelaufenen
-    cache fuendig (siehe CLAUDE.md, f1analyze-nachtrag)."""
+    cache fuendig."""
     return _active_cache is not None
 
 
@@ -964,8 +964,8 @@ def undercut_duels(session, fenster: int = 3, nachlauf: int = 2) -> pd.DataFrame
 
     anders als eine flaechendeckende vorher-nachher-positionszaehlung (die
     JEDEN boxenstopp automatisch als verlust gegen das ganze feld zaehlt,
-    weil nicht-stoppende autos in der zwischenzeit einfach weiterfahren,
-    siehe CLAUDE.md, verworfener erster versuch) vergleicht das hier gezielt
+    weil nicht-stoppende autos in der zwischenzeit einfach weiterfahren -
+    ein verworfener erster versuch) vergleicht das hier gezielt
     gegen einen konkreten rivalen: fuer jeden boxenstopp (fahrer A, runde L)
     der fahrer, der zu rundenbeginn genau eine position vor A lag (der
     eigentliche gegner des stopps). nur gezaehlt, wenn dieser rivale nicht

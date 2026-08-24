@@ -5,7 +5,7 @@ name: f1analyze CI
 # im Repo-Wurzelverzeichnis, eine verschachtelte .github/-Struktur wird nie
 # erkannt. Die Datei sah seit P34 vollstaendig korrekt aus (Pfad-Filter,
 # working-directory, alle Schritte richtig), lief aber nie ein einziges Mal -
-# "GitHub Action fuer CI ist da" in CLAUDE.md war falsch, niemand hat es
+# die Annahme "GitHub Action fuer CI ist da" war falsch, niemand hat es
 # bemerkt, weil kein Fehler auftrat, sondern schlicht nichts passierte.
 # Hierher verschoben, damit sie tatsaechlich triggert.
 
