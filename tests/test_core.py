@@ -50,6 +50,8 @@ from f1lab.core import (
     simulate_stint,
     solve_policy,
     status_intervals,
+    stint_arcs,
+    telemetry_source_quality,
     track_curvature,
     traffic_cost,
     undercut_gain,
@@ -288,6 +290,20 @@ class TestFindCliff:
         cliff, _, right = find_cliff(x, y)
         assert cliff is None and right is None
 
+    def test_every_split_candidate_invalid_returns_single_fit(self):
+        """8 Punkte in zwei Reifenalter-Clustern (je 4x Alter 1 und 4x Alter
+        5): gross genug fuer die 2*min_segment-Vorpruefung und mit echter
+        Streuung innerhalb jedes Clusters (kein single_sse~0-Fast-Path), aber
+        bei min_segment=4 gibt es nur einen einzigen Split-Kandidaten
+        (i=4) - und der teilt exakt an der Cluster-Grenze, x[:4] ist
+        konstant (ptp=0). fit_degradation() wirft dort ValueError, die
+        Schleife faengt das ab (continue) und best bleibt None."""
+        x = np.array([1.0, 1.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0])
+        y = np.array([90.0, 91.0, 89.0, 92.0, 95.0, 96.0, 94.0, 97.0])
+        cliff, single, right = find_cliff(x, y)
+        assert cliff is None and right is None
+        assert single.n == 8
+
 
 # --------------------------------------------------------------- Strategie
 class TestPitLoss:
@@ -382,6 +398,34 @@ class TestBrakingZones:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError, match="gleich lang"):
             braking_zones([True, False], [0, 1, 2], [200, 190, 180], [0, 1, 2])
+
+    def test_braking_at_lap_end_is_captured(self):
+        """spiegelbildlich zu test_braking_at_lap_start_is_captured: eine
+        Zone, die genau bis zur letzten Probe des Arrays reicht, darf nicht
+        verlorengehen (kein schliessendes -1-Flankenereignis vorhanden)."""
+        n = 100
+        brake = np.zeros(n, dtype=bool)
+        brake[70:] = True
+        d = np.linspace(0, 2000, n)
+        speed = np.full(n, 200.0)
+        speed[70:] = np.linspace(200, 100, 30)
+        zones = braking_zones(brake, d, speed, np.linspace(0, 20, n))
+        assert len(zones) == 1
+        assert zones[0]["length_m"] == pytest.approx(d[-1] - d[70], rel=0.05)
+
+
+class TestTelemetrySourceQuality:
+    def test_empty_returns_zeroed_summary(self):
+        assert telemetry_source_quality([]) == {
+            "n": 0, "car": 0.0, "pos": 0.0, "interpolation": 0.0}
+
+    def test_mixed_sources_compute_ratios(self):
+        source = ["car"] * 6 + ["pos"] * 3 + ["interpolation"] * 1
+        erg = telemetry_source_quality(source)
+        assert erg["n"] == 10
+        assert erg["car"] == pytest.approx(0.6)
+        assert erg["pos"] == pytest.approx(0.3)
+        assert erg["interpolation"] == pytest.approx(0.1)
 
 
 class TestMatchByDistance:
@@ -753,6 +797,15 @@ class TestRaceConfig:
             RaceConfig(n_laps=10, pit_loss=20.0, tyres=self._tyres(),
                       start_compound="MEDIUM")
 
+    def test_zero_laps_raises(self):
+        with pytest.raises(ValueError, match="n_laps"):
+            RaceConfig(n_laps=0, pit_loss=20.0, tyres=self._tyres())
+
+    def test_zero_min_stint_raises(self):
+        with pytest.raises(ValueError, match="min_stint"):
+            RaceConfig(n_laps=10, pit_loss=20.0, tyres=self._tyres(),
+                      min_stint=0)
+
     def test_fuel_offset_is_zero_without_fuel_effect(self):
         cfg = RaceConfig(n_laps=20, pit_loss=20.0, tyres=self._tyres())
         assert cfg.fuel_offset == pytest.approx(0.0)
@@ -762,6 +815,32 @@ class TestRaceConfig:
                          fuel_effect=0.1)
         # 0.1 * 10 * 9 / 2 = 4.5
         assert cfg.fuel_offset == pytest.approx(4.5)
+
+
+class TestStintArcs:
+    def test_max_age_caps_stint_length(self):
+        """ein TyreModel mit max_age darf keinen Stint erzeugen, der laenger
+        laeuft als der Reifen haelt, selbst wenn n_laps/max_stint mehr
+        zuliessen."""
+        cfg = RaceConfig(
+            n_laps=20, pit_loss=20.0, min_stint=1,
+            tyres=(TyreModel("SOFT", 90.0, 0.3, max_age=5),
+                  TyreModel("HARD", 91.0, 0.05)))
+        arcs = stint_arcs(cfg)
+        soft_laengen = [end - start + 1 for ci, start, end, _ in arcs
+                        if cfg.tyres[ci].compound == "SOFT"]
+        assert soft_laengen and max(soft_laengen) <= 5
+
+    def test_start_compound_excludes_other_tyres_at_lap_one(self):
+        """nur Stints der Startmischung duerfen bei Runde 1 beginnen."""
+        cfg = RaceConfig(
+            n_laps=20, pit_loss=20.0, min_stint=1,
+            tyres=(TyreModel("SOFT", 90.0, 0.3), TyreModel("HARD", 91.0, 0.05)),
+            start_compound="SOFT")
+        arcs = stint_arcs(cfg)
+        opener = {cfg.tyres[ci].compound for ci, start, _end, _preis in arcs
+                  if start == 1}
+        assert opener == {"SOFT"}
 
 
 class TestOptimalStrategy:
@@ -802,6 +881,20 @@ class TestOptimalStrategy:
         """min_stint*2 > n_laps mit Zweimischungs-Pflicht: kein Plan passt."""
         cfg = self._cfg(n_laps=5, min_stint=4)
         with pytest.raises(InfeasibleRace):
+            optimal_strategy(cfg)
+
+    def test_total_time_includes_fuel_offset(self):
+        cfg = self._cfg(fuel_effect=0.1)
+        best = optimal_strategy(cfg)
+        assert best.total_time == pytest.approx(best.green_time + cfg.fuel_offset)
+
+    def test_no_legal_stint_arcs_raises_before_the_dp(self):
+        """min_stint > n_laps: schon stint_arcs() liefert nichts, die DP
+        laeuft gar nicht erst an (andere Fehlermeldung als der Fall oben,
+        wo Arcs existieren aber keine Kombination die Zweimischungs-Regel
+        erfuellt)."""
+        cfg = self._cfg(n_laps=3, min_stint=5, require_two_compounds=False)
+        with pytest.raises(InfeasibleRace, match="keine legalen Stints"):
             optimal_strategy(cfg)
 
     def test_more_pit_stops_never_beats_pit_loss_savings(self):
@@ -914,6 +1007,28 @@ class TestSolvePolicyAndRollOut:
         folge = [GRUEN] * (cfg.n_laps + 1)
         strat = roll_out(cfg, politik, folge)
         assert len(set(strat.compounds)) >= 2
+
+    def test_start_compound_restricts_opening_tyre(self):
+        cfg = RaceConfig(n_laps=15, pit_loss=20.0, min_stint=3,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)),
+                         start_compound="HARD")
+        wert, politik = solve_policy(cfg, SafetyCarProcess())
+        assert wert < float("inf")
+        ci_start = politik[("start",)]
+        assert cfg.tyres[ci_start].compound == "HARD"
+
+    def test_no_feasible_policy_raises(self):
+        """min_stint > n_laps: kein Zustand am Renn-Ende ist je 'gut', der
+        Erwartungswert bleibt unendlich (andere Stelle als die Arc-basierte
+        Infeasibility in TestOptimalStrategy - solve_policy baut seine
+        eigene DP, ohne stint_arcs())."""
+        cfg = RaceConfig(n_laps=3, pit_loss=20.0, min_stint=5,
+                         tyres=(TyreModel("SOFT", 90.0, 0.3),
+                               TyreModel("HARD", 91.0, 0.05)),
+                         require_two_compounds=False)
+        with pytest.raises(InfeasibleRace, match="keine Politik"):
+            solve_policy(cfg, SafetyCarProcess())
 
 
 class TestExpectedCostAndHindsight:

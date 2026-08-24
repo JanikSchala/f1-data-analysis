@@ -25,4 +25,4 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: pytest tests -q
+      - run: pytest tests -q --cov=f1lab --cov-report=term-missing
