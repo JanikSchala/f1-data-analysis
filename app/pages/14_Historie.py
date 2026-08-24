@@ -1,13 +1,13 @@
-"""WM-stand-simulator fuer die laufende saison und 75 jahre historische
-trends.
+"""WM-stand-simulator (fahrer und konstrukteure) fuer die laufende saison,
+und 75 jahre historische trends.
 
-zwei reiter aus P21/P22. beide brauchen eine echte netzwerkverbindung zu
-Ergast/jolpica, wie 11_Boxenstopps.py. der WM-simulator ist an die laufende
-saison gebunden (die frage "wer kann noch weltmeister werden" ergibt nur an
-einer offenen saison sinn) und ist deshalb nicht in der seitenleiste
-waehlbar, nur stundenweise gecacht (standings aendern sich rennweise). die
-75-jahre-trends sind dagegen eine feste historische spanne und liegen
-dauerhaft im diskcache.
+drei reiter aus P21/P45/P22. alle brauchen eine echte netzwerkverbindung zu
+Ergast/jolpica, wie 11_Boxenstopps.py. die beiden WM-simulatoren sind an die
+laufende saison gebunden (die frage "wer kann noch weltmeister werden"
+ergibt nur an einer offenen saison sinn) und sind deshalb nicht in der
+seitenleiste waehlbar, nur stundenweise gecacht (standings aendern sich
+rennweise). die 75-jahre-trends sind dagegen eine feste historische spanne
+und liegen dauerhaft im diskcache.
 """
 from __future__ import annotations
 
@@ -37,7 +37,8 @@ SCHRITT_STRECKEN = 4
 setup("Historie", "WM-Stand-Simulator fuer die laufende Saison, und 75 "
                   "Jahre F1 aus Ergast/jolpica - braucht Netzwerk.")
 
-tab_wm, tab_trends = st.tabs(["WM-Stand-Simulator", "75-Jahre-Trends"])
+tab_wm, tab_konstrukteure, tab_trends = st.tabs(
+    ["Fahrer-WM-Simulator", "Konstrukteurs-WM-Simulator", "75-Jahre-Trends"])
 
 
 def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
@@ -85,6 +86,38 @@ def _monte_carlo(base_points, drivers, pos_hist, sprint_hist, sprint_flags,
     return pd.DataFrame(mat.T, columns=drivers)
 
 
+def _monte_carlo_team(base_points, teams, pos_hist, sprint_hist, sprint_flags,
+                      dnf_rate, rng) -> pd.DataFrame:
+    """wie _monte_carlo(), aber zwei unabhaengige Positionszuege je Team und
+    Event (ein Konstrukteur bringt zwei Autos, beide Punkte zaehlen -
+    siehe P45)."""
+    pts_r, pts_s = _punkte_array(PTS_RENNEN), _punkte_array(PTS_SPRINT)
+    totals = {t: np.full(N_SIM, base_points.get(t, 0.0)) for t in teams}
+    for ist_sprint in sprint_flags:
+        for t in teams:
+            hist = pos_hist.get(t)
+            if hist is not None and len(hist) > 0:
+                for _auto in range(2):
+                    pos = np.clip(rng.choice(hist, size=N_SIM).astype(int), 0, 24)
+                    pts = pts_r[pos]
+                    if dnf_rate is not None:
+                        ausfall = rng.random(N_SIM) < dnf_rate.get(t, 0.0)
+                        pts = np.where(ausfall, 0.0, pts)
+                    totals[t] += pts
+            if ist_sprint:
+                shist = sprint_hist.get(t)
+                if shist is not None and len(shist) > 0:
+                    for _auto in range(2):
+                        pos = np.clip(rng.choice(shist, size=N_SIM).astype(int), 0, 24)
+                        pts = pts_s[pos]
+                        if dnf_rate is not None:
+                            ausfall = rng.random(N_SIM) < dnf_rate.get(t, 0.0)
+                            pts = np.where(ausfall, 0.0, pts)
+                        totals[t] += pts
+    mat = np.vstack([totals[t] for t in teams])
+    return pd.DataFrame(mat.T, columns=teams)
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _wm_daten(jahr: int):
     erg = Ergast(result_type="pandas", auto_cast=True)
@@ -112,6 +145,12 @@ def _wm_daten(jahr: int):
     if not races.empty:
         races["dnf"] = ~races["status"].isin(["Finished", "Lapped"])
     return standings, sprint_flags, races, sprints
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _konstrukteurs_standings(jahr: int) -> pd.DataFrame:
+    erg = Ergast(result_type="pandas", auto_cast=True)
+    return _mit_wiederholung(erg.get_constructor_standings, season=jahr).content[0]
 
 
 with tab_wm:
@@ -238,6 +277,103 @@ with tab_wm:
                 "Platz war, steckt in der reinen Positions-Stichprobe schon "
                 "drin. Die Verschiebung durchs DNF-Modell bleibt deshalb klein "
                 "(siehe P21).")
+
+# ========================================================= konstrukteurs-wm
+with tab_konstrukteure:
+    try:
+        with st.spinner(f"Konstrukteurs-Stand {YEAR} wird von Ergast/jolpica "
+                       "geladen (gebremst wegen Rate-Limit) ..."):
+            # _wm_daten ist st.cache_data-gecacht - ein zweiter Aufruf hier
+            # kostet kein zusaetzliches Netzwerk, races/sprints/sprint_flags
+            # sind je Auto schon genau das, was auch die Konstrukteure
+            # brauchen (nur anders gruppiert, siehe P45).
+            _standings_f, sprint_flags_t, races_t, sprints_t = _wm_daten(YEAR)
+            standings_t = _konstrukteurs_standings(YEAR)
+    except Exception as exc:
+        st.error(f"Ergast/jolpica war nicht erreichbar: {exc}")
+        standings_t, races_t = pd.DataFrame(), pd.DataFrame()
+
+    if standings_t.empty or races_t.empty:
+        st.info(f"Fuer {YEAR} liegen noch keine oder keine auswertbaren "
+               "Ergebnisse vor.")
+    else:
+        n_races_t, n_sprints_t = len(sprint_flags_t), sum(sprint_flags_t)
+        # ein team bringt zwei autos an den start - platz 1+2 statt nur 1.
+        max_points_t = n_races_t * (25 + 18) + n_sprints_t * (8 + 7)
+        leader_t = standings_t["points"].max()
+        standings_t = standings_t.copy()
+        standings_t["moeglich"] = standings_t["points"] + max_points_t >= leader_t
+
+        k = st.columns(4)
+        k[0].metric("Rennen verbleibend", n_races_t)
+        k[1].metric("Davon Sprints", n_sprints_t)
+        k[2].metric("Max. moegliche Punkte", max_points_t)
+        k[3].metric("Rechnerisch noch im Rennen",
+                   f"{int(standings_t['moeglich'].sum())}/{len(standings_t)}")
+
+        st.markdown(f"##### Konstrukteurs-WM {YEAR}, aktueller Stand")
+        top_t = standings_t.head(10).iloc[::-1]
+        farben_t = [d.SERIEN[0] if i == len(top_t) - 1 else d.MUTED
+                   for i in range(len(top_t))]
+        fig_t = go.Figure(go.Bar(x=top_t["points"], y=top_t["constructorName"],
+                                 orientation="h", marker={"color": farben_t}))
+        zeige(fig_t, hoehe=380, showlegend=False, xaxis=achse("Punkte"),
+             yaxis=namensachse())
+
+        base_points_t = standings_t.set_index("constructorId")["points"].to_dict()
+        name_map_t = standings_t.set_index("constructorId")["constructorName"].to_dict()
+        teams_t = list(base_points_t.keys())
+
+        pos_hist_alle_t = (races_t.groupby("constructorId")["position"]
+                          .apply(lambda s: s.dropna().to_numpy()).to_dict())
+        pos_hist_ohne_dnf_t = (
+            races_t[~races_t["dnf"]].groupby("constructorId")["position"]
+            .apply(lambda s: s.dropna().to_numpy()).to_dict())
+        dnf_rate_t = races_t.groupby("constructorId")["dnf"].mean().to_dict()
+        sprint_hist_t = (sprints_t.groupby("constructorId")["position"]
+                        .apply(lambda s: s.dropna().to_numpy()).to_dict()
+                        if not sprints_t.empty else {})
+
+        rng_t = np.random.default_rng(7)
+        sim_basis_t = _monte_carlo_team(base_points_t, teams_t, pos_hist_alle_t,
+                                        sprint_hist_t, sprint_flags_t, None, rng_t)
+        chance_t = pd.Series(
+            {name_map_t[t]: (sim_basis_t.idxmax(axis=1) == t).mean() * 100
+             for t in teams_t}).sort_values(ascending=False)
+
+        st.markdown("##### Titelchance (Monte-Carlo, zwei Autos je Team und "
+                   "Event)")
+        top_chance_t = chance_t[chance_t > 0.5].head(8)
+        if top_chance_t.empty:
+            st.info("Kein Team mit nennenswerter Restchance.")
+        else:
+            farben2_t = [d.SERIEN[0] if i == 0 else d.MUTED
+                        for i in range(len(top_chance_t))]
+            fig2_t = go.Figure(go.Bar(
+                x=top_chance_t.index, y=top_chance_t.to_numpy(),
+                marker={"color": farben2_t},
+                text=[f"{v:.1f}%" for v in top_chance_t], textposition="outside"))
+            zeige(fig2_t, hoehe=360, showlegend=False, xaxis=namensachse(),
+                 yaxis=achse("Titelchance [%]", range=[0, 108]))
+            hinweis("Positions-Stichprobe je Team ist ueber beide Autos "
+                    "gepoolt, pro Event werden zwei unabhaengige Positionen "
+                    "gezogen - Team-interne Korrelation (Teamorder, "
+                    "gemeinsamer Bauteilausfall) ist damit nicht modelliert "
+                    "(siehe P45).")
+
+        st.markdown("##### Ausfallquote je Konstrukteur (beide Autos gepoolt)")
+        dnf_s_t = pd.Series({name_map_t[t]: r * 100 for t, r in dnf_rate_t.items()
+                            if r > 0}).sort_values()
+        if dnf_s_t.empty:
+            st.info("Keine Ausfaelle in der bisherigen Saison.")
+        else:
+            farben3_t = [d.SERIEN[1] if v == dnf_s_t.max() else d.MUTED
+                       for v in dnf_s_t.to_numpy()]
+            fig3_t = go.Figure(go.Bar(x=dnf_s_t.to_numpy(), y=dnf_s_t.index,
+                                      orientation="h", marker={"color": farben3_t}))
+            zeige(fig3_t, hoehe=max(300, 26 * len(dnf_s_t)), showlegend=False,
+                 xaxis=achse("Ausfallquote je Auto, bisherige Saison [%]"),
+                 yaxis=namensachse())
 
 # ============================================================= 75-jahre-trends
 @st.cache_data(persist="disk", show_spinner=False)

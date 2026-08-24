@@ -14,7 +14,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **44 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **45 eigenständige Analysen über zwölf Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -397,7 +397,7 @@ das Repo auf den Importpfad.
 
 ```
 f1lab/                installierbares Paket, core (rein) + session (FastF1)
-tests/                188 Tests, laufen offline
+tests/                200 Tests, laufen offline
 
 01_grundlagen/        Datenzugriff, Caching, Kalender als Dimensionstabelle
 02_timing/            Rundenzeiten, Pace-Ranking, Sektoren, Positionsverlauf
@@ -525,6 +525,7 @@ die auch die CI vor den Tests fährt.
 | `P42` | [Undercut-Erfolgsquote: echte, paarweise Rivalen-Duelle](05_reifen_strategie/p42_undercut_erfolgsquote_echte_rivalen_duelle.py) | Reifen | Profi |
 | `P43` | [Streckenentwicklung: wird die Strecke von Q1 zu Q3 schneller?](02_timing/p43_streckenentwicklung_uebers_qualifying_wochenende.py) | Timing | Profi |
 | `P44` | [Sprint gegen Rennen: wird im Sprint weniger überholt?](02_timing/p44_sprint_vs_rennen_wird_im_sprint_weniger_ueberholt.py) | Timing | Fortgeschritten |
+| `P45` | [Konstrukteurs-WM-Simulator: wer gewinnt das Team-Rennen?](08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py) | Historie | Fortgeschritten |
 
 ---
 
