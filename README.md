@@ -46,6 +46,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Eine Saison-Rangliste, direkt aus dem Data Warehouse](#eine-saison-rangliste-direkt-aus-dem-data-warehouse)
   - [Positionsverlauf, wie ihn auch der automatische Rennbericht zeigt](#positionsverlauf-wie-ihn-auch-der-automatische-rennbericht-zeigt)
   - [Ein Live-Feed, den es gerade nicht gibt](#ein-live-feed-den-es-gerade-nicht-gibt)
+  - [Wer gewinnt die Konstrukteurs-WM?](#wer-gewinnt-die-konstrukteurs-wm)
 - [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
 - [Aufbau](#aufbau)
 - [Methodische Entscheidungen](#methodische-entscheidungen)
@@ -333,9 +334,27 @@ Renndistanz, Podium hervorgehoben.
 
 ---
 
+### Wer gewinnt die Konstrukteurs-WM?
+
+![Konstrukteurs-Titelchance](assets/konstrukteurs_titelchance.png)
+
+Dieselbe Monte-Carlo-Mechanik wie beim Fahrer-WM-Simulator (P21), aber auf
+Teamebene: pro verbleibendem Event werden zwei unabhängige Positionen je
+Konstrukteur gezogen, nicht eine — ein Team bringt zwei Autos an den Start,
+beide Punkte zählen. Läuft auf der echten, laufenden Saison.
+
+Aktueller Stand: **Mercedes führt mit 425 Punkten** vor Ferrari (338) und
+McLaren (263) — die Simulation der Restsaison gibt Mercedes eine
+**Titelchance von 99,8 %**, für Ferrari bleiben 0,2 %, der Rest praktisch
+nichts.
+
+*Code: [`08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py`](08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 44 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 45 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```

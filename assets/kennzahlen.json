@@ -252,5 +252,24 @@
   "_meta": {
     "erzeugt_mit": "f1lab 0.1.0",
     "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, die von tests/ geprueft werden."
+  },
+  "konstrukteurs_wm": {
+    "saison": 2026,
+    "fuehrend": "Mercedes",
+    "titelchance_pct": 99.8,
+    "standings_top3": [
+      {
+        "team": "Mercedes",
+        "punkte": 425.0
+      },
+      {
+        "team": "Ferrari",
+        "punkte": 338.0
+      },
+      {
+        "team": "McLaren",
+        "punkte": 263.0
+      }
+    ]
   }
 }
