@@ -33,6 +33,7 @@ pfad = setup("Telemetrie", "Wie sieht die Strecke aus, wo wird gebremst, und "
                            "wie unterscheiden sich zwei Fahrer?")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad, nur_mit_telemetrie=True)
 if auswahl is None:

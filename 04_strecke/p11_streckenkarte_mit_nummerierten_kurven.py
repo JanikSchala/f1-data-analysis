@@ -51,7 +51,7 @@ def zeichne_karte(ax, ref: pd.DataFrame, ci_rotation: float,
     sektor_idx = np.searchsorted(grenzen, mitte, side="right")
     palette = [BG_HELL, MUTED]
     farben = [palette[i % 2] for i in sektor_idx]
-    lc = LineCollection(segmente, colors=farben, linewidths=7)
+    lc = LineCollection(list(segmente), colors=farben, linewidths=7)
     ax.add_collection(lc)
 
     for s in sektoren.itertuples():

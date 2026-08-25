@@ -18,8 +18,19 @@ repos:
   - repo: local
     hooks:
       - id: mypy-f1lab
-        name: mypy (f1lab)
-        entry: .venv/bin/python -m mypy f1lab --ignore-missing-imports
+        name: mypy (f1lab + app)
+        entry: .venv/bin/python -m mypy f1lab app --ignore-missing-imports
         language: system
         pass_filenames: false
-        files: ^f1lab/
+        files: ^(f1lab|app)/
+      - id: mypy-skripte
+        name: mypy (Analyseskripte)
+        entry: >
+          .venv/bin/python -m mypy 01_grundlagen 02_timing 03_telemetrie
+          04_strecke 05_reifen_strategie 06_wetter 07_race_control
+          08_historie 09_machine_learning 10_data_engineering
+          11_visualisierung 12_live_timing make_assets.py
+          --ignore-missing-imports
+        language: system
+        pass_filenames: false
+        files: ^(0[1-9]|1[0-2])_.*/.*\.py$|^make_assets\.py$

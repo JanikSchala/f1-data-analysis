@@ -6,6 +6,7 @@ f1lab.parse_penalties()/parse_track_limits()/track_limit_crosscheck().
 """
 from __future__ import annotations
 
+import fastf1
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -28,8 +29,10 @@ pfad = setup("Race Control", "Safety-Car-Phasen und Feldkompaktierung, dazu "
                              "Strafen und Track-Limit-Meldungen.")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad)
+assert auswahl is not None
 ses = f1lab.load(auswahl.season, auswahl.event, auswahl.ident, messages=True)
 st.subheader(auswahl.titel)
 
@@ -129,7 +132,13 @@ with tab_sc:
 
 # ==================================================================== RCM
 with tab_rcm:
-    rcm = ses.race_control_messages
+    try:
+        rcm = ses.race_control_messages
+    except fastf1.exceptions.DataNotLoadedError:
+        # siehe 12_Wetter.py: FastF1 scheitert im Offline-Modus nicht beim
+        # Laden, sondern erst beim Zugriff, wenn die Kategorie fuer diese
+        # Session nicht im Cache liegt.
+        rcm = None
     if rcm is None or rcm.empty:
         st.info("Fuer diese Session liegen keine Race-Control-Meldungen vor.")
     else:

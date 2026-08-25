@@ -39,6 +39,7 @@ def cliffs_suchen(laps: pd.DataFrame) -> list[dict]:
             continue
         knick, links, rechts = f1lab.find_cliff(g["TyreLife"], g["corrected"])
         if knick is not None:
+            assert rechts is not None  # find_cliff() setzt beide nur gemeinsam
             treffer.append({
                 "driver": str(drv), "stint": int(stint),
                 "compound": str(g["Compound"].iloc[0]), "n": len(g),

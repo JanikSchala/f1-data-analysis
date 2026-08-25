@@ -11,6 +11,7 @@ manche reiter zeigen dann eben einen hinweis statt eines ergebnisses.
 """
 from __future__ import annotations
 
+import fastf1
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
@@ -31,12 +32,21 @@ pfad = setup("Wetter", "Temperaturverlauf, TrackTemp-Effekt auf die Pace, "
                        "Nass/Trocken-Phasen und ein Klassifikator dafuer.")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad)
+assert auswahl is not None
 ses = f1lab.load(auswahl.season, auswahl.event, auswahl.ident, weather=True)
 st.subheader(auswahl.titel)
 
-w = ses.weather_data
+try:
+    w = ses.weather_data
+except fastf1.exceptions.DataNotLoadedError:
+    # FastF1 scheitert im Offline-Modus nicht beim Laden, sondern erst beim
+    # Zugriff, wenn die angeforderte Kategorie fuer diese Session gar nicht
+    # im Cache liegt (siehe CLAUDE.md) - w=None faengt nur den Fall ab, dass
+    # sie geladen wurde und leer ist, nicht diesen.
+    w = None
 if w is None or w.empty:
     st.info("Fuer diese Session liegen keine Wetterdaten vor.")
     st.stop()

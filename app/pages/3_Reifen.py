@@ -29,8 +29,10 @@ pfad = setup("Reifen", "Wer faehrt welche Mischung wie lange - und was kostet "
                        "sie pro Runde?")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad)
+assert auswahl is not None
 ses = lade(auswahl)
 kopfzeile(ses, auswahl)
 
@@ -222,10 +224,12 @@ for (drv, stint), g in laps_sauber.groupby(["Driver", "Stint"]):
     if len(g) < MIN_RUNDEN_CLIFF:
         continue
     kandidaten.append((drv, stint))
-    knick, links, rechts = f1lab.find_cliff(g["TyreLife"], g["corrected"])
+    knick, fit_vorher, fit_danach = f1lab.find_cliff(g["TyreLife"], g["corrected"])
     if knick is not None:
+        assert fit_danach is not None  # find_cliff() setzt beide nur gemeinsam
         cliffs.append({"driver": drv, "stint": int(stint), "laps": g,
-                       "knick": knick, "vor": links.slope, "nach": rechts.slope})
+                       "knick": knick, "vor": fit_vorher.slope,
+                       "nach": fit_danach.slope})
 
 if not kandidaten:
     st.info(f"Kein Stint mit mindestens {MIN_RUNDEN_CLIFF} sauberen Runden in "

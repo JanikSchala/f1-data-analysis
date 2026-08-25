@@ -52,6 +52,7 @@ def _skript_importieren(rel_pfad: str):
     zuverwenden statt sie hier zu kopieren (siehe P24/P30 unten)."""
     pfad = ROOT / rel_pfad
     spec = importlib.util.spec_from_file_location(pfad.stem, pfad)
+    assert spec is not None and spec.loader is not None
     modul = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modul)
     return modul
@@ -87,7 +88,7 @@ def gear_map(year=2024, gp="Belgium"):
     pts = np.array([x, y]).T.reshape(-1, 1, 2)
     seg = np.concatenate([pts[:-1], pts[1:]], axis=1)
 
-    lc = LineCollection(seg, norm=plt.Normalize(1, 8),
+    lc = LineCollection(list(seg), norm=plt.Normalize(1, 8),
                         cmap=plt.get_cmap("viridis", 8), linewidth=4.5)
     lc.set_array(gear[:-1])
 

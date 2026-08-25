@@ -8,6 +8,7 @@ kennzahl kommt aus f1lab.
 """
 from __future__ import annotations
 
+import fastf1
 import fastf1.plotting as f1plt
 import numpy as np
 import pandas as pd
@@ -36,8 +37,10 @@ pfad = setup("Renndynamik", "Positionen, Ueberholungen, Start und "
                            "Verfolgung ueber ein Rennen.")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad)
+assert auswahl is not None
 if auswahl is None:
     st.stop()
 if nur_rennen(auswahl, "Renndynamik"):
@@ -196,11 +199,20 @@ with tab_drs:
         def _ueberholorte(cache_pfad: str, season: int, event: str, ident: str):
             s = f1lab.load(season, event, ident, telemetry=True)
             events = f1lab.overtake_events(s)
-            orte = f1lab.overtake_locations(s)
-            q = f1lab.load(season, int(s.event["RoundNumber"]), "Q",
-                           telemetry=True)
-            lap_q = q.laps.pick_fastest()
-            zonen = f1lab.drs_zones(q, str(lap_q["Driver"]))
+            try:
+                # overtake_locations() laedt intern selbst eine Qualifying-
+                # Referenzsession fuer die DRS-Zonen - liegt deren Telemetrie
+                # nicht im Cache, scheitert das erst beim Zugriff (siehe
+                # 12_Wetter.py/13_RaceControl.py), nicht schon beim Laden.
+                orte = f1lab.overtake_locations(s)
+                q = f1lab.load(season, int(s.event["RoundNumber"]), "Q",
+                               telemetry=True)
+                lap_q = q.laps.pick_fastest()
+                zonen = f1lab.drs_zones(q, str(lap_q["Driver"]))
+            except fastf1.exceptions.DataNotLoadedError:
+                orte = pd.DataFrame(columns=["gainer", "loser", "lap",
+                                             "distance_m", "in_drs_zone"])
+                zonen = pd.DataFrame()
             ref_lap = s.laps.pick_fastest()
             tel = ref_lap.get_telemetry().add_distance()
             bremszonen = f1lab.driver_braking_zones(s, str(ref_lap["Driver"]))

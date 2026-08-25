@@ -123,7 +123,7 @@ def _vorjahr_anhaengen(quali: pd.DataFrame) -> pd.DataFrame:
 
 
 def _fp_features(jahr: int, rnd: int) -> pd.DataFrame:
-    rows = {}
+    rows: dict[str, dict[str, float]] = {}
     for fp in ("FP1", "FP2", "FP3"):
         try:
             s = f1lab.load(jahr, rnd, fp, telemetry=False, weather=False,
@@ -224,6 +224,7 @@ def _quali_ergebnisse(jahre: tuple[int, ...]):
         letzter_test_idx = te
     baseline = mean_absolute_error(y_pos, np.full(len(y_pos), y_pos.median()))
 
+    assert letzter_test_idx is not None  # TimeSeriesSplit liefert mindestens einen Fold
     m_final = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
     tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
     m_final.fit(X.iloc[tr_final], y_pos.iloc[tr_final])
@@ -559,7 +560,7 @@ def _ausfall_analyse(df: pd.DataFrame, anomalien: pd.DataFrame, ses) -> pd.DataF
 
 def _rundenprofile(ses) -> pd.DataFrame:
     phasen = f1lab.track_status_phases(ses)
-    neutral_laps = set()
+    neutral_laps: set[int] = set()
     for p in phasen[phasen["label"] != "gruen"].itertuples():
         neutral_laps.update(range(p.lap_start, p.lap_end + 1))
 
@@ -847,6 +848,7 @@ def _renn_ergebnisse(jahre: tuple[int, ...]):
     beob, vorh = calibration_curve(y_true_ges, y_prob_ges, n_bins=10,
                                    strategy="uniform")
 
+    assert letzter_test_idx is not None  # TimeSeriesSplit liefert mindestens einen Fold
     m_final = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
     tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
     m_final.fit(X.iloc[tr_final], y_podium.iloc[tr_final])

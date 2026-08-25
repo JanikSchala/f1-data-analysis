@@ -23,7 +23,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]" mypy
+      - run: pip install -e ".[dev,ml,warehouse,api,dashboard]" mypy
       - run: ruff check .
-      - run: mypy f1lab --ignore-missing-imports
+      - run: mypy f1lab app --ignore-missing-imports
+      - run: >
+          mypy 01_grundlagen 02_timing 03_telemetrie 04_strecke
+          05_reifen_strategie 06_wetter 07_race_control 08_historie
+          09_machine_learning 10_data_engineering 11_visualisierung
+          12_live_timing make_assets.py --ignore-missing-imports
       - run: pytest tests -q --cov=f1lab --cov-report=term-missing

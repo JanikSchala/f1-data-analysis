@@ -9,6 +9,8 @@ f1lab.optimal_strategy()/frontier_by_stops()/solve_policy()/hindsight_value().
 """
 from __future__ import annotations
 
+from typing import cast
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -34,8 +36,10 @@ pfad = setup("Strategie-Optimierer", "Der exakt beste Boxenstopp-Plan dieses "
                                      "das Safety Car kostet.")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad)
+assert auswahl is not None
 ses = lade(auswahl)
 kopfzeile(ses, auswahl)
 
@@ -113,24 +117,24 @@ hinweis(f"Boxenstopps am Ende von Runde {', '.join(str(p) for p in beste.pit_lap
 st.markdown("##### Bester Plan je Stoppzahl")
 frontier = f1lab.frontier_by_stops(cfg, up_to=4)
 zeilen = []
-for n, s in frontier.items():
-    if s is None:
+for n, plan in frontier.items():
+    if plan is None:
         zeilen.append({"Stopps": n, "Mischungen": "nicht moeglich",
                        "Abstand zum Optimum [s]": None})
     else:
-        zeilen.append({"Stopps": n, "Mischungen": " / ".join(s.compounds),
+        zeilen.append({"Stopps": n, "Mischungen": " / ".join(plan.compounds),
                        "Abstand zum Optimum [s]": round(
-                           s.green_time - beste.green_time, 2)})
+                           plan.green_time - beste.green_time, 2)})
 
 machbar = [z for z in zeilen if z["Abstand zum Optimum [s]"] is not None]
+abstaende = [cast(float, z["Abstand zum Optimum [s]"]) for z in machbar]
 if machbar:
     fig2 = go.Figure(go.Bar(
         x=[f"{z['Stopps']}-Stopp" for z in machbar],
-        y=[z["Abstand zum Optimum [s]"] for z in machbar],
-        marker={"color": [d.SERIEN[0] if z["Abstand zum Optimum [s]"] == 0
-                          else d.MUTED for z in machbar]},
-        text=[f"+{z['Abstand zum Optimum [s]']:.1f}s" if z["Abstand zum Optimum [s]"] > 0
-             else "Optimum" for z in machbar],
+        y=abstaende,
+        marker={"color": [d.SERIEN[0] if a == 0 else d.MUTED
+                          for a in abstaende]},
+        text=[f"+{a:.1f}s" if a > 0 else "Optimum" for a in abstaende],
         textposition="outside"))
     zeige(fig2, hoehe=340, showlegend=False, xaxis=namensachse(),
          yaxis=achse("Abstand zum Optimum [s]"))

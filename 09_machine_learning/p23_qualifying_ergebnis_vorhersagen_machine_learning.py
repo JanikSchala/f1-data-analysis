@@ -96,7 +96,7 @@ def vorjahr_anhaengen(quali: pd.DataFrame) -> pd.DataFrame:
 
 def fp_features(jahr: int, rnd: int) -> pd.DataFrame:
     """beste Runde und Long-Run-Pace je FP-Session."""
-    rows = {}
+    rows: dict[str, dict[str, float]] = {}
     for fp in ("FP1", "FP2", "FP3"):
         try:
             s = f1lab.load(jahr, rnd, fp, telemetry=False, weather=False,

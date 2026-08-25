@@ -35,6 +35,7 @@ pfad = setup("Rundenzeit-Simulation", "Kruemmung plus vier "
                                       "getestet auf anderen Strecken.")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad, nur_mit_telemetrie=True)
 if auswahl is None:
@@ -113,9 +114,16 @@ def _uebertragung(cache_pfad: str, season: int, ident: str,
     zeilen = []
     for ev in events:
         jahr = int(kandidaten[kandidaten["event"] == ev]["season"].iloc[0])
-        s = f1lab.load(jahr, ev, ident, telemetry=True)
-        d2, k2, _ = f1lab.lap_speed_profile(s)
-        t2_real = float(s.laps.pick_fastest()["LapTime"].total_seconds())
+        try:
+            s = f1lab.load(jahr, ev, ident, telemetry=True)
+            d2, k2, _ = f1lab.lap_speed_profile(s)
+            t2_real = float(s.laps.pick_fastest()["LapTime"].total_seconds())
+        except Exception:
+            # eine einzelne Session mit unvollstaendigem Telemetrie-Cache
+            # (z.B. fehlende Positionsdaten fuer einen Fahrer) soll nicht die
+            # ganze Uebertragung abbrechen, nur diese eine Strecke ausfallen
+            # lassen - dasselbe Muster wie in den Saison-Scan-Seiten.
+            continue
         _, t2_sim = f1lab.simulate_lap(d2, k2, params["mu_g"], params["a_accel"],
                                        params["a_brake"], params["v_top"])
         diff_pct = 100 * (t2_sim - t2_real) / t2_real

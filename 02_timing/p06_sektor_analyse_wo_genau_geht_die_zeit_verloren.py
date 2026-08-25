@@ -93,7 +93,7 @@ def zeichne_streckenkarte(ax, telemetrie: dict[str, pd.DataFrame],
     bin_idx = np.clip(np.digitize(mitte, edges) - 1, 0, len(gewinner) - 1)
     farben = [farbe[gewinner[i]] for i in bin_idx]
 
-    lc = LineCollection(segmente, colors=farben, linewidths=5)
+    lc = LineCollection(list(segmente), colors=farben, linewidths=5)
     ax.add_collection(lc)
     ax.set_xlim(x.min() - 200, x.max() + 200)
     ax.set_ylim(y.min() - 200, y.max() + 200)

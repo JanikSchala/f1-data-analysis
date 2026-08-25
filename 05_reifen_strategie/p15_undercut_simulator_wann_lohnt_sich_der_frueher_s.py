@@ -95,7 +95,7 @@ def verkehr_nach_stopp(ses) -> pd.DataFrame:
 def zeichne_fenster(ax, deg_alt: float, deg_neu: float, malus: float) -> None:
     """gewinn über das undercut-fenster, 1-8 runden."""
     ns = np.arange(1, 9)
-    gains = [f1lab.undercut_gain(deg_alt, deg_neu, n, malus) for n in ns]
+    gains = [f1lab.undercut_gain(deg_alt, deg_neu, int(n), malus) for n in ns]
     ax.plot(ns, gains, marker="o", color=SERIEN[0], lw=2, ms=6)
     ax.axhline(0, color=MUTED, lw=0.8)
     ax.set_xlabel("Undercut-Fenster [Runden]")

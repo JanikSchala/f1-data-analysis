@@ -28,8 +28,10 @@ pfad = setup("Pace", "Bereinigte Rundenzeiten je Fahrer, mit Bootstrap-"
                      "Intervall.")
 if kein_cache_hinweis(pfad):
     st.stop()
+assert pfad is not None  # kein_cache_hinweis() haette sonst schon abgebrochen
 
 auswahl = sidebar_session(pfad)
+assert auswahl is not None
 ses = lade(auswahl)
 kopfzeile(ses, auswahl)
 

@@ -46,7 +46,7 @@ def rundenprofile(ses) -> pd.DataFrame:
     Diese übliche Filterung würde die interessantesten Fälle regelmäßig wegfiltern.
     Box- und Neutralisations-Zugehörigkeit bleiben als Metadaten erhalten, um gezielt statt blind auszuschließen."""
     phasen = f1lab.track_status_phases(ses)
-    neutral_laps = set()
+    neutral_laps: set[int] = set()
     for p in phasen[phasen["label"] != "gruen"].itertuples():
         neutral_laps.update(range(p.lap_start, p.lap_end + 1))
 

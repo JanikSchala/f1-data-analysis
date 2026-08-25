@@ -121,7 +121,7 @@ def beste_clusteranzahl(X: np.ndarray, kandidaten=range(2, 6)) -> tuple[int, dic
     for k in kandidaten:
         labels = KMeans(n_clusters=k, n_init=20, random_state=0).fit_predict(X)
         scores[k] = silhouette_score(X, labels)
-    bestes_k = max(scores, key=scores.get)
+    bestes_k = max(scores, key=lambda k: scores[k])
     return bestes_k, scores
 
 
