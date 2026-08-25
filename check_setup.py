@@ -38,7 +38,7 @@ for mod in CORE:
         print(OK + f"{mod:<12} {getattr(m, '__version__', '?')}")
     except ImportError:
         print(BAD + f"{mod:<12} fehlt")
-        problems.append(f"{mod} installieren:  pip install {mod}")
+        problems.append(f"{mod} installieren:  python -m pip install {mod}")
 
 for mod, why in OPTIONAL.items():
     try:

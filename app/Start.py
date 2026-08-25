@@ -3,9 +3,12 @@ auf dem rechner liegt und was die app damit macht.
 
 start mit::
 
-    streamlit run app/Start.py
+    python -m streamlit run app/Start.py
 
-oder per doppelklick auf "2_Dashboard_starten.command".
+oder per doppelklick auf "2_Dashboard_starten.command". `python -m` statt
+des blossen `streamlit`-Kommandos: Shebang-Zeilen brechen auf manchen
+Systemen bei einem Leerzeichen im Installationspfad (siehe CLAUDE.md),
+`python -m` umgeht das, weil es nie ueber die Shebang-Zeile laeuft.
 """
 from __future__ import annotations
 

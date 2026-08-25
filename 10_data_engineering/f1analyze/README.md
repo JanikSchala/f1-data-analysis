@@ -5,7 +5,7 @@ Repositories) zu einem installierbaren Wochenend-Analyzer buendelt:
 
 ```bash
 cd 10_data_engineering/f1analyze
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 
 f1analyze weekend 2024 Monza
 f1analyze pace 2024 Monza --top 10
