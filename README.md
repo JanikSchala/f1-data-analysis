@@ -14,7 +14,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **49 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **50 eigenständige Analysen über zwölf Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -51,6 +51,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Nur 1,7 % aller Überholungen ändern die Rennführung](#nur-17--aller-überholungen-ändern-die-rennführung)
   - [Macht Regen den Sieger unvorhersehbarer? Vermutlich, aber nicht beweisbar](#macht-regen-den-sieger-unvorhersehbarer-vermutlich-aber-nicht-beweisbar)
   - [Ein Rennen zu gewinnen ist nicht dasselbe wie aufs Podium zu fahren](#ein-rennen-zu-gewinnen-ist-nicht-dasselbe-wie-aufs-podium-zu-fahren)
+  - [Zuverlässiger, aber nicht gleichmäßig](#zuverlässiger-aber-nicht-gleichmäßig)
 - [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
 - [Aufbau](#aufbau)
 - [Methodische Entscheidungen](#methodische-entscheidungen)
@@ -439,9 +440,34 @@ gewinnt, braucht öfter auch selbst gerade seine beste Form.
 
 ---
 
+### Zuverlässiger, aber nicht gleichmäßig
+
+![Zuverlässigkeit über die Zeit](assets/zuverlaessigkeit.png)
+
+Über 29 Saisons (1994–2022, Ergast/jolpica — danach nicht mehr sauber
+auswertbar, siehe unten) sinkt die technische Ausfallquote von 24,5 % auf
+9,3 % der Fahrer-Rennen, mit dem größten Sprung direkt nach dem Tankverbot
+2010 (Refueling-Ära 24,5 % → 10,9 % danach) — über die zwei folgenden
+Regeländerungen stagniert sie seither bei rund 11 %. Unfälle dagegen fallen
+über jede einzelne Ära weiter (14,4 % → 8,5 % → 6,7 % → 7,3 %). Beide Trends
+sind statistisch eindeutig (technisch r = −0,199, Unfall r = −0,130, je
+p < 10⁻⁴³), aber sie laufen erkennbar auseinander: Technik verbessert sich
+sprunghaft mit dem Regelwerk, Unfälle sinken kontinuierlich.
+
+Der eigentliche Fund kam beim Prüfen der eigenen Datenqualität: seit 2023
+meldet Ergast/jolpica die meisten Ausfälle nur noch generisch als "Retired"
+statt mit konkretem Grund (Motor, Getriebe, Unfall, …) — technisch und
+Unfall lassen sich ab dort nicht mehr sauber trennen, deshalb endet der
+Vergleich bewusst 2022 statt die neueren, verzerrten Jahre stillschweigend
+mitzurechnen.
+
+*Code: [`08_historie/p50_zuverlaessigkeit_wird_der_sport_zuverlaessiger.py`](08_historie/p50_zuverlaessigkeit_wird_der_sport_zuverlaessiger.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 49 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 50 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```
@@ -464,7 +490,7 @@ print(f1lab.degradation_by_compound(ses))
 print(f"Pitloss: {f1lab.pit_loss(ses):.2f} s")
 ```
 
-**188 Tests, alle ohne Netzzugriff:**
+**200 Tests, alle ohne Netzzugriff:**
 
 ```bash
 pip install pytest
@@ -642,6 +668,7 @@ Pakete inklusive transitiver Abhängigkeiten liegt zusätzlich
 | `P47` | [Führungswechsel: wie oft wechselt die Rennführung wirklich?](02_timing/p47_fuehrungswechsel_wie_oft_wechselt_die_ren.py) | Timing | Fortgeschritten |
 | `P48` | [Regen-Variance: wird der erwartete Sieger unwahrscheinlicher?](06_wetter/p48_regen_variance_wird_der_erwartete_sieger_unwahr.py) | Wetter | Fortgeschritten |
 | `P49` | [Reiner Rennsieg-Klassifikator: wer gewinnt?](09_machine_learning/p49_reiner_rennsieg_klassifikator_wer_gewinnt.py) | ML | Profi |
+| `P50` | [Zuverlässigkeit: wird der Sport zuverlässiger?](08_historie/p50_zuverlaessigkeit_wird_der_sport_zuverlaessiger.py) | Historie | Fortgeschritten |
 
 ---
 

@@ -332,6 +332,42 @@
       "dnf_rate": -0.004
     }
   },
+  "zuverlaessigkeit": {
+    "zeitraum_granular": [
+      1994,
+      2022
+    ],
+    "trend_technisch": {
+      "r": -0.199,
+      "p": 3.3281336733525406e-101
+    },
+    "trend_unfall": {
+      "r": -0.13,
+      "p": 3.9169918362414727e-44
+    },
+    "je_era": {
+      "Refueling-Aera": {
+        "technisch_pct": 24.5,
+        "unfall_pct": 14.4,
+        "n": 5480
+      },
+      "Kein Refueling, V8": {
+        "technisch_pct": 10.9,
+        "unfall_pct": 8.5,
+        "n": 2140
+      },
+      "V6-Hybrid-Turbo": {
+        "technisch_pct": 11.4,
+        "unfall_pct": 6.7,
+        "n": 3250
+      },
+      "Ground Effect": {
+        "technisch_pct": 9.3,
+        "unfall_pct": 7.3,
+        "n": 439
+      }
+    }
+  },
   "_meta": {
     "erzeugt_mit": "f1lab 0.1.0",
     "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, die von tests/ geprueft werden."

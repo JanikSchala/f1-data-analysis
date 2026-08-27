@@ -43,6 +43,12 @@ ERAS = [
     (2022, YEAR, "Ground Effect"),
 ]
 
+GRANULAR_ENDE = 2022    # ab 2023 meldet Ergast/jolpica die meisten Ausfaelle
+                        # nur noch generisch als "Retired" (siehe P50)
+UNFALL_SCHLUESSEL = ("accident", "collision", "spun off", "damage")
+AUSSCHLUSS_SCHLUESSEL = ("disqualified", "excluded", "did not qualify",
+                        "did not prequalify", "did not start", "withdrew")
+
 setup("Historie", "WM-Stand-Simulator fuer die laufende Saison, und 75 "
                   "Jahre F1 aus Ergast/jolpica - braucht Netzwerk.")
 
@@ -496,6 +502,49 @@ def _pole_to_win() -> pd.DataFrame:
     return verlauf
 
 
+def _kategorie(status: str) -> str:
+    s = str(status).lower()
+    if s == "finished" or s.startswith("+") or s == "lapped":
+        return "gewertet"
+    if any(k in s for k in AUSSCHLUSS_SCHLUESSEL):
+        return "ausschluss"
+    if any(k in s for k in UNFALL_SCHLUESSEL):
+        return "unfall"
+    return "technisch"
+
+
+@st.cache_data(persist="disk", show_spinner=False)
+def _zuverlaessigkeit() -> pd.DataFrame:
+    """paginiert wie P50: eine Ergast-Antwort deckelt bei ~100 Zeilen, ein
+    Rennen kann dabei ueber zwei Seiten verteilt sein - offset zaehlt
+    Zeilen, nicht Rennen."""
+    erg = Ergast(result_type="pandas", auto_cast=True)
+    zeilen = []
+    for saison in range(ERSTE_SAISON_POLE, YEAR + 1):
+        off, total = 0, None
+        while total is None or off < total:
+            res = _mit_wiederholung(erg.get_race_results, season=saison,
+                                    limit=100, offset=off)
+            if res is None or not res.content:
+                break
+            total = res.total_results
+            for df in res.content:
+                if df.empty:
+                    continue
+                zeilen.append(df[["status"]].assign(season=saison))
+            off += sum(len(df) for df in res.content)
+            time.sleep(0.2)
+    if not zeilen:
+        return pd.DataFrame()
+    daten = pd.concat(zeilen, ignore_index=True)
+    daten["kategorie"] = daten["status"].apply(_kategorie)
+    daten = daten[daten["kategorie"] != "ausschluss"].copy()
+    daten["technisch"] = daten["kategorie"] == "technisch"
+    daten["unfall"] = daten["kategorie"] == "unfall"
+    daten["era"] = daten["season"].apply(_era_von)
+    return daten
+
+
 with tab_trends:
     try:
         with st.spinner("75 Jahre F1-Historie werden von Ergast/jolpica "
@@ -628,3 +677,52 @@ with tab_trends:
                     "Grundlage ist der Startplatz-1-Fahrer, nicht zwingend "
                     "der echte Pole-Setter - bei einer Startplatzstrafe "
                     "koennen beide auseinanderfallen.")
+
+        st.markdown("##### AUSBAUSTUFE: Technischer Ausfall oder Unfall?")
+        zuv = _zuverlaessigkeit()
+        if zuv.empty:
+            st.info("Keine Zuverlaessigkeits-Daten geladen.")
+        else:
+            granular = zuv[zuv["season"] <= GRANULAR_ENDE]
+            links3, rechts3 = st.columns([3, 2])
+            with links3:
+                je_saison = zuv.groupby("season")[["technisch", "unfall"]].mean() * 100
+                fig8 = go.Figure()
+                fig8.add_trace(go.Scatter(
+                    x=je_saison.index, y=je_saison["technisch"],
+                    mode="lines+markers", name="Technisch",
+                    line={"color": d.SERIEN[0], "width": 1.8}))
+                fig8.add_trace(go.Scatter(
+                    x=je_saison.index, y=je_saison["unfall"],
+                    mode="lines+markers", name="Unfall",
+                    line={"color": d.SERIEN[1], "width": 1.8}))
+                fig8.add_vline(x=GRANULAR_ENDE + 0.5, line_color=d.MUTED,
+                              line_dash="dot")
+                zeige(fig8, hoehe=340, xaxis=achse("Saison"),
+                     yaxis=achse("Anteil an Fahrer-Rennen [%]"))
+            with rechts3:
+                je_era = granular.groupby("era")[["technisch", "unfall"]].mean() * 100
+                je_era = je_era.reindex([e[2] for e in ERAS]).dropna()
+                fig9 = go.Figure()
+                fig9.add_trace(go.Bar(x=je_era.index, y=je_era["technisch"],
+                                      name="Technisch",
+                                      marker={"color": d.SERIEN[0]}))
+                fig9.add_trace(go.Bar(x=je_era.index, y=je_era["unfall"],
+                                      name="Unfall",
+                                      marker={"color": d.SERIEN[1]}))
+                zeige(fig9, hoehe=340, barmode="group", xaxis=namensachse(),
+                     yaxis=achse(f"Ausfallquote bis {GRANULAR_ENDE} [%]"))
+
+            r_tech, p_tech = pearsonr(
+                granular["season"].to_numpy(dtype=float),
+                granular["technisch"].to_numpy(dtype=float))
+            r_unfall, p_unfall = pearsonr(
+                granular["season"].to_numpy(dtype=float),
+                granular["unfall"].to_numpy(dtype=float))
+            hinweis(f"Technischer Ausfall sinkt {ERSTE_SAISON_POLE}-"
+                    f"{GRANULAR_ENDE} klar (r={r_tech:.3f}, p={p_tech:.1e}), "
+                    f"Unfaelle ebenso (r={r_unfall:.3f}, p={p_unfall:.1e}) - "
+                    f"ab {GRANULAR_ENDE + 1} meldet Ergast/jolpica die "
+                    "meisten Ausfaelle nur noch generisch als 'Retired' ohne "
+                    "konkreten Grund (gestrichelte Linie), technisch/unfall "
+                    "sind ab dort nicht mehr sauber trennbar (siehe P50).")
