@@ -249,10 +249,6 @@
     "datenpunkte": 1087,
     "hinweis": "Replay derselben Session in ihrer tatsaechlichen Rundenreihenfolge, ersetzt einen echten Live-Feed (siehe P30-Docstring)."
   },
-  "_meta": {
-    "erzeugt_mit": "f1lab 0.1.0",
-    "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, die von tests/ geprueft werden."
-  },
   "konstrukteurs_wm": {
     "saison": 2026,
     "fuehrend": "Mercedes",
@@ -311,5 +307,33 @@
     "pole_quote_nass_pct": 35.3,
     "durcheinander_median_trocken": 3.3,
     "durcheinander_median_nass": 4.0
+  },
+  "rennsieg": {
+    "zeitraum": [
+      2022,
+      2024
+    ],
+    "fahrer_rennen": 1357,
+    "rennen": 68,
+    "sieg_quote_pct": 5.0,
+    "roc_auc": 0.905,
+    "brier": 0.041,
+    "brier_baseline": 0.047,
+    "importance_sieg": {
+      "dnf_rate": -0.007,
+      "driver_form": 0.029,
+      "team_form": 0.049,
+      "grid": 0.107
+    },
+    "importance_podium": {
+      "grid": 0.101,
+      "driver_form": 0.006,
+      "team_form": 0.075,
+      "dnf_rate": -0.004
+    }
+  },
+  "_meta": {
+    "erzeugt_mit": "f1lab 0.1.0",
+    "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, die von tests/ geprueft werden."
   }
 }

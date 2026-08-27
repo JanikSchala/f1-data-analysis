@@ -14,7 +14,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **48 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **49 eigenständige Analysen über zwölf Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -50,6 +50,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Pole ist heute mehr wert als 1994](#pole-ist-heute-mehr-wert-als-1994)
   - [Nur 1,7 % aller Überholungen ändern die Rennführung](#nur-17--aller-überholungen-ändern-die-rennführung)
   - [Macht Regen den Sieger unvorhersehbarer? Vermutlich, aber nicht beweisbar](#macht-regen-den-sieger-unvorhersehbarer-vermutlich-aber-nicht-beweisbar)
+  - [Ein Rennen zu gewinnen ist nicht dasselbe wie aufs Podium zu fahren](#ein-rennen-zu-gewinnen-ist-nicht-dasselbe-wie-aufs-podium-zu-fahren)
 - [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
 - [Aufbau](#aufbau)
 - [Methodische Entscheidungen](#methodische-entscheidungen)
@@ -418,9 +419,29 @@ nicht in der Schlagzeile.
 
 ---
 
+### Ein Rennen zu gewinnen ist nicht dasselbe wie aufs Podium zu fahren
+
+![Reiner Rennsieg-Klassifikator](assets/rennsieg_vorhersage.png)
+
+P36 sagt Podium-Wahrscheinlichkeit voraus (ROC-AUC 0,905) — aber ein Sieg
+ist ein anderes, selteneres Ereignis (nur 5,0 % der Fahrer-Rennen 2022–2024
+gegenüber ~15 % für Podium). Ein eigener Klassifikator dafür, auf denselben
+vier Features (Startplatz, Fahrer-Form, Team-Form, DNF-Quote, alle
+leak-sicher um ein Rennen verschoben), erreicht ebenfalls **ROC-AUC 0,905**.
+
+Der eigentliche Unterschied steckt in der Feature Importance: **Fahrer-Form
+trägt beim Sieg-Modell (0,029) fast fünfmal so stark bei wie beim
+Podium-Modell (0,006)**, während Team-Form leicht abnimmt (0,075 → 0,049).
+Wer aufs Podium fährt, kann von einem starken Auto profitieren — wer
+gewinnt, braucht öfter auch selbst gerade seine beste Form.
+
+*Code: [`09_machine_learning/p49_reiner_rennsieg_klassifikator_wer_gewinnt.py`](09_machine_learning/p49_reiner_rennsieg_klassifikator_wer_gewinnt.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 48 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 49 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```
@@ -620,6 +641,7 @@ Pakete inklusive transitiver Abhängigkeiten liegt zusätzlich
 | `P46` | [Pole-to-Win-Konversionsrate über die Regelären](08_historie/p46_pole_to_win_konversionsrate_ueber_die_regelaeren.py) | Historie | Fortgeschritten |
 | `P47` | [Führungswechsel: wie oft wechselt die Rennführung wirklich?](02_timing/p47_fuehrungswechsel_wie_oft_wechselt_die_ren.py) | Timing | Fortgeschritten |
 | `P48` | [Regen-Variance: wird der erwartete Sieger unwahrscheinlicher?](06_wetter/p48_regen_variance_wird_der_erwartete_sieger_unwahr.py) | Wetter | Fortgeschritten |
+| `P49` | [Reiner Rennsieg-Klassifikator: wer gewinnt?](09_machine_learning/p49_reiner_rennsieg_klassifikator_wer_gewinnt.py) | ML | Profi |
 
 ---
 

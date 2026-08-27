@@ -61,9 +61,9 @@ pfad = setup("Machine Learning", "Quali-Vorhersage, Fahrstil-Clustering, "
 if kein_cache_hinweis(pfad):
     st.stop()
 
-tab_quali, tab_stil, tab_anom, tab_renn = st.tabs(
+tab_quali, tab_stil, tab_anom, tab_renn, tab_sieg = st.tabs(
     ["Quali-Vorhersage", "Fahrstil-Clustering", "Anomalie-Erkennung",
-     "Renn-/Podium-Vorhersage"])
+     "Renn-/Podium-Vorhersage", "Reiner Rennsieg"])
 
 # ========================================================== quali-vorhersage
 JAHRE = (2022, 2023, 2024)
@@ -767,6 +767,7 @@ def _sammle_rennen(jahre) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     df["dnf"] = ~df["status"].isin(["Finished", "Lapped"])
     df["podium"] = (df["position"] <= 3) & ~df["dnf"]
+    df["sieg"] = (df["position"] == 1) & ~df["dnf"]
     return df
 
 
@@ -933,3 +934,138 @@ with tab_renn:
                     f"(Grid=Ziel) {np.mean(mae_baseline_scores):.2f} - "
                     "Startplatz dominiert, Form/Zuverlaessigkeit liefern nur "
                     "Feinschliff (siehe P36).")
+
+
+@st.cache_data(persist="disk", show_spinner=False)
+def _sieg_ergebnisse(jahre: tuple[int, ...]):
+    """dieselbe validierung wie _renn_ergebnisse, aber Zielgroesse 'sieg'
+    statt 'podium' (P49) - reines Klassifikationsmodell, keine Regression,
+    ein Sieg hat keine sinnvolle 'wie nah dran'-Positionsgroesse."""
+    races = _renn_datensatz(jahre)
+    if races.empty:
+        return {"races": races}
+
+    feat = ["grid", "driver_form", "team_form", "dnf_rate"]
+    races = races.sort_values(["season", "round"]).reset_index(drop=True)
+    X = races[feat]
+    y_sieg = races["sieg"].astype(int)
+
+    cv = TimeSeriesSplit(n_splits=5)
+    auc_scores, brier_scores = [], []
+    alle_y_true, alle_y_prob = [], []
+    letzter_test_idx = None
+    for tr, te in cv.split(X):
+        m = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
+        m.fit(X.iloc[tr], y_sieg.iloc[tr])
+        prob = m.predict_proba(X.iloc[te])[:, 1]
+        auc_scores.append(roc_auc_score(y_sieg.iloc[te], prob))
+        brier_scores.append(brier_score_loss(y_sieg.iloc[te], prob))
+        alle_y_true.append(y_sieg.iloc[te].to_numpy())
+        alle_y_prob.append(prob)
+        letzter_test_idx = te
+
+    y_true_ges = np.concatenate(alle_y_true)
+    y_prob_ges = np.concatenate(alle_y_prob)
+    basisrate = y_sieg.mean()
+    brier_baseline = brier_score_loss(
+        y_true_ges, np.full(len(y_true_ges), basisrate))
+    acc_baseline = ((races["grid"] == 1).astype(int) == y_sieg).mean()
+
+    beob, vorh = calibration_curve(y_true_ges, y_prob_ges, n_bins=10,
+                                   strategy="uniform")
+
+    assert letzter_test_idx is not None
+    m_final = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06)
+    tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
+    m_final.fit(X.iloc[tr_final], y_sieg.iloc[tr_final])
+    imp = permutation_importance(m_final, X.iloc[letzter_test_idx],
+                                 y_sieg.iloc[letzter_test_idx],
+                                 scoring="roc_auc", n_repeats=20,
+                                 random_state=7)
+    imp_s = pd.Series(imp.importances_mean, index=feat)
+
+    return {"races": races, "auc_scores": auc_scores, "brier_scores": brier_scores,
+           "basisrate": basisrate, "brier_baseline": brier_baseline,
+           "acc_baseline": acc_baseline, "beob": beob, "vorh": vorh, "imp_s": imp_s}
+
+
+with tab_sieg:
+    with st.spinner(f"Rennsieg-Modell {RENN_JAHRE[0]}-{RENN_JAHRE[-1]} wird "
+                   "gebaut (nutzt denselben Datensatz wie Renn-/Podium-"
+                   "Vorhersage, dauert beim ersten Aufruf nur, falls dieser "
+                   "Tab noch nicht offen war) ..."):
+        erg_s = _sieg_ergebnisse(RENN_JAHRE)
+        erg_p = _renn_ergebnisse(RENN_JAHRE)
+    races_s = erg_s["races"]
+
+    if races_s.empty:
+        st.info(f"Fuer {RENN_JAHRE[0]}-{RENN_JAHRE[-1]} liegen nicht genug "
+               "Rennsessions im Cache.")
+    else:
+        k = st.columns(4)
+        k[0].metric("Fahrer-Rennen", len(races_s))
+        k[1].metric("Rennen", races_s[["season", "round"]]
+                    .drop_duplicates().shape[0])
+        k[2].metric("Sieg-Quote", f"{races_s['sieg'].mean():.1%}",
+                   help="Zum Vergleich: Podium-Quote liegt bei "
+                        f"{races_s['podium'].mean():.1%} - ein Sieg ist ein "
+                        "deutlich selteneres Ereignis.")
+        k[3].metric("ROC-AUC", f"{np.mean(erg_s['auc_scores']):.3f}")
+
+        links_s, mitte_s, rechts_s = st.columns(3)
+        with links_s:
+            st.markdown("##### Sieg-Klassifikation je Fold")
+            fig_s1 = go.Figure(go.Bar(
+                x=[str(i) for i in range(1, len(erg_s["auc_scores"]) + 1)],
+                y=erg_s["auc_scores"], marker={"color": d.SERIEN[0]}))
+            fig_s1.add_hline(y=0.5, line_color=d.MUTED, line_dash="dash")
+            zeige(fig_s1, hoehe=340, showlegend=False,
+                 xaxis=achse("TimeSeriesSplit-Fold"),
+                 yaxis=achse("ROC-AUC", range=[0.5, 1.0]))
+            hinweis(f"Brier Score {np.mean(erg_s['brier_scores']):.3f} gegen "
+                    f"Baseline (immer Basisrate {erg_s['basisrate']:.1%}): "
+                    f"{erg_s['brier_baseline']:.3f}. Baseline 'Grid==1 "
+                    f"gewinnt': Accuracy {erg_s['acc_baseline']:.3f} - hoch "
+                    "durch die Klassen-Schieflage, kein guter Massstab "
+                    "(siehe P49).")
+
+        with mitte_s:
+            st.markdown("##### Kalibrierung")
+            fig_s2 = go.Figure()
+            fig_s2.add_trace(go.Scatter(
+                x=[0, 1], y=[0, 1], mode="lines",
+                line={"color": d.MUTED, "dash": "dash"},
+                name="perfekt kalibriert"))
+            fig_s2.add_trace(go.Scatter(x=erg_s["vorh"], y=erg_s["beob"],
+                                        mode="lines+markers",
+                                        line={"color": d.SERIEN[1]},
+                                        name="Modell"))
+            zeige(fig_s2, hoehe=340, xaxis=achse("Vorhergesagt"),
+                 yaxis=achse("Beobachtet"))
+            hinweis("Bei nur ~5% Sieg-Quote sind die Bins duenn besetzt - "
+                    "die Kalibrierungskurve ist entsprechend unruhig "
+                    "(siehe P49).")
+
+        with rechts_s:
+            st.markdown("##### Feature Importance: Sieg gegen Podium")
+            imp_sieg = erg_s["imp_s"]
+            imp_podium = erg_p.get("imp_s", pd.Series(0.0, index=imp_sieg.index))
+            feats = imp_sieg.index
+            y_pos = np.arange(len(feats))
+            fig_s3 = go.Figure()
+            fig_s3.add_trace(go.Bar(y=y_pos - 0.2, x=imp_sieg.to_numpy(),
+                                    orientation="h", width=0.35,
+                                    marker={"color": d.SERIEN[0]}, name="Sieg"))
+            fig_s3.add_trace(go.Bar(y=y_pos + 0.2,
+                                    x=imp_podium.reindex(feats).to_numpy(),
+                                    orientation="h", width=0.35,
+                                    marker={"color": d.MUTED}, name="Podium"))
+            zeige(fig_s3, hoehe=340, barmode="overlay",
+                 xaxis=achse("Permutation Importance (AUC-Abfall)"),
+                 yaxis={**namensachse(), "tickvals": list(y_pos),
+                       "ticktext": list(feats)})
+            hinweis("driver_form traegt beim Sieg-Modell spuerbar mehr bei "
+                    "als beim Podium-Modell, team_form dagegen weniger - "
+                    "wer gewinnt, haengt staerker an der individuellen Form "
+                    "des Fahrers als wer bloss aufs Podium faehrt, wo auch "
+                    "ein starkes Auto ohne Bestform hinreicht (siehe P49).")
