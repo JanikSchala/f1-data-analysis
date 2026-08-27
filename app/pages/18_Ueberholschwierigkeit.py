@@ -6,10 +6,11 @@ gebunden, sondern an eine ganze saison (grund wie in 9_Teamkollegen.py/
 11_Boxenstopps.py/14_Historie.py/15_MachineLearning.py). der saison-scan
 bleibt deshalb seitenlokal statt in f1lab. gerechnet wird trotzdem nirgends
 hier ausser der korrelation selbst: die bausteine kommen aus
-f1lab.overtakes_matrix() (P20), f1lab.circuit_dimension() (P02) und (zweite
-AUSBAUSTUFE) f1lab.track_status_phases() (P18). dieselbe streckengeometrie
-gegen eine zweite rennverlaufs-groesse zeigt, dass nicht jede statistik
-automatisch eine streckeneigenschaft ist.
+f1lab.overtakes_matrix() (P20), f1lab.circuit_dimension() (P02), (zweite
+AUSBAUSTUFE) f1lab.track_status_phases() (P18) und (dritte AUSBAUSTUFE)
+f1lab.lead_changes() (P47). dieselbe streckengeometrie gegen eine zweite
+rennverlaufs-groesse zeigt, dass nicht jede statistik automatisch eine
+streckeneigenschaft ist.
 """
 from __future__ import annotations
 
@@ -186,3 +187,64 @@ tabelle(geo[["gp", "circuit", "corners", "length_m", "kurven_pro_km",
     "gp": "Rennen", "circuit": "Strecke", "corners": "Kurven",
     "length_m": "Laenge [m]", "kurven_pro_km": "Kurven/km",
     "overtakes": "Ueberholungen", "sc_dauer_s": "SC/VSC [s]"}))
+
+st.markdown("##### DRITTE AUSBAUSTUFE: wie viele Ueberholungen aendern "
+           "auch die Fuehrung?")
+
+
+@st.cache_data(persist="disk", show_spinner="Fuehrungswechsel werden "
+                                            "gezaehlt (erster Aufruf je "
+                                            "Saison dauert) ...")
+def _fuehrungswechsel(cache_pfad: str, saison: int, rennen: tuple[str, ...]
+                      ) -> pd.DataFrame:
+    zeilen = []
+    for gp in rennen:
+        try:
+            ses = f1lab.load(saison, gp, "R", telemetry=False)
+        except Exception:
+            continue
+        zeilen.append({"gp": gp, "fuehrungswechsel": len(f1lab.lead_changes(ses))})
+    return pd.DataFrame(zeilen)
+
+
+fw = _fuehrungswechsel(str(pfad), int(saison), tuple(ueberholungen["gp"]))
+fw = fw.merge(ueberholungen, on="gp", how="inner")
+
+k2 = st.columns(3)
+k2[0].metric("Fuehrungswechsel gesamt", int(fw["fuehrungswechsel"].sum()))
+k2[1].metric("Rennen ohne Wechsel an der Spitze",
+            int((fw["fuehrungswechsel"] == 0).sum()))
+anteil = (fw["fuehrungswechsel"].sum() / fw["overtakes"].sum()
+         if fw["overtakes"].sum() else 0.0)
+k2[2].metric("Anteil an allen Ueberholungen", f"{anteil:.1%}")
+
+links2, rechts2 = st.columns(2)
+with links2:
+    f = fw.sort_values("fuehrungswechsel")
+    fig4 = go.Figure(go.Bar(
+        x=f["fuehrungswechsel"], y=f["gp"], orientation="h",
+        marker={"color": d.SERIEN[0]}))
+    zeige(fig4, hoehe=max(320, 26 * len(f)), showlegend=False,
+         xaxis=achse("Echte Fuehrungswechsel (P1 -> P1)"), yaxis=namensachse())
+with rechts2:
+    r_fw, p_fw = pearsonr(fw["overtakes"], fw["fuehrungswechsel"])
+    fig5 = go.Figure(go.Scatter(
+        x=fw["overtakes"], y=fw["fuehrungswechsel"], mode="markers+text",
+        text=fw["gp"].str.replace(" Grand Prix", "", regex=False),
+        textposition="top center", textfont={"color": d.MUTED, "size": 9},
+        marker={"size": 10, "color": d.SERIEN[0]}))
+    zeige(fig5, hoehe=max(320, 26 * len(f)), showlegend=False,
+         xaxis=achse("Ueberholungen insgesamt"),
+         yaxis=achse("Davon Fuehrungswechsel"))
+
+hinweis(f"Nur {anteil:.1%} aller Ueberholungen aendern auch die "
+       f"Rennfuehrung - der Rest passiert weiter hinten im Feld. Pearson "
+       f"r={r_fw:+.2f} (p={p_fw:.3f}) zwischen Ueberholungen insgesamt und "
+       "Fuehrungswechseln: ein moderater, aber kein garantierter "
+       "Zusammenhang - manche Rennen mit vielen Ueberholungen aendern "
+       "trotzdem nie die Fuehrung (siehe P47). f1lab.lead_changes() "
+       "filtert dieselbe bereinigte Ueberholliste (P20) auf Faelle, in "
+       "denen der Ueberholte tatsaechlich in P1 lag UND der Ueberholende "
+       "danach wirklich P1 ist - faellt der Fuehrende in einer Runde "
+       "gleich um mehrere Plaetze zurueck, zaehlt nur der tatsaechlich "
+       "neue Erste, nicht jeder, der an ihm vorbeizieht.")

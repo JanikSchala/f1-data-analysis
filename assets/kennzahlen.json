@@ -287,5 +287,17 @@
       "V6-Hybrid-Turbo": 52.5,
       "Ground Effect": 57.7
     }
+  },
+  "fuehrungswechsel": {
+    "saison": 2024,
+    "rennen": 24,
+    "fuehrungswechsel_gesamt": 44,
+    "ueberholungen_gesamt": 2641,
+    "anteil_pct": 1.7,
+    "rennen_ohne_wechsel": 7,
+    "korrelation_overtakes_vs_fuehrungswechsel": {
+      "pearson_r": 0.495,
+      "p": 0.014
+    }
   }
 }

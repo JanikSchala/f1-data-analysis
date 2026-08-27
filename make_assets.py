@@ -33,7 +33,7 @@ import pandas as pd
 from fastf1.ergast import Ergast
 from fastf1.utils import delta_time
 from matplotlib.collections import LineCollection
-from scipy.stats import binomtest
+from scipy.stats import binomtest, pearsonr
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
@@ -77,7 +77,7 @@ def save(fig, name: str) -> None:
 
 # ---------------------------------------------------------------- 1
 def gear_map(year=2024, gp="Belgium"):
-    print(f"[1/17] Gangwechsel-Karte  {gp} {year}")
+    print(f"[1/18] Gangwechsel-Karte  {gp} {year}")
     ses = f1lab.load(year, gp, "Q", telemetry=True)
     lap = ses.laps.pick_fastest()
     tel = lap.get_telemetry()
@@ -119,7 +119,7 @@ def gear_map(year=2024, gp="Belgium"):
 
 # ---------------------------------------------------------------- 2
 def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
-    print(f"[2/17] Telemetrie-Overlay  {gp} {year}  {d1} vs {d2}")
+    print(f"[2/18] Telemetrie-Overlay  {gp} {year}  {d1} vs {d2}")
     ses = f1lab.load(year, gp, "Q", telemetry=True)
     lap1 = ses.laps.pick_drivers(d1).pick_fastest()
     lap2 = ses.laps.pick_drivers(d2).pick_fastest()
@@ -176,7 +176,7 @@ def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
 
 # ---------------------------------------------------------------- 3
 def race_pace(year=2024, gp="Spain"):
-    print(f"[3/17] Race-Pace-Ranking  {gp} {year}")
+    print(f"[3/18] Race-Pace-Ranking  {gp} {year}")
     ses = f1lab.load(year, gp, "R")
 
     # dieselbe funktion wie in den tests
@@ -214,7 +214,7 @@ def race_pace(year=2024, gp="Spain"):
 
 # ---------------------------------------------------------------- 4
 def strategy(year=2024, gp="Hungary"):
-    print(f"[4/17] Strategieuebersicht  {gp} {year}")
+    print(f"[4/18] Strategieuebersicht  {gp} {year}")
     ses = f1lab.load(year, gp, "R")
     st = f1lab.stints(ses)
     order = [d for d in ses.results.sort_values("Position")["Abbreviation"]
@@ -252,7 +252,7 @@ def strategy(year=2024, gp="Hungary"):
 
 # ---------------------------------------------------------------- 5
 def degradation(year=2024, gp="Bahrain"):
-    print(f"[5/17] Reifendegradation  {gp} {year}")
+    print(f"[5/18] Reifendegradation  {gp} {year}")
     ses = f1lab.load(year, gp, "R")
 
     deg = f1lab.degradation(ses)
@@ -305,7 +305,7 @@ def degradation(year=2024, gp="Bahrain"):
 
 # ---------------------------------------------------------------- 6
 def undercut(year=2024):
-    print(f"[6/17] Undercut-Erfolgsquote  Saison {year}")
+    print(f"[6/18] Undercut-Erfolgsquote  Saison {year}")
     schedule = f1lab.event_dimension([year])
     rows = []
     for _, row in schedule.iterrows():
@@ -353,7 +353,7 @@ def undercut(year=2024):
 
 # ---------------------------------------------------------------- 7
 def safety_car(year=2024, gp="Canada"):
-    print(f"[7/17] Safety-Car-Kompaktierung  {gp} {year}")
+    print(f"[7/18] Safety-Car-Kompaktierung  {gp} {year}")
     ses = f1lab.load(year, gp, "R", telemetry=False)
     phasen = f1lab.track_status_phases(ses)
     neutral = phasen[phasen["label"].isin(["safety car", "vsc"])]
@@ -398,7 +398,7 @@ def safety_car(year=2024, gp="Canada"):
 
 # ---------------------------------------------------------------- 8
 def lap_simulation(ref=(2024, "Bahrain", "Q")):
-    print(f"[8/17] Rundenzeit-Simulation  {ref[1]} {ref[0]} {ref[2]}")
+    print(f"[8/18] Rundenzeit-Simulation  {ref[1]} {ref[0]} {ref[2]}")
     ses_ref = f1lab.load(*ref, telemetry=True)
     dist, kappa, speed_real = f1lab.lap_speed_profile(ses_ref)
     t_real = float(ses_ref.laps.pick_fastest()["LapTime"].total_seconds())
@@ -438,7 +438,7 @@ def lap_simulation(ref=(2024, "Bahrain", "Q")):
 
 # ---------------------------------------------------------------- 9
 def historic_lap_times():
-    print("[9/17] 75 Jahre F1: Rundenzeit-Entwicklung dreier Strecken")
+    print("[9/18] 75 Jahre F1: Rundenzeit-Entwicklung dreier Strecken")
     erg = Ergast(result_type="pandas", auto_cast=True)
     strecken = {"monza": "Monza", "spa": "Spa-Francorchamps",
                 "silverstone": "Silverstone"}
@@ -501,7 +501,7 @@ def historic_lap_times():
 
 # ---------------------------------------------------------------- 10
 def track_geometry(season=2024):
-    print(f"[10/17] Streckenprofil  Saison {season}")
+    print(f"[10/18] Streckenprofil  Saison {season}")
     dim = f1lab.event_dimension([season])
     events = [(season, r) for r in dim["round"]]
     geo = f1lab.circuit_dimension(events).dropna(subset=["length_m", "corners"])
@@ -554,7 +554,7 @@ def track_geometry(season=2024):
 
 # ---------------------------------------------------------------- 11
 def weather_effect(event=("Japan", 2024, "R")):
-    print(f"[11/17] Streckentemperatur-Effekt  {event[0]} {event[1]}")
+    print(f"[11/18] Streckentemperatur-Effekt  {event[0]} {event[1]}")
     ses = f1lab.load(event[1], event[0], event[2], telemetry=False, weather=True)
     merged = f1lab.weather_join(ses)
     erg = f1lab.temperature_effect(merged)
@@ -593,7 +593,7 @@ def weather_effect(event=("Japan", 2024, "R")):
 
 # ---------------------------------------------------------------- 12
 def driving_style_clusters():
-    print("[12/17] Fahrstil-Clustering  Saison 2024")
+    print("[12/18] Fahrstil-Clustering  Saison 2024")
     p24 = _skript_importieren(
         "09_machine_learning/p24_fahrstil_clustering_wer_faehrt_wie.py")
 
@@ -618,7 +618,7 @@ def driving_style_clusters():
 
 # ---------------------------------------------------------------- 13
 def warehouse_pace():
-    print("[13/17] Data-Warehouse-Query  Saison-Pace-Ranking (DuckDB)")
+    print("[13/18] Data-Warehouse-Query  Saison-Pace-Ranking (DuckDB)")
     con = duckdb.connect(str(ROOT / "10_data_engineering/f1_warehouse/f1.duckdb"),
                          read_only=True)
     rang = con.execute("""
@@ -659,7 +659,7 @@ def warehouse_pace():
 
 # ---------------------------------------------------------------- 14
 def position_chart(year=2024, gp="Hungary"):
-    print(f"[14/17] Positionsverlauf  {gp} {year}")
+    print(f"[14/18] Positionsverlauf  {gp} {year}")
     ses = f1lab.load(year, gp, "R", telemetry=False)
     pos = f1lab.position_progression(ses)
     order = ses.results.sort_values("Position")["Abbreviation"].tolist()
@@ -696,7 +696,7 @@ def position_chart(year=2024, gp="Hungary"):
 
 # ---------------------------------------------------------------- 15
 def live_timing_board():
-    print("[15/17] Live-Timing-Board  Bahrain 2024 R (Replay)")
+    print("[15/18] Live-Timing-Board  Bahrain 2024 R (Replay)")
     p30 = _skript_importieren(
         "12_live_timing/p30_live_timing_aufzeichnen_und_in_echtzeit_auswerte.py")
 
@@ -722,7 +722,7 @@ def live_timing_board():
 
 # ---------------------------------------------------------------- 16
 def constructors_championship():
-    print("[16/17] Konstrukteurs-WM-Titelchance  laufende Saison")
+    print("[16/18] Konstrukteurs-WM-Titelchance  laufende Saison")
     p45 = _skript_importieren(
         "08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py")
 
@@ -769,7 +769,7 @@ def constructors_championship():
 
 # ---------------------------------------------------------------- 17
 def pole_to_win():
-    print("[17/17] Pole-to-Win-Konversionsrate  1994-heute")
+    print("[17/18] Pole-to-Win-Konversionsrate  1994-heute")
     p46 = _skript_importieren(
         "08_historie/p46_pole_to_win_konversionsrate_ueber_die_regelaeren.py")
 
@@ -799,6 +799,47 @@ def pole_to_win():
     }
 
 
+# ---------------------------------------------------------------- 18
+def lead_changes_saison(season=2024):
+    print(f"[18/18] Fuehrungswechsel  Saison {season}")
+    p47 = _skript_importieren(
+        "02_timing/p47_fuehrungswechsel_wie_oft_wechselt_die_ren.py")
+
+    inv = f1lab.cached_sessions()
+    rennen = sorted(inv[(inv["season"] == season) & (inv["ident"] == "R")]
+                    ["event"].unique())
+    zeilen = []
+    for gp in rennen:
+        try:
+            ses = f1lab.load(season, gp, "R", telemetry=False)
+        except Exception:
+            continue
+        n_overtakes = int(f1lab.overtakes_matrix(ses).values.sum())
+        n_lead = len(f1lab.lead_changes(ses))
+        zeilen.append({"gp": gp, "overtakes": n_overtakes,
+                       "fuehrungswechsel": n_lead})
+    daten = pd.DataFrame(zeilen)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 6.5),
+                                   gridspec_kw={"width_ratios": [3, 2]})
+    p47.zeichne_ranking(ax1, daten)
+    p47.zeichne_streuung(ax2, daten)
+    plt.tight_layout()
+    save(fig, "fuehrungswechsel.png")
+
+    r, p = pearsonr(daten["overtakes"], daten["fuehrungswechsel"])
+    KPI["fuehrungswechsel"] = {
+        "saison": season, "rennen": len(daten),
+        "fuehrungswechsel_gesamt": int(daten["fuehrungswechsel"].sum()),
+        "ueberholungen_gesamt": int(daten["overtakes"].sum()),
+        "anteil_pct": round(100 * daten["fuehrungswechsel"].sum()
+                            / daten["overtakes"].sum(), 1),
+        "rennen_ohne_wechsel": int((daten["fuehrungswechsel"] == 0).sum()),
+        "korrelation_overtakes_vs_fuehrungswechsel":
+            {"pearson_r": round(float(r), 3), "p": round(float(p), 3)},
+    }
+
+
 # ----------------------------------------------------------------
 if __name__ == "__main__":
     print(f"\nErzeuge README-Grafiken mit f1lab {f1lab.__version__}.")
@@ -808,7 +849,7 @@ if __name__ == "__main__":
                undercut, safety_car, lap_simulation, historic_lap_times,
                track_geometry, weather_effect, driving_style_clusters,
                warehouse_pace, position_chart, live_timing_board,
-               constructors_championship, pole_to_win):
+               constructors_championship, pole_to_win, lead_changes_saison):
         try:
             fn()
         except Exception as exc:

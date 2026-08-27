@@ -14,7 +14,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **46 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **47 eigenständige Analysen über zwölf Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -48,6 +48,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Ein Live-Feed, den es gerade nicht gibt](#ein-live-feed-den-es-gerade-nicht-gibt)
   - [Wer gewinnt die Konstrukteurs-WM?](#wer-gewinnt-die-konstrukteurs-wm)
   - [Pole ist heute mehr wert als 1994](#pole-ist-heute-mehr-wert-als-1994)
+  - [Nur 1,7 % aller Überholungen ändern die Rennführung](#nur-17--aller-überholungen-ändern-die-rennführung)
 - [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
 - [Aufbau](#aufbau)
 - [Methodische Entscheidungen](#methodische-entscheidungen)
@@ -373,9 +374,31 @@ ohne Ausfall, rein auf der Strecke.
 
 ---
 
+### Nur 1,7 % aller Überholungen ändern die Rennführung
+
+![Führungswechsel Saison 2024](assets/fuehrungswechsel.png)
+
+Ein Überholvorgang ist nicht gleich ein Überholvorgang: `f1lab.lead_changes()`
+filtert dieselbe bereinigte Überholliste (P20) auf die Fälle, in denen der
+Überholte tatsächlich in Führung lag — und der Überholende danach wirklich
+Erster ist. Fällt der Führende in einer Runde gleich um mehrere Plätze
+zurück, zählt nur der tatsächlich neue Erste, nicht jeder, der an ihm
+vorbeizieht.
+
+Saison 2024: 44 echte Führungswechsel über die ganze Saison, aus
+**1024 Überholungen insgesamt** — nur 1,7 %. Sieben Rennen hatten gar
+keinen Wechsel an der Spitze, darunter Bahrain mit 180 Überholungen und
+trotzdem null. Mehr Überholen insgesamt hängt moderat mit mehr Spannung an
+der Spitze zusammen (r = 0,50, p = 0,014) — ein Zusammenhang, aber keine
+Garantie.
+
+*Code: [`02_timing/p47_fuehrungswechsel_wie_oft_wechselt_die_ren.py`](02_timing/p47_fuehrungswechsel_wie_oft_wechselt_die_ren.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 46 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 47 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```
@@ -573,6 +596,7 @@ Pakete inklusive transitiver Abhängigkeiten liegt zusätzlich
 | `P44` | [Sprint gegen Rennen: wird im Sprint weniger überholt?](02_timing/p44_sprint_vs_rennen_wird_im_sprint_weniger_ueberholt.py) | Timing | Fortgeschritten |
 | `P45` | [Konstrukteurs-WM-Simulator: wer gewinnt das Team-Rennen?](08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py) | Historie | Fortgeschritten |
 | `P46` | [Pole-to-Win-Konversionsrate über die Regelären](08_historie/p46_pole_to_win_konversionsrate_ueber_die_regelaeren.py) | Historie | Fortgeschritten |
+| `P47` | [Führungswechsel: wie oft wechselt die Rennführung wirklich?](02_timing/p47_fuehrungswechsel_wie_oft_wechselt_die_ren.py) | Timing | Fortgeschritten |
 
 ---
 

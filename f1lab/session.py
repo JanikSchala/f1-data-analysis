@@ -864,6 +864,40 @@ def overtake_events(session) -> pd.DataFrame:
     return pd.DataFrame(events, columns=["gainer", "loser", "lap"])
 
 
+def lead_changes(session) -> pd.DataFrame:
+    """echte fuehrungswechsel: dieselbe bereinigung wie :func:`overtake_events`
+    (kein boxenstopp-artefakt, kein safety-car-durcheinander), aber gefiltert
+    auf den fahrer, der tatsaechlich von P1 auf P1 wechselt (siehe P47). ein
+    normaler kampf um P8 zaehlt hier nicht - nur der wechsel an der spitze.
+
+    beide bedingungen sind noetig, nicht nur "vorher fuehrend": faellt der
+    fuehrende in einer runde gleich um mehrere plaetze zurueck (boxenstopp-
+    aehnliches ereignis ohne pitintime, z.b. ein dreher), erzeugt
+    :func:`overtake_events`s paarweiser vergleich EIN event pro fahrer, der
+    an ihm vorbeizieht - nur der, der danach wirklich P1 ist, ist der neue
+    fuehrende, nicht jeder einzelne davon.
+
+    Returns:
+        DataFrame mit spalten ``neuer_fuehrender``, ``alter_fuehrender``,
+        ``lap`` - dieselbe reihenfolge/bedeutung wie
+        :func:`overtake_events`s ``gainer``/``loser``, nur umbenannt, damit
+        an der aufrufstelle klar bleibt, dass es hier um die fuehrung geht.
+    """
+    laps = session.laps
+    pos = laps.pivot_table(index="LapNumber", columns="Driver",
+                           values="Position", aggfunc="first")
+    events = overtake_events(session)
+    if events.empty or pos.empty:
+        return pd.DataFrame(columns=["neuer_fuehrender", "alter_fuehrender", "lap"])
+
+    fuehrung = events[events.apply(
+        lambda e: pos.loc[e["lap"] - 1, e["loser"]] == 1
+        and pos.loc[e["lap"], e["gainer"]] == 1, axis=1)]
+    return fuehrung.rename(columns={"gainer": "neuer_fuehrender",
+                                    "loser": "alter_fuehrender"}
+                          ).reset_index(drop=True)
+
+
 def overtakes_matrix(session) -> pd.DataFrame:
     """wer ueberholt wen wie oft (siehe P20 VORGEHEN 3/4). zeile ueberholt
     spalte. aggregiert :func:`overtake_events`."""
