@@ -20,6 +20,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from common import achse, hinweis, namensachse, setup, zeige
 from fastf1.ergast import Ergast
+from scipy.stats import pearsonr
 
 from f1lab import design as d
 
@@ -33,6 +34,14 @@ DNF_AB = 1970
 STRECKEN = {"monza": "Monza", "spa": "Spa-Francorchamps",
            "silverstone": "Silverstone"}
 SCHRITT_STRECKEN = 4
+
+ERSTE_SAISON_POLE = 1994    # Ergast/jolpica hat davor keine Startplatz-Daten
+ERAS = [
+    (1994, 2008, "Refueling-Aera"),
+    (2009, 2013, "Kein Refueling, V8"),
+    (2014, 2021, "V6-Hybrid-Turbo"),
+    (2022, YEAR, "Ground Effect"),
+]
 
 setup("Historie", "WM-Stand-Simulator fuer die laufende Saison, und 75 "
                   "Jahre F1 aus Ergast/jolpica - braucht Netzwerk.")
@@ -455,6 +464,38 @@ def _rundenzeit_je_strecke() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _era_von(saison: int) -> str:
+    for start, ende, name in ERAS:
+        if start <= saison <= ende:
+            return name
+    return "unbekannt"
+
+
+@st.cache_data(persist="disk", show_spinner=False)
+def _pole_to_win() -> pd.DataFrame:
+    """je saison EIN Aufruf statt eines je Rennen: get_race_results() mit
+    grid_position=1 liefert direkt nur die Zeilen des Startplatz-1-Fahrers,
+    ueber alle Runden der Saison hinweg (siehe P46)."""
+    erg = Ergast(result_type="pandas", auto_cast=True)
+    rows = []
+    for saison in range(ERSTE_SAISON_POLE, YEAR + 1):
+        res = _mit_wiederholung(erg.get_race_results, season=saison,
+                                grid_position=1)
+        if res is None or not res.content:
+            continue
+        for beschreibung, df in zip(res.description.itertuples(), res.content):
+            if df.empty:
+                continue
+            r = df.iloc[0]
+            rows.append({"season": saison, "round": int(beschreibung.round),
+                        "sieg": bool(r["position"] == 1)})
+        time.sleep(0.2)
+    verlauf = pd.DataFrame(rows)
+    if not verlauf.empty:
+        verlauf["era"] = verlauf["season"].apply(_era_von)
+    return verlauf
+
+
 with tab_trends:
     try:
         with st.spinner("75 Jahre F1-Historie werden von Ergast/jolpica "
@@ -543,3 +584,47 @@ with tab_trends:
                     "ausserdem die Renn-Durchschnittszeit, nicht die reine "
                     "Pace - Safety-Car- und Regenrennen ziehen sie nach oben "
                     "(siehe P22).")
+
+        st.markdown("##### AUSBAUSTUFE: Pole-to-Win-Konversionsrate seit 1994")
+        verlauf = _pole_to_win()
+        if verlauf.empty:
+            st.info("Keine Startplatz-Daten geladen.")
+        else:
+            links, rechts = st.columns([3, 2])
+            with links:
+                je_saison = verlauf.groupby("season")["sieg"].mean() * 100
+                fig6 = go.Figure(go.Scatter(
+                    x=je_saison.index, y=je_saison.to_numpy(),
+                    mode="lines+markers", line={"color": d.SERIEN[0], "width": 1.8}))
+                for start, _ende, _name in ERAS[1:]:
+                    fig6.add_vline(x=start - 0.5, line_color=d.MUTED,
+                                  line_dash="dot")
+                zeige(fig6, hoehe=340, showlegend=False, xaxis=achse("Saison"),
+                     yaxis=achse("Pole -> Sieg [%]"))
+            with rechts:
+                je_era = verlauf.groupby("era")["sieg"].agg(["mean", "count"])
+                je_era = je_era.reindex([e[2] for e in ERAS])
+                quote = je_era["mean"] * 100
+                farben = [d.SERIEN[0] if v == quote.max() else d.MUTED
+                         for v in quote]
+                fig7 = go.Figure(go.Bar(
+                    x=quote.index, y=quote.to_numpy(), marker={"color": farben},
+                    text=[f"n={int(c)}" for c in je_era["count"]],
+                    textposition="outside"))
+                zeige(fig7, hoehe=340, showlegend=False, xaxis=namensachse(),
+                     yaxis=achse("Pole -> Sieg [%]"))
+
+            n = len(verlauf)
+            siege = int(verlauf["sieg"].sum())
+            era_index = {name: i + 1 for i, (_s, _e, name) in enumerate(ERAS)}
+            era_ordinal = verlauf["era"].map(era_index).to_numpy(dtype=float)
+            trend = pearsonr(era_ordinal, verlauf["sieg"].to_numpy(dtype=float))
+            hinweis(f"{siege}/{n} = {siege / n:.1%} ueber alle Aeren "
+                    f"(Saison {ERSTE_SAISON_POLE}-{YEAR}), aber ein klarer Trend "
+                    f"ueber die vier Regelaeren (44%->58%) - Punkt-biseriale "
+                    f"Korrelation Aera-Stufe gegen Sieg je Rennen: "
+                    f"r={trend.statistic:.3f}, p={trend.pvalue:.3f}, "
+                    "statistisch nicht durch Zufall erklaerbar (siehe P46). "
+                    "Grundlage ist der Startplatz-1-Fahrer, nicht zwingend "
+                    "der echte Pole-Setter - bei einer Startplatzstrafe "
+                    "koennen beide auseinanderfallen.")

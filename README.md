@@ -14,7 +14,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **45 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **46 eigenständige Analysen über zwölf Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -47,6 +47,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Positionsverlauf, wie ihn auch der automatische Rennbericht zeigt](#positionsverlauf-wie-ihn-auch-der-automatische-rennbericht-zeigt)
   - [Ein Live-Feed, den es gerade nicht gibt](#ein-live-feed-den-es-gerade-nicht-gibt)
   - [Wer gewinnt die Konstrukteurs-WM?](#wer-gewinnt-die-konstrukteurs-wm)
+  - [Pole ist heute mehr wert als 1994](#pole-ist-heute-mehr-wert-als-1994)
 - [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
 - [Aufbau](#aufbau)
 - [Methodische Entscheidungen](#methodische-entscheidungen)
@@ -352,9 +353,29 @@ nichts.
 
 ---
 
+### Pole ist heute mehr wert als 1994
+
+![Pole-to-Win-Konversionsrate seit 1994](assets/pole_to_win.png)
+
+Wie oft wird aus Startplatz 1 tatsächlich ein Sieg? Über alle 613 Rennen
+seit 1994 (frühere Saisons haben bei Ergast/jolpica keine strukturierten
+Startplatz-Daten) liegt die Quote bei nahezu 50/50 — aber aufgeschlüsselt
+nach den vier großen Reglement-Ären zeigt sich ein klarer Trend: von
+**43,9 %** in der Refueling-Ära über 48,9 % und 52,5 % bis **57,7 %** im
+Ground-Effect-Zeitalter seit 2022.
+
+Kein Zufallsmuster: eine punkt-biseriale Korrelation zwischen Ära-Stufe und
+Sieg je Rennen ergibt r = 0,103 bei p = 0,011. Startplatz 1 fällt in 15,2 %
+der Rennen aus — verliert die Führung aber in 35,6 % aller Rennen ganz
+ohne Ausfall, rein auf der Strecke.
+
+*Code: [`08_historie/p46_pole_to_win_konversionsrate_ueber_die_regelaeren.py`](08_historie/p46_pole_to_win_konversionsrate_ueber_die_regelaeren.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 45 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 46 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```
@@ -551,6 +572,7 @@ Pakete inklusive transitiver Abhängigkeiten liegt zusätzlich
 | `P43` | [Streckenentwicklung: wird die Strecke von Q1 zu Q3 schneller?](02_timing/p43_streckenentwicklung_uebers_qualifying_wochenende.py) | Timing | Profi |
 | `P44` | [Sprint gegen Rennen: wird im Sprint weniger überholt?](02_timing/p44_sprint_vs_rennen_wird_im_sprint_weniger_ueberholt.py) | Timing | Fortgeschritten |
 | `P45` | [Konstrukteurs-WM-Simulator: wer gewinnt das Team-Rennen?](08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py) | Historie | Fortgeschritten |
+| `P46` | [Pole-to-Win-Konversionsrate über die Regelären](08_historie/p46_pole_to_win_konversionsrate_ueber_die_regelaeren.py) | Historie | Fortgeschritten |
 
 ---
 

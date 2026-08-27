@@ -271,5 +271,21 @@
         "punkte": 263.0
       }
     ]
+  },
+  "pole_to_win": {
+    "zeitraum": [
+      1994,
+      2026
+    ],
+    "rennen": 613,
+    "siege_gesamt": 302,
+    "quote_gesamt_pct": 49.3,
+    "p_wert_gegen_50pct": 0.7466365394217841,
+    "je_era": {
+      "Refueling-Aera": 43.9,
+      "Kein Refueling, V8": 48.9,
+      "V6-Hybrid-Turbo": 52.5,
+      "Ground Effect": 57.7
+    }
   }
 }
