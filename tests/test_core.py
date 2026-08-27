@@ -46,6 +46,7 @@ from f1lab.core import (
     path_length,
     pit_loss_crossovers,
     roll_out,
+    sieg_grund,
     simulate_lap,
     simulate_stint,
     solve_policy,
@@ -1336,3 +1337,29 @@ class TestSimulateStint:
                                 fuel_start_kg=10.0, kg_per_lap=5.0, n_laps=6)
         assert zeiten[2] == pytest.approx(zeiten[3])
         assert zeiten[3] == pytest.approx(zeiten[5])
+
+
+class TestSiegGrund:
+    def test_no_rival_means_start_advantage(self):
+        assert sieg_grund(None, False, False, False, False) == "Start-Vorteil"
+
+    def test_taking_the_lead_on_lap_one_also_counts_as_start_advantage(self):
+        """runde 1 ist noch der start, kein "wechsel" im eigentlichen sinn."""
+        assert sieg_grund(1, False, False, False, False) == "Start-Vorteil"
+
+    def test_rival_dnf_wins_over_everything_else(self):
+        assert sieg_grund(30, True, True, True, True) == "Ausfall des Rivalen"
+
+    def test_safety_car_beats_pit_stop_and_overtake(self):
+        assert sieg_grund(30, False, True, True, True) == "Safety-Car-Wende"
+
+    def test_pit_stop_beats_overtake(self):
+        assert sieg_grund(30, False, False, True, True) == "Strategie/Boxenstopp"
+
+    def test_real_overtake_when_nothing_else_applies(self):
+        assert sieg_grund(30, False, False, False, True) == "Erkaempft auf der Strecke"
+
+    def test_unexplained_fallback_when_no_signal_fires(self):
+        """kein signal traf zu, obwohl ein rivale existierte - ehrlich als
+        offen kennzeichnen statt eine falsche kategorie zu erzwingen."""
+        assert sieg_grund(30, False, False, False, False) == "Ungeklaert"

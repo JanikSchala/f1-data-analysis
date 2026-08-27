@@ -14,7 +14,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **50 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **51 eigenständige Analysen über 13 Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -52,6 +52,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Macht Regen den Sieger unvorhersehbarer? Vermutlich, aber nicht beweisbar](#macht-regen-den-sieger-unvorhersehbarer-vermutlich-aber-nicht-beweisbar)
   - [Ein Rennen zu gewinnen ist nicht dasselbe wie aufs Podium zu fahren](#ein-rennen-zu-gewinnen-ist-nicht-dasselbe-wie-aufs-podium-zu-fahren)
   - [Zuverlässiger, aber nicht gleichmäßig](#zuverlässiger-aber-nicht-gleichmäßig)
+  - [Warum hat der Sieger gewonnen?](#warum-hat-der-sieger-gewonnen)
 - [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
 - [Aufbau](#aufbau)
 - [Methodische Entscheidungen](#methodische-entscheidungen)
@@ -465,9 +466,31 @@ mitzurechnen.
 
 ---
 
+### Warum hat der Sieger gewonnen?
+
+![Sieg-Attribution](assets/sieg_attribution.png)
+
+Neues, dreizehntes Themenfeld: `f1lab.sieg_attribution()` ermittelt je
+Rennen die letzte Führungsübernahme des Siegers, die bis zum Ziel hält,
+und klassifiziert sie über vier Signale — Ausfall des vorherigen
+Führenden, ein Safety-Car-/VSC-Fenster, der Boxenstopp-Zeitpunkt des
+Rivalen, oder ein echter, grün gefahrener Überholvorgang. Saison 2024:
+**10 von 24 Siegen entscheiden sich über Strategie/Boxenstopp**, 6 über
+einen reinen Startvorteil, 5 werden auf der Strecke erkämpft, 2 kippen
+per Safety Car, nur 1 durch den Ausfall eines Rivalen.
+
+Bestes Beispiel dafür, dass "Führungsanteil" nicht "Dominanz" heißt:
+Verstappens Sieg in São Paulo 2024 — von Startplatz 17, nur 39,1 % der
+Runden in Führung, aber schnellste Pace im ganzen Feld. Die Führung kam
+erst in Runde 43, direkt nach der zweiten Safety-Car-Phase.
+
+*Code: [`13_sieganalyse/p51_warum_hat_der_sieger_gewonnen_sieg_attribution.py`](13_sieganalyse/p51_warum_hat_der_sieger_gewonnen_sieg_attribution.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 50 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 51 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```
@@ -490,7 +513,7 @@ print(f1lab.degradation_by_compound(ses))
 print(f"Pitloss: {f1lab.pit_loss(ses):.2f} s")
 ```
 
-**200 Tests, alle ohne Netzzugriff:**
+**207 Tests, alle ohne Netzzugriff:**
 
 ```bash
 pip install pytest
@@ -529,7 +552,7 @@ das Repo auf den Importpfad.
 
 ```
 f1lab/                installierbares Paket, core (rein) + session (FastF1)
-tests/                200 Tests, laufen offline
+tests/                207 Tests, laufen offline
 
 01_grundlagen/        Datenzugriff, Caching, Kalender als Dimensionstabelle
 02_timing/            Rundenzeiten, Pace-Ranking, Sektoren, Positionsverlauf
@@ -543,6 +566,7 @@ tests/                200 Tests, laufen offline
 10_data_engineering/  DuckDB-Warehouse, REST-API, CLI-Paket
 11_visualisierung/    Streamlit-Dashboard, automatischer PDF-Rennbericht
 12_live_timing/       Echtzeit-Aufzeichnung des Timing-Streams
+13_sieganalyse/       Sieg-Attribution: warum hat der Sieger gewonnen?
 
 make_assets.py        erzeugt die Grafiken oben
 check_setup.py        prüft Umgebung, Pakete, Cache und API-Zugriff
@@ -669,6 +693,7 @@ Pakete inklusive transitiver Abhängigkeiten liegt zusätzlich
 | `P48` | [Regen-Variance: wird der erwartete Sieger unwahrscheinlicher?](06_wetter/p48_regen_variance_wird_der_erwartete_sieger_unwahr.py) | Wetter | Fortgeschritten |
 | `P49` | [Reiner Rennsieg-Klassifikator: wer gewinnt?](09_machine_learning/p49_reiner_rennsieg_klassifikator_wer_gewinnt.py) | ML | Profi |
 | `P50` | [Zuverlässigkeit: wird der Sport zuverlässiger?](08_historie/p50_zuverlaessigkeit_wird_der_sport_zuverlaessiger.py) | Historie | Fortgeschritten |
+| `P51` | [Sieg-Attribution: warum hat der Sieger gewonnen?](13_sieganalyse/p51_warum_hat_der_sieger_gewonnen_sieg_attribution.py) | Sieganalyse | Profi |
 
 ---
 

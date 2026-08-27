@@ -1359,3 +1359,51 @@ def status_intervals(status, time_s
     t_out = t[behalten]
     ende = np.append(t_out[1:], np.nan)
     return s_out, t_out, ende
+
+
+# --------------------------------------------------------------- sieg-attribution
+def sieg_grund(entscheidende_runde: int | None, rivale_dnf_nah: bool,
+              in_sc_fenster: bool, rivale_hat_gepittet: bool,
+              war_ueberholung: bool) -> str:
+    """warum hat der sieger gewonnen - eine kategorie aus vier ja/nein-signalen.
+
+    ``entscheidende_runde`` ist die letzte runde, ab der der sieger die
+    fuehrung dauerhaft (bis rennende) haelt - nicht die erste uebernahme,
+    ein fahrer kann die fuehrung mehrfach verlieren und zurueckgewinnen.
+    ``None`` heisst: er fuehrte von rennbeginn an durchgehend, kein rivale
+    zu bewerten.
+
+    die vier boolschen signale sind bewusst nicht exklusiv (mehrere koennen
+    gleichzeitig zutreffen, z.b. ein ausfall waehrend einer safety-car-
+    phase) - die rangfolge unten entscheidet, welcher grund als der
+    tragende gilt:
+
+    1. kein rivale (durchgehend gefuehrt) -> "Start-Vorteil"
+    2. der rivale, der die fuehrung verlor, fiel kurz danach aus -> "Ausfall
+       des Rivalen" (die schwerwiegendste, am wenigsten zufaellige ursache)
+    3. der wechsel fiel in oder kurz nach einer Safety-Car-/VSC-Phase ->
+       "Safety-Car-Wende"
+    4. der rivale stand zu dem zeitpunkt im boxenstopp-fenster -> "Strategie/
+       Boxenstopp"
+    5. ein echter, gruen gefahrener ueberholvorgang liegt vor -> "Erkaempft
+       auf der Strecke"
+    6. keins der vier signale trifft zu -> "Ungeklaert" (ehrlicher
+       auffangfall statt eine falsche kategorie zu erzwingen)
+
+    wichtig: ``war_ueberholung`` kommt aus f1lab.session.lead_changes(), die
+    boxenstopp- und nicht-gruen-runden per definition ausschliesst (siehe
+    deren docstring) - ein strategie- oder safety-car-wechsel erzeugt dort
+    NIE einen eintrag. die abwesenheit eines eintrags ist also selbst schon
+    ein signal, kein fehlender messwert.
+    """
+    if entscheidende_runde is None or entscheidende_runde <= 1:
+        return "Start-Vorteil"
+    if rivale_dnf_nah:
+        return "Ausfall des Rivalen"
+    if in_sc_fenster:
+        return "Safety-Car-Wende"
+    if rivale_hat_gepittet:
+        return "Strategie/Boxenstopp"
+    if war_ueberholung:
+        return "Erkaempft auf der Strecke"
+    return "Ungeklaert"

@@ -252,7 +252,7 @@
   "konstrukteurs_wm": {
     "saison": 2026,
     "fuehrend": "Mercedes",
-    "titelchance_pct": 99.8,
+    "titelchance_pct": 99.9,
     "standings_top3": [
       {
         "team": "Mercedes",
@@ -366,6 +366,26 @@
         "unfall_pct": 7.3,
         "n": 439
       }
+    }
+  },
+  "sieg_attribution": {
+    "saison": 2024,
+    "rennen": 24,
+    "verteilung": {
+      "Strategie/Boxenstopp": 10,
+      "Start-Vorteil": 6,
+      "Erkaempft auf der Strecke": 5,
+      "Safety-Car-Wende": 2,
+      "Ausfall des Rivalen": 1
+    },
+    "beispiel": {
+      "rennen": "São Paulo Grand Prix",
+      "sieger": "VER",
+      "startplatz": 17,
+      "fuehrungsanteil": 0.391,
+      "entscheidende_runde": 43,
+      "grund": "Safety-Car-Wende",
+      "pace_rang": 1
     }
   },
   "_meta": {

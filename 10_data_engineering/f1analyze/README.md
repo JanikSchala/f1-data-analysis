@@ -26,7 +26,7 @@ Kostenstruktur eines Einzelaufrufs. Beide leben nur als Dashboard-Seiten.
 
 ## Warum ein eigener Ordner statt eines Skripts
 
-Die anderen 44 Projekte in diesem Repository sind bewusst einzelne,
+Die anderen 50 Projekte in diesem Repository sind bewusst einzelne,
 eigenstaendig lauffaehige Skripte. Dieses hier baut ausdruecklich ein
 *installierbares Paket* (`pip install -e .`, ein `f1analyze`-Kommando nach
 der Installation, eigene `pyproject.toml`) - das war die Aufgabe, nicht ein

@@ -53,6 +53,7 @@ from .core import (
     path_length,
     pit_loss_crossovers,
     roll_out,
+    sieg_grund,
     simulate_lap,
     simulate_stint,
     solve_policy,
@@ -107,6 +108,7 @@ from .session import (
     race_pace,
     sc_compaction,
     sc_deployment_sectors,
+    sieg_attribution,
     start_performance,
     stints,
     teammate_duels,
@@ -128,7 +130,7 @@ __all__ = [
     "estimate_pit_loss", "undercut_gain", "optimal_undercut_window",
     "braking_zones", "path_length", "elevation_profile",
     "elo_expected", "elo_update", "match_by_distance",
-    "active_distance_zones", "drs_state", "status_intervals",
+    "active_distance_zones", "drs_state", "status_intervals", "sieg_grund",
     # session
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",
@@ -158,4 +160,6 @@ __all__ = [
     "simulate_stint",
     # verkehr (P41)
     "lap_times_for_strategy", "gap_evolution", "traffic_cost",
+    # sieg-attribution (P51)
+    "sieg_attribution",
 ]

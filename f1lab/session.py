@@ -33,6 +33,7 @@ from .core import (
     fuel_correct,
     match_by_distance,
     path_length,
+    sieg_grund,
     status_intervals,
     track_curvature,
 )
@@ -1631,3 +1632,117 @@ def track_limit_crosscheck(
         if not passt:
             im_text_nicht_in_laps.append({"driver": r.driver, "runde": r.runde})
     return pd.DataFrame(im_text_nicht_in_laps), deleted, len(mit_runde)
+
+
+# --------------------------------------------------------------- sieg-attribution
+def sieg_attribution(session) -> dict:
+    """warum hat der sieger dieses rennens gewonnen (siehe P51).
+
+    ``entscheidende_runde`` ist die letzte runde, ab der der sieger die
+    fuehrung dauerhaft (bis rennende) haelt - ein fahrer kann sie mehrfach
+    verlieren und zurueckgewinnen, nur der letzte wechsel entscheidet. wer
+    davor fuehrte (``alter_fuehrender``) wird direkt aus
+    :func:`position_progression` gelesen, nicht aus :func:`lead_changes` -
+    letztere schliesst boxenstopp- und nicht-gruen-runden per definition
+    aus (siehe deren docstring) und wuerde einen "stillen" wechsel durch
+    einen ausfall des fuehrenden gar nicht erfassen.
+
+    die vier boolschen signale fuer :func:`f1lab.core.sieg_grund` werden
+    hier ermittelt und die kategorie zurueckgegeben, zusammen mit den
+    belegen dahinter (fuehrungsanteil, pace-rang, undercut-bilanz, ...) -
+    das dashboard und das skript zeigen dieselbe evidenz, nicht nur ein
+    label.
+    """
+    res = session.results
+    sieger_zeile = res[res["Position"] == 1].iloc[0]
+    sieger = str(sieger_zeile["Abbreviation"])
+    startplatz = int(sieger_zeile["GridPosition"])
+
+    pos = position_progression(session)
+    gesamtrunden = int(pos.index.max())
+    serie = pos[sieger].dropna()
+    fuehrungsrunden = int((serie == 1).sum())
+    fuehrungsanteil = fuehrungsrunden / gesamtrunden if gesamtrunden else 0.0
+
+    nicht_fuehrend = serie[serie != 1]
+    if nicht_fuehrend.empty:
+        entscheidende_runde = None
+    else:
+        letzte_nicht_fuehrende = int(nicht_fuehrend.index.max())
+        danach = serie.index[serie.index > letzte_nicht_fuehrende]
+        entscheidende_runde = int(danach.min()) if len(danach) else None
+
+    alter_fuehrender = None
+    if entscheidende_runde is not None:
+        vorherige_runde = entscheidende_runde - 1
+        if vorherige_runde in pos.index:
+            wer_vorn = pos.loc[vorherige_runde]
+            kandidaten = wer_vorn[wer_vorn == 1]
+            if not kandidaten.empty:
+                alter_fuehrender = str(kandidaten.index[0])
+
+    wechsel = lead_changes(session)
+    phasen = track_status_phases(session)
+    neutral = phasen[phasen["label"].isin(["safety car", "vsc"])]
+
+    rivale_dnf_nah = in_sc_fenster = rivale_hat_gepittet = war_ueberholung = False
+    if alter_fuehrender is not None and entscheidende_runde is not None:
+        riv_zeile = res[res["Abbreviation"] == alter_fuehrender]
+        if not riv_zeile.empty:
+            status = str(riv_zeile.iloc[0]["Status"])
+            dnf = not (status == "Finished" or status.startswith("+"))
+            riv_serie = pos[alter_fuehrender].dropna()
+            letzte_riv_runde = (int(riv_serie.index.max())
+                               if not riv_serie.empty else 0)
+            rivale_dnf_nah = dnf and letzte_riv_runde <= entscheidende_runde + 2
+
+        in_sc_fenster = bool((
+            (neutral["lap_start"] <= entscheidende_runde + 1)
+            & (neutral["lap_end"] + 1 >= entscheidende_runde)).any())
+
+        riv_stints = stints(session)
+        riv_stints = riv_stints[riv_stints["Driver"] == alter_fuehrender]
+        rivale_hat_gepittet = bool((
+            (riv_stints["start"] >= entscheidende_runde - 1)
+            & (riv_stints["start"] <= entscheidende_runde + 1)).any())
+
+        treffer = wechsel[
+            (wechsel["neuer_fuehrender"] == sieger)
+            & (wechsel["alter_fuehrender"] == alter_fuehrender)
+            & (wechsel["lap"].between(entscheidende_runde - 1,
+                                      entscheidende_runde + 1))]
+        war_ueberholung = not treffer.empty
+
+    grund = sieg_grund(entscheidende_runde, rivale_dnf_nah, in_sc_fenster,
+                       rivale_hat_gepittet, war_ueberholung)
+
+    pace = pace_table(session).reset_index(drop=True)
+    pace_rang = (int(pace.index[pace["driver"] == sieger][0]) + 1
+                if sieger in pace["driver"].to_numpy() else None)
+
+    duelle = undercut_duels(session)
+    eigene_duelle = duelle[duelle["driver"] == sieger]
+    undercut_bilanz = (
+        {"versuche": int(len(eigene_duelle)),
+         "erfolge": int(eigene_duelle["erfolg"].sum())}
+        if not eigene_duelle.empty else None)
+
+    abstand_p2_s = None
+    p2_zeile = res[res["Position"] == 2]
+    if not p2_zeile.empty:
+        t = p2_zeile.iloc[0]["Time"]
+        if pd.notna(t):
+            abstand_p2_s = round(t.total_seconds(), 3)
+
+    return {
+        "sieger": sieger, "startplatz": startplatz,
+        "gesamtrunden": gesamtrunden, "fuehrungsrunden": fuehrungsrunden,
+        "fuehrungsanteil": round(fuehrungsanteil, 3),
+        "entscheidende_runde": entscheidende_runde,
+        "alter_fuehrender": alter_fuehrender, "grund": grund,
+        "anzahl_fuehrungswechsel_sieger": int(
+            (wechsel["neuer_fuehrender"] == sieger).sum()),
+        "sc_phasen": int(len(neutral)),
+        "pace_rang": pace_rang, "undercut_bilanz": undercut_bilanz,
+        "abstand_p2_s": abstand_p2_s,
+    }
