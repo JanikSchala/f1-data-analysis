@@ -197,5 +197,6 @@ pg = st.navigation([
     st.Page("pages/20_Verkehr_Simulation.py", title="Verkehr-Simulation", icon=":material/traffic:"),
     st.Page("pages/21_Streckenentwicklung.py", title="Streckenentwicklung", icon=":material/trending_up:"),
     st.Page("pages/22_Sprint_vs_Rennen.py", title="Sprint vs. Rennen", icon=":material/sports_score:"),
+    st.Page("pages/23_Regen_Variance.py", title="Regen-Variance", icon=":material/rainy:"),
 ], expanded=True)
 pg.run()

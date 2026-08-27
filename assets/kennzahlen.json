@@ -299,5 +299,17 @@
       "pearson_r": 0.495,
       "p": 0.014
     }
+  },
+  "regen_variance": {
+    "zeitraum": [
+      2018,
+      2026
+    ],
+    "rennen": 185,
+    "rennen_nass": 17,
+    "pole_quote_trocken_pct": 55.4,
+    "pole_quote_nass_pct": 35.3,
+    "durcheinander_median_trocken": 3.3,
+    "durcheinander_median_nass": 4.0
   }
 }

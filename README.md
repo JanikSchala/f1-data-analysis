@@ -14,7 +14,7 @@ Rundenzeiten steckt.
 Die Bibliothek liefert Rohdaten aus dem offiziellen Live-Timing-Feed: Rundenzeiten,
 Sektorzeiten, Positionsdaten im Zehntelsekundentakt, Telemetriekanäle für Speed,
 Gas, Bremse, Gang und DRS. Was daraus wird, hängt davon ab, wie man sie behandelt.
-Hier stehen **47 eigenständige Analysen über zwölf Themenfelder**, jede mit
+Hier stehen **48 eigenständige Analysen über zwölf Themenfelder**, jede mit
 lauffähigem Code und dokumentiertem Vorgehen.
 
 ```bash
@@ -49,6 +49,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Wer gewinnt die Konstrukteurs-WM?](#wer-gewinnt-die-konstrukteurs-wm)
   - [Pole ist heute mehr wert als 1994](#pole-ist-heute-mehr-wert-als-1994)
   - [Nur 1,7 % aller Überholungen ändern die Rennführung](#nur-17--aller-überholungen-ändern-die-rennführung)
+  - [Macht Regen den Sieger unvorhersehbarer? Vermutlich, aber nicht beweisbar](#macht-regen-den-sieger-unvorhersehbarer-vermutlich-aber-nicht-beweisbar)
 - [`f1lab` — die wiederverwendbaren Teile](#f1lab--die-wiederverwendbaren-teile)
 - [Aufbau](#aufbau)
 - [Methodische Entscheidungen](#methodische-entscheidungen)
@@ -396,9 +397,30 @@ Garantie.
 
 ---
 
+### Macht Regen den Sieger unvorhersehbarer? Vermutlich, aber nicht beweisbar
+
+![Regen-Variance 2018-2026](assets/regen_variance.png)
+
+Gewinnt der Fahrer auf Startplatz 1 im Regen seltener, und wird das Feld
+stärker durcheinandergewirbelt? Über 185 Rennen (2018–2026, 17 davon nass)
+zeigen beide Kennzahlen genau die erwartete Richtung: Pole-to-Win fällt von
+**55,4 % im Trockenen auf 35,3 % im Regen**, die mittlere Positionsänderung
+Start-zu-Ziel steigt von 3,30 auf 4,00 Plätze.
+
+Die ehrliche Einschränkung: bei nur 17 nassen Rennen sind beide Effekte
+**nicht statistisch signifikant** (Fisher-Exact-Test p = 0,13, Mann-Whitney-U
+p = 0,11). Ein echter Effekt in dieser Richtung ist plausibel — beweisen
+lässt er sich mit den verfügbaren Daten nicht. Genau dieser Unterschied
+zwischen "sieht danach aus" und "ist statistisch abgesichert" steckt oft
+nicht in der Schlagzeile.
+
+*Code: [`06_wetter/p48_regen_variance_wird_der_erwartete_sieger_unwahr.py`](06_wetter/p48_regen_variance_wird_der_erwartete_sieger_unwahr.py)*
+
+---
+
 ## `f1lab` — die wiederverwendbaren Teile
 
-Die 47 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
+Die 48 Skripte zeigen jeweils eine Analyse. Was mehrfach gebraucht wird, liegt als
 installierbares Paket daneben — mit einer bewussten Trennung:
 
 ```
@@ -597,6 +619,7 @@ Pakete inklusive transitiver Abhängigkeiten liegt zusätzlich
 | `P45` | [Konstrukteurs-WM-Simulator: wer gewinnt das Team-Rennen?](08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py) | Historie | Fortgeschritten |
 | `P46` | [Pole-to-Win-Konversionsrate über die Regelären](08_historie/p46_pole_to_win_konversionsrate_ueber_die_regelaeren.py) | Historie | Fortgeschritten |
 | `P47` | [Führungswechsel: wie oft wechselt die Rennführung wirklich?](02_timing/p47_fuehrungswechsel_wie_oft_wechselt_die_ren.py) | Timing | Fortgeschritten |
+| `P48` | [Regen-Variance: wird der erwartete Sieger unwahrscheinlicher?](06_wetter/p48_regen_variance_wird_der_erwartete_sieger_unwahr.py) | Wetter | Fortgeschritten |
 
 ---
 
