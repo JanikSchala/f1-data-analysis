@@ -1716,9 +1716,14 @@ def sieg_attribution(session) -> dict:
     grund = sieg_grund(entscheidende_runde, rivale_dnf_nah, in_sc_fenster,
                        rivale_hat_gepittet, war_ueberholung)
 
+    # pace_table() liefert bei zu wenigen sauberen runden je fahrer (z.b.
+    # Belgien 2021, praktisch ein reines regen-abbruch-rennen ohne echte
+    # renndistanz) eine komplett leere, spaltenlose DataFrame zurueck -
+    # "driver" darauf zu pruefen wuerde dann mit KeyError abbrechen.
     pace = pace_table(session).reset_index(drop=True)
-    pace_rang = (int(pace.index[pace["driver"] == sieger][0]) + 1
-                if sieger in pace["driver"].to_numpy() else None)
+    pace_rang = None
+    if "driver" in pace.columns and sieger in pace["driver"].to_numpy():
+        pace_rang = int(pace.index[pace["driver"] == sieger][0]) + 1
 
     duelle = undercut_duels(session)
     eigene_duelle = duelle[duelle["driver"] == sieger]
