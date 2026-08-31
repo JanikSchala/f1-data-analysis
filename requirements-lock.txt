@@ -12,7 +12,7 @@
 # Neu erzeugen nach einem bewussten Versions-Update:
 #     .venv/bin/python -m pip freeze | grep -viE '^-e|^# Editable' > requirements-lock.txt
 #
-# Erzeugt: 2026-08-25, Python 3.12.
+# Erzeugt: 2026-08-31, Python 3.12.
 altair==6.2.2
 annotated-doc==0.0.5
 annotated-types==0.8.0
@@ -38,7 +38,7 @@ filelock==3.32.2
 fonttools==4.63.0
 fsspec==2026.7.0
 gitdb==4.0.12
-GitPython==3.1.57
+GitPython==3.1.61
 h11==0.16.0
 httptools==0.8.0
 identify==2.6.19
