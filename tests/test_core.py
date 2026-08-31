@@ -1348,16 +1348,23 @@ class TestSiegGrund:
         assert sieg_grund(1, False, False, False, False) == "Start-Vorteil"
 
     def test_rival_dnf_wins_over_everything_else(self):
-        assert sieg_grund(30, True, True, True, True) == "Ausfall des Rivalen"
+        assert sieg_grund(30, True, True, True, True, True) == "Ausfall des Rivalen"
 
     def test_safety_car_beats_pit_stop_and_overtake(self):
-        assert sieg_grund(30, False, True, True, True) == "Safety-Car-Wende"
+        assert sieg_grund(30, False, True, True, True, True) == "Safety-Car-Wende"
 
-    def test_pit_stop_beats_overtake(self):
-        assert sieg_grund(30, False, False, True, True) == "Strategie/Boxenstopp"
+    def test_pit_stop_beats_overtake_and_collapse(self):
+        assert sieg_grund(30, False, False, True, True, True) == "Strategie/Boxenstopp"
 
-    def test_real_overtake_when_nothing_else_applies(self):
-        assert sieg_grund(30, False, False, False, True) == "Erkaempft auf der Strecke"
+    def test_real_overtake_beats_collapse(self):
+        assert sieg_grund(30, False, False, False, True, True) == "Erkaempft auf der Strecke"
+
+    def test_collapse_only_when_nothing_harder_applies(self):
+        """rivale_bricht_ein ist ein weicher hinweis (reine positions-
+        beobachtung) und deshalb absichtlich der am niedrigsten priorisierte
+        grund - er darf einen boxenstopp/Safety-Car/DNF/echte Ueberholung nicht
+        ueberschreiben (siehe Docstring, Niederlande 2024)."""
+        assert sieg_grund(30, False, False, False, False, True) == "Einbruch des Rivalen"
 
     def test_unexplained_fallback_when_no_signal_fires(self):
         """kein signal traf zu, obwohl ein rivale existierte - ehrlich als

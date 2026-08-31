@@ -1685,16 +1685,28 @@ def sieg_attribution(session) -> dict:
     phasen = track_status_phases(session)
     neutral = phasen[phasen["label"].isin(["safety car", "vsc"])]
 
-    rivale_dnf_nah = in_sc_fenster = rivale_hat_gepittet = war_ueberholung = False
+    rivale_dnf_nah = rivale_bricht_ein = False
+    in_sc_fenster = rivale_hat_gepittet = war_ueberholung = False
     if alter_fuehrender is not None and entscheidende_runde is not None:
+        riv_serie = pos[alter_fuehrender].dropna()
         riv_zeile = res[res["Abbreviation"] == alter_fuehrender]
         if not riv_zeile.empty:
             status = str(riv_zeile.iloc[0]["Status"])
             dnf = not (status == "Finished" or status.startswith("+"))
-            riv_serie = pos[alter_fuehrender].dropna()
             letzte_riv_runde = (int(riv_serie.index.max())
                                if not riv_serie.empty else 0)
             rivale_dnf_nah = dnf and letzte_riv_runde <= entscheidende_runde + 2
+
+        # ein rivale kann die fuehrung verlieren und trotzdem klassifiziert
+        # bleiben, aber unmittelbar danach noch mehrere weitere plaetze
+        # einbuessen (z.b. ein spaeter plattfuss ohne aufgabe, siehe
+        # Grossbritannien 2018) - ein weicher hinweis, deshalb in
+        # f1lab.core.sieg_grund() absichtlich niedriger priorisiert als
+        # Boxenstopp/Safety-Car/DNF (siehe dessen Docstring).
+        nach_wechsel = riv_serie[(riv_serie.index >= entscheidende_runde)
+                                 & (riv_serie.index <= entscheidende_runde + 3)]
+        rivale_bricht_ein = (len(nach_wechsel) >= 2
+                            and nach_wechsel.iloc[-1] - nach_wechsel.iloc[0] >= 2)
 
         in_sc_fenster = bool((
             (neutral["lap_start"] <= entscheidende_runde + 1)
@@ -1714,7 +1726,7 @@ def sieg_attribution(session) -> dict:
         war_ueberholung = not treffer.empty
 
     grund = sieg_grund(entscheidende_runde, rivale_dnf_nah, in_sc_fenster,
-                       rivale_hat_gepittet, war_ueberholung)
+                       rivale_hat_gepittet, war_ueberholung, rivale_bricht_ein)
 
     # pace_table() liefert bei zu wenigen sauberen runden je fahrer (z.b.
     # Belgien 2021, praktisch ein reines regen-abbruch-rennen ohne echte

@@ -29,7 +29,8 @@ from f1lab import design as d
 
 GRUENDE_REIHENFOLGE = ["Start-Vorteil", "Erkaempft auf der Strecke",
                        "Strategie/Boxenstopp", "Safety-Car-Wende",
-                       "Ausfall des Rivalen", "Ungeklaert"]
+                       "Ausfall des Rivalen", "Einbruch des Rivalen",
+                       "Ungeklaert"]
 
 pfad = setup("Sieganalyse", "Warum hat der Sieger gewonnen - Start, "
                             "Strategie, Ausfall des Rivalen, Safety Car "

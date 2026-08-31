@@ -29,7 +29,8 @@ BEISPIEL_RENNEN = "São Paulo Grand Prix"   # VER von P17 zum Sieg, Safety-Car-W
 
 GRUENDE_REIHENFOLGE = ["Start-Vorteil", "Erkaempft auf der Strecke",
                        "Strategie/Boxenstopp", "Safety-Car-Wende",
-                       "Ausfall des Rivalen", "Ungeklaert"]
+                       "Ausfall des Rivalen", "Einbruch des Rivalen",
+                       "Ungeklaert"]
 
 ERAS = [
     (2018, 2021, "V6-Hybrid-Turbo"),
