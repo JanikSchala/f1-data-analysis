@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from fastf1.ergast import Ergast
+from scipy.stats import pearsonr, spearmanr
 
 import f1lab
 from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
@@ -138,6 +139,37 @@ def zeichne_position(ax, pit: pd.DataFrame) -> None:
     ax.set_axisbelow(True)
 
 
+def team_rennen_tabelle(pit: pd.DataFrame) -> pd.DataFrame:
+    """median und streuung je team UND rennen (nicht ueber die ganze saison
+    gemittelt) - die saison-aggregierte tabelle oben hat nur n=10 teams, zu
+    wenig fuer eine belastbare korrelation zwischen tempo und konsistenz.
+    je rennen einzeln gibt genug beobachtungen fuer einen echten test."""
+    grp = pit.groupby(["constructorName", "round"])["dur"]
+    tab = grp.agg(median="median",
+                 iqr=lambda s: s.quantile(0.75) - s.quantile(0.25),
+                 n="count").reset_index()
+    return tab[tab["n"] >= 2]
+
+
+def zeichne_konsistenz(ax, tab: pd.DataFrame) -> None:
+    """tempo (median) gegen streuung (IQR) je team-rennen - ist ein
+    langsamerer stopp im schnitt auch unregelmaessiger?"""
+    r, p = pearsonr(tab["median"], tab["iqr"])
+    steigung, achse0 = np.polyfit(tab["median"], tab["iqr"], 1)
+    xs = np.linspace(tab["median"].min(), tab["median"].max(), 50)
+    ax.scatter(tab["median"], tab["iqr"], s=16, color=MUTED, alpha=0.45,
+              edgecolors="none")
+    ax.plot(xs, steigung * xs + achse0, color=SERIEN[1], lw=2.2)
+    ax.set_xlabel("Median Boxengassen-Zeit je Team/Rennen [s]")
+    ax.set_ylabel("Streuung (IQR) [s]")
+    ax.set_title(f"n={len(tab)} Team-Rennen, r={r:+.2f} (p={p:.4f})",
+                loc="left", color=FG, fontsize=13, pad=10)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(alpha=0.3, linewidth=0.8, color=GRID)
+    ax.set_axisbelow(True)
+
+
 def main():
     f1lab.enable_cache()
     print(f"[1/3] Ergast-Saison {YEAR}: Pitstops + Ergebnisse je Runde "
@@ -167,7 +199,7 @@ def main():
     print(pit.nsmallest(5, "dur")[
         ["round", "driverId", "constructorName", "dur"]].to_string(index=False))
 
-    print("\n[3/3] AUSBAUSTUFE: Position und Boxenfenster ...")
+    print("\n[3/4] AUSBAUSTUFE: Position und Boxenfenster ...")
     ok = pit.dropna(subset=["position"])
     korr = np.corrcoef(ok["position"], ok["dur"])[0, 1]
     print(f"      corr(Position, Stoppzeit) = {korr:+.3f} (n={len(ok)})")
@@ -180,13 +212,25 @@ def main():
          f"Boxenfenster (>=4): n={len(voll)} median={voll.median():.2f}s   "
          f"delta={voll.median() - iso.median():+.2f}s")
 
+    print("\n[4/4] ZWEITE AUSBAUSTUFE: ist ein langsamerer Stopp auch "
+         "unregelmaessiger? ...")
+    tab = team_rennen_tabelle(pit)
+    r_saison, p_saison = pearsonr(rank["Median"], rank["IQR"])
+    r, p_wert = pearsonr(tab["median"], tab["iqr"])
+    rs, ps = spearmanr(tab["median"], tab["iqr"])
+    print(f"      Saison-Aggregat (n={len(rank)} Teams): r={r_saison:+.3f} "
+         f"(p={p_saison:.3f}) - zu wenige Teams fuer einen belastbaren Test")
+    print(f"      Je Team/Rennen (n={len(tab)}): Pearson r={r:+.3f} "
+         f"(p={p_wert:.4f}), Spearman r={rs:+.3f} (p={ps:.2e})")
+
     print("\nGrafik ...")
-    fig = plt.figure(figsize=(14, 10))
-    gs = fig.add_gridspec(2, 2, height_ratios=[1.1, 1], hspace=0.45, wspace=0.3)
+    fig = plt.figure(figsize=(19, 10))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.1, 1], hspace=0.45, wspace=0.3)
     zeichne_ranking(fig.add_subplot(gs[0, :]), rank)
     zeichne_druck(fig.add_subplot(gs[1, 0]), pit)
     zeichne_position(fig.add_subplot(gs[1, 1]), pit)
-    fig.suptitle(f"Boxenstopp-Performance-Ranking {YEAR}", x=0.09, ha="left",
+    zeichne_konsistenz(fig.add_subplot(gs[1, 2]), tab)
+    fig.suptitle(f"Boxenstopp-Performance-Ranking {YEAR}", x=0.07, ha="left",
                 fontsize=16, color=FG, y=0.995)
     path = OUT / "boxenstopp_ranking.png"
     fig.savefig(path, dpi=130, bbox_inches="tight")

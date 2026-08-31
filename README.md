@@ -37,6 +37,7 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
   - [Reifenstrategie](#reifenstrategie)
   - [Degradation quantifiziert](#degradation-quantifiziert)
   - [Der Undercut gewinnt seltener, als man denkt](#der-undercut-gewinnt-seltener-als-man-denkt)
+  - [Ein langsamer Boxenstopp ist auch ein unregelmäßiger](#ein-langsamer-boxenstopp-ist-auch-ein-unregelmäßiger)
   - [Safety Car staucht das Feld zusammen](#safety-car-staucht-das-feld-zusammen)
   - [Eine Rundenzeit aus reiner Physik](#eine-rundenzeit-aus-reiner-physik)
   - [75 Jahre F1: dieselbe Strecke ist selten dieselbe Strecke](#75-jahre-f1-dieselbe-strecke-ist-selten-dieselbe-strecke)
@@ -188,6 +189,28 @@ verschieden von 50/50). Die Verteidigung gewinnt in diesen Daten gut drei von
 vier direkten Duellen.
 
 *Code: [`05_reifen_strategie/p42_undercut_erfolgsquote_echte_rivalen_duelle.py`](05_reifen_strategie/p42_undercut_erfolgsquote_echte_rivalen_duelle.py)*
+
+---
+
+### Ein langsamer Boxenstopp ist auch ein unregelmäßiger
+
+![Boxenstopp-Performance-Ranking 2024](assets/boxenstopp_ranking.png)
+
+Das Saison-Ranking der Boxengassen-Zeiten zeigt praktisch keinen
+Unterschied zwischen den Teams — nur 1,1 s zwischen dem schnellsten und
+dem langsamsten Median über die ganze Saison 2024, bei **10 Teams** zu
+wenig Datenpunkte für einen belastbaren Test auf einen Zusammenhang
+zwischen Tempo und Konsistenz (r = +0,06, p = 0,87).
+
+Auf Team-und-Rennen-Ebene statt der Saison als Ganzes sieht das anders
+aus: **220 Team-Rennen mit mindestens zwei Stopps** geben genug
+Beobachtungen für einen echten Test — und der findet etwas: ein
+langsamerer Stopp-Median in einem einzelnen Rennen geht mit spürbar mehr
+Streuung zwischen den Stopps desselben Teams einher (Pearson r = +0,22,
+p = 0,001; Spearman r = +0,28, p < 0,0001). Tempo und Konsistenz hängen
+zusammen — nur nicht auf der Ebene, auf der man zuerst danach sucht.
+
+*Code: [`05_reifen_strategie/p16_boxenstopp_performance_ranking_der_teams.py`](05_reifen_strategie/p16_boxenstopp_performance_ranking_der_teams.py)*
 
 ---
 

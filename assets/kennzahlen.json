@@ -388,6 +388,21 @@
       "pace_rang": 1
     }
   },
+  "boxenstopp_ranking": {
+    "saison": 2024,
+    "teams": 10,
+    "stopps": 746,
+    "median_spannweite_s": 1.11,
+    "konsistenz_saison_aggregat": {
+      "r": 0.06,
+      "p": 0.869
+    },
+    "konsistenz_team_rennen": {
+      "n": 220,
+      "r": 0.221,
+      "p": 0.0009804715450720172
+    }
+  },
   "_meta": {
     "erzeugt_mit": "f1lab 0.1.0",
     "hinweis": "Alle Werte stammen aus f1lab - denselben Funktionen, die von tests/ geprueft werden."

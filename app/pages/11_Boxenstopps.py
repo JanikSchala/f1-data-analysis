@@ -32,6 +32,7 @@ from common import (
     zeige,
 )
 from fastf1.ergast import Ergast
+from scipy.stats import pearsonr
 
 from f1lab import design as d
 
@@ -206,6 +207,41 @@ with rechts:
                 "minimal schneller, aber der Effekt ist schwach (siehe "
                 "P16). Der Boxenfenster-Effekt links zeigt den Drucksignal "
                 "deutlicher als die Tabellenposition.")
+
+st.markdown("##### Zweite AUSBAUSTUFE: ist ein langsamerer Stopp auch "
+           "unregelmaessiger?")
+tab_kons = (pit.groupby(["constructorName", "round"])["dur"]
+           .agg(median="median",
+                iqr=lambda s: s.quantile(0.75) - s.quantile(0.25),
+                n="count").reset_index())
+tab_kons = tab_kons[tab_kons["n"] >= 2]
+if len(tab_kons) < 20:
+    st.info("Zu wenige Team-Rennen mit mindestens zwei Stopps fuer diese "
+           "Saison.")
+else:
+    r_saison, p_saison = pearsonr(rank["Median"], rank["IQR"])
+    r, p_wert = pearsonr(tab_kons["median"], tab_kons["iqr"])
+    steigung, achse0 = np.polyfit(tab_kons["median"], tab_kons["iqr"], 1)
+    xs = np.linspace(tab_kons["median"].min(), tab_kons["median"].max(), 50)
+
+    fig4 = go.Figure()
+    fig4.add_trace(go.Scatter(
+        x=tab_kons["median"], y=tab_kons["iqr"], mode="markers",
+        name="Team/Rennen", marker={"size": 6, "color": d.MUTED, "opacity": 0.5}))
+    fig4.add_trace(go.Scatter(
+        x=xs, y=steigung * xs + achse0, mode="lines", name="Trend",
+        line={"color": d.SERIEN[1], "width": 2.5}))
+    zeige(fig4, hoehe=380, showlegend=False,
+         xaxis=achse("Median Boxengassen-Zeit je Team/Rennen [s]"),
+         yaxis=achse("Streuung (IQR) [s]"))
+    hinweis(f"Auf Saison-Ebene (n={len(rank)} Teams) ist der Zusammenhang "
+           f"statistisch nicht belegbar (r={r_saison:+.2f}, "
+           f"p={p_saison:.2f}) - zu wenige Teams. Je Team und Rennen "
+           f"einzeln (n={len(tab_kons)}) zeigt sich dagegen ein echter, "
+           f"kleiner Zusammenhang: r={r:+.2f} (p={p_wert:.4f}) - ein "
+           "langsamerer Stopp-Median in einem Rennen geht im Schnitt mit "
+           "mehr Streuung zwischen den Stopps desselben Teams einher "
+           "(siehe P16).")
 
 with st.expander("Warum das Ranking fast bedeutungslos fuer Crew-Leistung ist"):
     st.markdown(
