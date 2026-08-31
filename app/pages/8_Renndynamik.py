@@ -204,12 +204,16 @@ with tab_drs:
                 # Referenzsession fuer die DRS-Zonen - liegt deren Telemetrie
                 # nicht im Cache, scheitert das erst beim Zugriff (siehe
                 # 12_Wetter.py/13_RaceControl.py), nicht schon beim Laden.
+                # KeyError zusaetzlich zu DataNotLoadedError: FastF1 wirft das,
+                # wenn ein einzelner Fahrer im Cache Laufzeitdaten, aber keine
+                # car_data hat (session.car_data[DriverNumber] schlaegt fehl) -
+                # dieselbe Kategorie Cache-Luecke, nur ein anderer Fehlertyp.
                 orte = f1lab.overtake_locations(s)
                 q = f1lab.load(season, int(s.event["RoundNumber"]), "Q",
                                telemetry=True)
                 lap_q = q.laps.pick_fastest()
                 zonen = f1lab.drs_zones(q, str(lap_q["Driver"]))
-            except fastf1.exceptions.DataNotLoadedError:
+            except (fastf1.exceptions.DataNotLoadedError, KeyError):
                 orte = pd.DataFrame(columns=["gainer", "loser", "lap",
                                              "distance_m", "in_drs_zone"])
                 zonen = pd.DataFrame()
