@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import time
 
+import fastf1.exceptions
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -51,9 +52,23 @@ with st.sidebar:
 
 
 def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
+    """wiederholt bei voruebergehenden fehlern, nicht bei eindeutigen.
+
+    ``ErgastInvalidRequestError`` (jolpicas "Not Cached") liess sich beim
+    testen fuer die laufende saison reproduzierbar durch die app selbst
+    ausloesen - ein einzelner, isolierter aufruf ausserhalb der app gelang
+    dagegen zuverlaessig. worin genau der unterschied liegt, war von hier aus
+    nicht abschliessend zu klaeren, vermutlich eine serverseitige eigenart
+    von jolpica bei dieser abfolge. fuenffaches wiederholen aendert daran
+    nichts und kostet bis zu 30s je runde - deshalb hier ohne wiederholung,
+    dafuer wird die runde in :func:`_saison_pitstops` uebersprungen statt die
+    ganze saison abzubrechen.
+    """
     for i in range(versuche):
         try:
             return fn(*args, **kwargs)
+        except fastf1.exceptions.ErgastInvalidRequestError:
+            raise
         except Exception:
             if i == versuche - 1:
                 raise
@@ -68,10 +83,17 @@ def _saison_pitstops(saison: int) -> pd.DataFrame:
     pit_frames, res_frames = [], []
     for _, race in sched.iterrows():
         rnd = int(race["round"])
-        stops = _mit_wiederholung(erg.get_pit_stops, season=saison,
-                                  round=rnd, limit=200).content
-        res = _mit_wiederholung(erg.get_race_results, season=saison,
-                                round=rnd).content
+        try:
+            stops = _mit_wiederholung(erg.get_pit_stops, season=saison,
+                                      round=rnd, limit=200).content
+            res = _mit_wiederholung(erg.get_race_results, season=saison,
+                                    round=rnd).content
+        except Exception:
+            # eine einzelne kaputte/fehlende runde soll nicht die ganze
+            # saison mitreissen - siehe P05-begruendung in 9_Teamkollegen.py
+            # fuer denselben "eine runde ueberspringen statt abbrechen"-stil.
+            time.sleep(0.4)
+            continue
         if stops and not stops[0].empty:
             s = stops[0].copy()
             s["round"] = rnd

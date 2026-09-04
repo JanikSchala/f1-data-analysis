@@ -6,6 +6,7 @@ kommt aus f1lab.corner_labels()/corner_speeds()/marshal_sector_labels().
 """
 from __future__ import annotations
 
+import fastf1.exceptions
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -61,13 +62,22 @@ with tab_karte:
     except Exception:
         ref = None
 
+    try:
+        corners = f1lab.corner_labels(ses) if (ref is not None
+                                               and not ref.empty) else None
+        sektoren = f1lab.marshal_sector_labels(ses) if corners is not None else None
+        lichter = f1lab.marshal_light_labels(ses) if corners is not None else None
+    except fastf1.exceptions.DataNotLoadedError:
+        corners = sektoren = lichter = None
+
     if ref is None or ref.empty:
         st.info("Keine Telemetrie fuer die schnellste Runde verfuegbar.")
+    elif corners is None:
+        st.info("Streckendaten (get_circuit_info()) sind fuer diese Session "
+               "bei der MultiViewer-API nicht verfuegbar - kommt vereinzelt "
+               "vor, unabhaengig vom lokalen Cache.")
     else:
-        corners = f1lab.corner_labels(ses)
-        sektoren = f1lab.marshal_sector_labels(ses)
-        lichter = f1lab.marshal_light_labels(ses)
-
+        assert sektoren is not None and lichter is not None  # folgen aus corners
         x, y = ref["X"] / 10, ref["Y"] / 10
         dist = ref["Distance"].to_numpy()
         grenzen = sektoren["distance"].to_numpy()
@@ -123,7 +133,10 @@ with tab_karte:
 # ============================================================== kurvenspeed
 with tab_speed:
     st.markdown("##### Kurvengeschwindigkeit im Feld, relativ zum Schnellsten")
-    mat = f1lab.corner_speeds(ses)
+    try:
+        mat = f1lab.corner_speeds(ses)
+    except fastf1.exceptions.DataNotLoadedError:
+        mat = pd.DataFrame()
     if mat.empty:
         st.info("Keine Kurvengeschwindigkeiten fuer diese Session berechenbar.")
     else:
@@ -188,11 +201,18 @@ with tab_jahre:
                 ok = ~np.isnan(r) & ~np.isnan(v)
                 grid = np.linspace(0, 1, 500)
                 profil = np.interp(grid, r[ok], v[ok])
+                try:
+                    kurven = len(s.get_circuit_info().corners)
+                except Exception:
+                    # siehe f1lab.session._circuit_info: get_circuit_info()
+                    # kann fuer einzelne strecke/jahr-kombinationen bei der
+                    # MultiViewer-API scheitern, unabhaengig vom lokalen cache.
+                    kurven = None
                 meta = {
                     "jahr": jahr, "pole": str(lap["Driver"]),
                     "zeit_s": round(lap["LapTime"].total_seconds(), 3),
                     "laenge_m": round(float(tel["Distance"].max()), 0),
-                    "kurven": len(s.get_circuit_info().corners),
+                    "kurven": kurven,
                     "vmax": round(float(v.max()), 1),
                     "vmean": round(float(np.nanmean(v)), 1),
                 }

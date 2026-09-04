@@ -13,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import fastf1
+import fastf1.exceptions
 import numpy as np
 import pandas as pd
 
@@ -554,6 +555,26 @@ def event_dimension(years) -> pd.DataFrame:
     return out.sort_values(["season", "round"], ignore_index=True)
 
 
+def _circuit_info(session):
+    """``session.get_circuit_info()``, mit einer klaren ausnahme statt
+    fastf1s eigenem rohen absturz.
+
+    die MultiViewer-API dahinter antwortet fuer manche strecke/jahr-
+    kombinationen mit einem fehlerstatus ohne inhalt - fastf1s eigener
+    handler geht dann von einem body aus und wirft ein rohes, verwirrendes
+    ``AttributeError: 'NoneType' object has no attribute 'decode'`` statt
+    eines fachlichen fehlers. hier einmal abgefangen und in dieselbe
+    ausnahme uebersetzt, die die app fuer fehlende daten schon ueberall
+    erwartet.
+    """
+    try:
+        return session.get_circuit_info()
+    except Exception as exc:
+        raise fastf1.exceptions.DataNotLoadedError(
+            "get_circuit_info() nicht verfuegbar fuer diese Session "
+            f"({type(exc).__name__})") from exc
+
+
 def circuit_geometry(session) -> dict:
     """kurvenzahl, streckenlaenge und hoehenprofil einer geladenen session.
 
@@ -572,7 +593,7 @@ def circuit_geometry(session) -> dict:
     # kurvenliste und positionsdaten kommen aus verschiedenen quellen und
     # fallen unabhaengig voneinander aus. deshalb einzeln abgesichert.
     with contextlib.suppress(Exception):
-        out["corners"] = int(len(session.get_circuit_info().corners))
+        out["corners"] = int(len(_circuit_info(session).corners))
 
     try:
         pos = session.laps.pick_fastest().get_pos_data()
@@ -639,7 +660,7 @@ def corner_labels(session) -> pd.DataFrame:
     der session projiziert. das gibt jeder kurve eine distanz entlang der
     strecke, mit der sich telemetrie faehrerbergreifend vergleichen laesst.
     """
-    ci = session.get_circuit_info()
+    ci = _circuit_info(session)
     ref = session.laps.pick_fastest().get_telemetry().add_distance()
     ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
     ref_dist = ref["Distance"].to_numpy()
@@ -660,7 +681,7 @@ def marshal_sector_labels(session) -> pd.DataFrame:
     """marshal-sektorgrenzen, auf dieselbe referenzrunde projiziert wie
     :func:`corner_labels`. dieselbe idee, andere punktliste (siehe P11).
     """
-    ci = session.get_circuit_info()
+    ci = _circuit_info(session)
     ref = session.laps.pick_fastest().get_telemetry().add_distance()
     ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
     ref_dist = ref["Distance"].to_numpy()
@@ -679,7 +700,7 @@ def marshal_light_labels(session) -> pd.DataFrame:
     dieselbe idee, dritte punktliste. ``CircuitInfo.marshal_lights`` liefert
     kein ``Distance`` (anders als ``corners``), deshalb dieselbe
     naechste-nachbar-projektion wie bei den anderen beiden."""
-    ci = session.get_circuit_info()
+    ci = _circuit_info(session)
     ref = session.laps.pick_fastest().get_telemetry().add_distance()
     ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
     ref_dist = ref["Distance"].to_numpy()
