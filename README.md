@@ -660,6 +660,16 @@ Pakete inklusive transitiver Abhängigkeiten liegt zusätzlich
 [`requirements-lock.txt`](requirements-lock.txt) bereit
 (`pip install -r requirements-lock.txt`).
 
+**Alles ist im Dashboard erreichbar**, auch die vier reinen
+Infrastruktur-/CLI-Projekte, die keine eigene Analyse-Storyline haben:
+`streamlit run app/Start.py` → Seite "Engineering-Tools" fragt das
+DuckDB-Warehouse (P26) live ab, startet die REST-API (P27) lokal und
+schickt echte Anfragen dagegen, erzeugt den PDF-Rennbericht (P29) zum
+Download und ruft `f1analyze` (P34) als echten Subprocess auf. Seite
+"Live-Timing" zeichnet den echten FastF1-Live-Stream auf, sobald eine
+Session läuft (P30) — bewusst die einzige Seite, die online statt aus dem
+Cache arbeitet, weil eine brandneue Session sonst nicht auflösbar wäre.
+
 ---
 
 ## Projektindex
