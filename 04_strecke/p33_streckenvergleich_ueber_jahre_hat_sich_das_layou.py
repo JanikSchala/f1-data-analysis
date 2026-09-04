@@ -41,12 +41,17 @@ def speed_profil(ses) -> tuple[np.ndarray, dict]:
     grid = np.linspace(0, 1, GRID_N)
     profil = np.interp(grid, rel[ok], v[ok])
 
-    ci = ses.get_circuit_info()
+    try:
+        kurven = len(f1lab.circuit_info(ses).corners)
+    except Exception:
+        # nur eine metadaten-spalte, nicht teil der eigentlichen
+        # geschwindigkeits-analyse - siehe f1lab.session.circuit_info.
+        kurven = None
     meta = {
         "jahr": ses.event.year, "pole": str(lap["Driver"]),
         "zeit_s": round(lap["LapTime"].total_seconds(), 3),
         "laenge_m": round(float(tel["Distance"].max()), 0),
-        "kurven": len(ci.corners),
+        "kurven": kurven,
         "vmax": round(float(v.max()), 1), "vmean": round(float(np.nanmean(v)), 1),
     }
     return profil, meta

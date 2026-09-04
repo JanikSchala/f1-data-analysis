@@ -85,7 +85,7 @@ def main():
 
     print(f"[1/4] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
-    ci = ses.get_circuit_info()
+    ci = f1lab.circuit_info(ses)
     ref_lap = ses.laps.pick_fastest()
     ref = ref_lap.get_telemetry().add_distance()
     print(f"      Referenzrunde: {ref_lap['Driver']}, Rotation "

@@ -202,11 +202,8 @@ with tab_jahre:
                 grid = np.linspace(0, 1, 500)
                 profil = np.interp(grid, r[ok], v[ok])
                 try:
-                    kurven = len(s.get_circuit_info().corners)
-                except Exception:
-                    # siehe f1lab.session._circuit_info: get_circuit_info()
-                    # kann fuer einzelne strecke/jahr-kombinationen bei der
-                    # MultiViewer-API scheitern, unabhaengig vom lokalen cache.
+                    kurven = len(f1lab.circuit_info(s).corners)
+                except fastf1.exceptions.DataNotLoadedError:
                     kurven = None
                 meta = {
                     "jahr": jahr, "pole": str(lap["Driver"]),
