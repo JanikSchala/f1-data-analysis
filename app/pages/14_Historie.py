@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 
 import fastf1
+import fastf1.exceptions
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -57,9 +58,15 @@ tab_wm, tab_konstrukteure, tab_trends = st.tabs(
 
 
 def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
+    """siehe 11_Boxenstopps.py: ``ErgastInvalidRequestError`` ("Not
+    Cached") liess sich beim testen fuer die laufende saison durch die app
+    reproduzierbar ausloesen, wiederholen aendert daran nichts - dort ohne
+    wiederholung, hier genauso."""
     for i in range(versuche):
         try:
             return fn(*args, **kwargs)
+        except fastf1.exceptions.ErgastInvalidRequestError:
+            raise
         except Exception:
             if i == versuche - 1:
                 raise
@@ -145,13 +152,21 @@ def _wm_daten(jahr: int):
 
     race_frames, sprint_frames = [], []
     for r in range(1, gefahrene_runden + 1):
-        res = _mit_wiederholung(erg.get_race_results, season=jahr, round=r).content
-        if res:
-            race_frames.append(res[0])
+        try:
+            res = _mit_wiederholung(erg.get_race_results, season=jahr, round=r).content
+            if res:
+                race_frames.append(res[0])
+        except Exception:
+            # eine einzelne kaputte runde soll nicht die ganze
+            # saison mitreissen - siehe 11_Boxenstopps.py.
+            pass
         time.sleep(0.2)
-        sp = _mit_wiederholung(erg.get_sprint_results, season=jahr, round=r).content
-        if sp:
-            sprint_frames.append(sp[0])
+        try:
+            sp = _mit_wiederholung(erg.get_sprint_results, season=jahr, round=r).content
+            if sp:
+                sprint_frames.append(sp[0])
+        except Exception:
+            pass
         time.sleep(0.2)
     races = (pd.concat(race_frames, ignore_index=True) if race_frames
              else pd.DataFrame())
