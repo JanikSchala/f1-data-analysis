@@ -68,9 +68,9 @@ python 01_grundlagen/p01_session_explorer_jede_session_der_f1_historie_la.py
 
 ## Projektübersicht
 
-![Projektübersicht: 44 Analysen rund um das f1lab-Kernpaket](assets/projektuebersicht.svg)
+![Projektübersicht: 51 Analysen rund um das f1lab-Kernpaket](assets/projektuebersicht.svg)
 
-Alle 44 Analysen (P01–P44), nach Themenfeld gruppiert, rund um das gemeinsame
+Alle 51 Analysen (P01–P51), nach Themenfeld gruppiert, rund um das gemeinsame
 `f1lab`-Kernpaket und die Dashboard-/CLI-/Test-Infrastruktur. Punktgröße zeigt
 den Codeumfang, die feinen Linien zur Mitte zeigen, welche Projekte welche
 Teile von `f1lab` tatsächlich nutzen. Erzeugt aus einem Knowledge Graph über
