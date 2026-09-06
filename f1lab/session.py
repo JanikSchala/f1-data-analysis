@@ -1761,7 +1761,10 @@ def track_limit_crosscheck(
                 & (deleted["LapNumber"] == r.runde)).any()
         if not passt:
             im_text_nicht_in_laps.append({"driver": r.driver, "runde": r.runde})
-    return pd.DataFrame(im_text_nicht_in_laps), deleted, len(mit_runde)
+    # der gutfall (jede meldung findet ihre geloeschte runde) ist der leere
+    # fall. auch der traegt seine spalten, siehe :func:`parse_penalties`.
+    return (pd.DataFrame(im_text_nicht_in_laps, columns=["driver", "runde"]),
+            deleted, len(mit_runde))
 
 
 # --------------------------------------------------------------- sieg-attribution

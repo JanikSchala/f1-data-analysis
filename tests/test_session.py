@@ -17,6 +17,7 @@ from f1lab.session import (
     TIMING_MARKER,
     TRACK_STATUS,
     _duelle,
+    _zeit_bei_speed,
     cache_ready,
     cached_sessions,
     compare_braking_zones,
@@ -761,3 +762,85 @@ class TestDuelle:
                                  ("RB", "LAW", 90.4)]),
                       "Team", "Driver", "LapTime")
         assert got == []
+
+
+class TestZeitBeiSpeed:
+    """erste Zeit, zu der eine Zielgeschwindigkeit erreicht wird (P31)."""
+
+    def test_findet_den_ersten_ueberschreitungspunkt(self):
+        t = np.array([0.0, 1.0, 2.0, 3.0])
+        v = np.array([0.0, 50.0, 120.0, 200.0])
+        assert _zeit_bei_speed(t, v, 100.0, t0=0.0) == 2.0
+
+    def test_zaehlt_ab_t0_nicht_ab_arrayanfang(self):
+        t = np.array([10.0, 11.0, 12.0])
+        v = np.array([0.0, 50.0, 120.0])
+        assert _zeit_bei_speed(t, v, 100.0, t0=10.0) == 2.0
+
+    def test_spaeteres_absinken_aendert_nichts(self):
+        """gesucht ist das ERSTE Erreichen, nicht das letzte."""
+        t = np.array([0.0, 1.0, 2.0, 3.0])
+        v = np.array([0.0, 120.0, 80.0, 130.0])
+        assert _zeit_bei_speed(t, v, 100.0, t0=0.0) == 1.0
+
+    def test_nie_erreicht_gibt_none(self):
+        """ein abgebrochener Start erreicht 200 km/h im Fenster nie - das
+        ist kein Fehler, sondern eine fehlende Kennzahl."""
+        t = np.array([0.0, 1.0, 2.0])
+        v = np.array([0.0, 40.0, 80.0])
+        assert _zeit_bei_speed(t, v, 200.0, t0=0.0) is None
+
+    def test_nan_zaehlt_nicht_als_erreicht(self):
+        t = np.array([0.0, 1.0, 2.0])
+        v = np.array([np.nan, np.nan, 150.0])
+        assert _zeit_bei_speed(t, v, 100.0, t0=0.0) == 2.0
+
+
+class TestLeereErgebnisseBehaltenSpalten:
+    """ein leeres Ergebnis muss seine Spalten tragen.
+
+    ohne sie bekommt der Aufrufer beim Zugriff einen KeyError statt einer
+    leeren Tabelle. genau das hat in diesem Repo schon dreimal zugeschlagen:
+    sieg_attribution() ueber pace_table(), P19 ueber parse_track_limits()
+    fuer die Saison 2018, und compare_braking_zones(), sobald keine zwei
+    Bremszonen zusammenpassen. Dieser Test faengt die ganze Klasse ab,
+    statt sie einzeln nachzuziehen.
+    """
+
+    LEERE_MELDUNGEN = pd.DataFrame({"Lap": [1], "Message": ["GREEN LIGHT"]})
+
+    FAELLE = {
+        "parse_penalties": (
+            lambda: parse_penalties(TestLeereErgebnisseBehaltenSpalten.LEERE_MELDUNGEN),
+            ["lap", "strafmass", "nr", "driver", "grund"]),
+        "parse_track_limits": (
+            lambda: parse_track_limits(TestLeereErgebnisseBehaltenSpalten.LEERE_MELDUNGEN),
+            ["lap", "nr", "driver", "turn"]),
+        "compare_braking_zones (nichts passt)": (
+            lambda: compare_braking_zones(pd.DataFrame({"start_m": [100.0]}),
+                                          pd.DataFrame({"start_m": [900.0]})),
+            ["start_m_a", "start_m_b", "delta_m"]),
+        "compare_braking_zones (leer)": (
+            lambda: compare_braking_zones(pd.DataFrame({"start_m": []}),
+                                          pd.DataFrame({"start_m": []})),
+            ["start_m_a", "start_m_b", "delta_m"]),
+        "sc_compaction (Phase am Start)": (
+            lambda: sc_compaction(pd.DataFrame([{"lap_start": 1, "lap_end": 2}]),
+                                  pd.Series({1: 30.0, 2: 10.0})),
+            ["start", "ende", "baseline_s", "minimum_s", "kompaktierung_pct"]),
+    }
+
+    @pytest.mark.parametrize("name", list(FAELLE))
+    def test_spalten_bleiben(self, name):
+        aufruf, erwartet = self.FAELLE[name]
+        got = aufruf()
+        assert got.empty, f"{name} sollte fuer diesen Fall leer sein"
+        assert list(got.columns) == erwartet, name
+
+    @pytest.mark.parametrize("name", list(FAELLE))
+    def test_spaltenzugriff_wirft_keinen_keyerror(self, name):
+        """so greifen die Aufrufer real darauf zu."""
+        aufruf, erwartet = self.FAELLE[name]
+        got = aufruf()
+        for spalte in erwartet:
+            assert got[spalte].empty
