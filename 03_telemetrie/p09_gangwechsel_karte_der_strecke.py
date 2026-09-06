@@ -39,8 +39,7 @@ def zeichne_karte(ax, x: np.ndarray, y: np.ndarray, werte: np.ndarray, *,
                   cbar_ticks=None, boundaries=None,
                   cbar_ticklabels=None) -> None:
     """zeichnet eine nach werten eingefaerbte streckenkarte. wird fuer alle vier kanaele wiederverwendet."""
-    punkte = np.column_stack([x, y]).reshape(-1, 1, 2)
-    segmente = np.concatenate([punkte[:-1], punkte[1:]], axis=1)
+    segmente = f1lab.line_segments(x, y)
     lc = LineCollection(list(segmente), cmap=cmap, norm=norm, linewidths=4)
     lc.set_array(werte[:-1])
     ax.add_collection(lc)

@@ -90,8 +90,7 @@ def gear_map(year=2024, gp="Belgium"):
     y = tel["Y"].to_numpy(float)
     gear = tel["nGear"].to_numpy(float)
 
-    pts = np.array([x, y]).T.reshape(-1, 1, 2)
-    seg = np.concatenate([pts[:-1], pts[1:]], axis=1)
+    seg = f1lab.line_segments(x, y)
 
     lc = LineCollection(list(seg), norm=plt.Normalize(1, 8),
                         cmap=plt.get_cmap("viridis", 8), linewidth=4.5)

@@ -87,8 +87,7 @@ def zeichne_streckenkarte(ax, telemetrie: dict[str, pd.DataFrame],
     y = referenz["Y"].to_numpy()
     dist = referenz["Distance"].to_numpy()
 
-    punkte = np.column_stack([x, y]).reshape(-1, 1, 2)
-    segmente = np.concatenate([punkte[:-1], punkte[1:]], axis=1)
+    segmente = f1lab.line_segments(x, y)
     mitte = (dist[:-1] + dist[1:]) / 2
     bin_idx = np.clip(np.digitize(mitte, edges) - 1, 0, len(gewinner) - 1)
     farben = [farbe[gewinner[i]] for i in bin_idx]

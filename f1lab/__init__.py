@@ -46,6 +46,7 @@ from .core import (
     hindsight_value,
     lap_times_for_strategy,
     lead_distance_to_zone,
+    line_segments,
     mad_outlier_mask,
     match_by_distance,
     optimal_strategy,
@@ -129,7 +130,7 @@ __all__ = [
     "Interval", "DegradationFit", "Elevation", "bootstrap_median",
     "mad_outlier_mask", "fuel_correct", "fit_degradation", "find_cliff",
     "estimate_pit_loss", "undercut_gain", "optimal_undercut_window",
-    "braking_zones", "path_length", "elevation_profile",
+    "braking_zones", "path_length", "line_segments", "elevation_profile",
     "elo_expected", "elo_update", "match_by_distance",
     "active_distance_zones", "drs_state", "status_intervals", "sieg_grund",
     # session

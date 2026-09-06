@@ -39,6 +39,7 @@ from f1lab.core import (
     hindsight_value,
     lap_times_for_strategy,
     lead_distance_to_zone,
+    line_segments,
     mad_outlier_mask,
     match_by_distance,
     optimal_strategy,
@@ -599,6 +600,38 @@ class TestPathLength:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError, match="gleich lang"):
             path_length([0, 1, 2], [0, 1])
+
+
+class TestLineSegments:
+    """Eingabeformat fuer LineCollection: je Segment Start- und Endpunkt."""
+
+    def test_shape_is_one_segment_less_than_points(self):
+        got = line_segments([0, 1, 2, 3], [0, 0, 0, 0])
+        assert got.shape == (3, 2, 2)
+
+    def test_segments_chain_point_to_point(self):
+        """das Ende eines Segments ist der Anfang des naechsten - sonst
+        entstehen Luecken in der eingefaerbten Strecke."""
+        got = line_segments([0, 1, 2], [0, 10, 20])
+        assert got[0].tolist() == [[0, 0], [1, 10]]
+        assert got[1].tolist() == [[1, 10], [2, 20]]
+
+    def test_too_few_points_is_empty_but_keeps_shape(self):
+        """LineCollection braucht die (n, 2, 2)-Form auch ohne Segmente."""
+        for x, y in (([1], [1]), ([], [])):
+            got = line_segments(x, y)
+            assert got.shape == (0, 2, 2)
+
+    def test_mismatched_lengths_raise(self):
+        with pytest.raises(ValueError, match="gleich lang"):
+            line_segments([0, 1, 2], [0, 1])
+
+    def test_one_color_per_segment_not_per_point(self):
+        """der eigentliche Zweck: n Punkte tragen n-1 Farben. wer die
+        Farbliste aus den Punkten baut, ist um eins zu lang."""
+        x = np.linspace(0, 100, 25)
+        got = line_segments(x, np.zeros(25))
+        assert len(got) == len(x) - 1
 
 
 # --------------------------------------------------------------- elevation

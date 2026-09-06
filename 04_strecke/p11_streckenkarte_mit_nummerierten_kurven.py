@@ -44,8 +44,7 @@ def zeichne_karte(ax, ref: pd.DataFrame, ci_rotation: float,
 
     # marshal-sektoren sind keine kategorie mit eigener bedeutung.
     # deshalb zwei neutrale toene im wechsel statt der kategoriepalette.
-    punkte = xy.reshape(-1, 1, 2)
-    segmente = np.concatenate([punkte[:-1], punkte[1:]], axis=1)
+    segmente = f1lab.line_segments(xy[:, 0], xy[:, 1])
     mitte = (dist[:-1] + dist[1:]) / 2
     grenzen = sektoren["distance"].to_numpy()
     sektor_idx = np.searchsorted(grenzen, mitte, side="right")

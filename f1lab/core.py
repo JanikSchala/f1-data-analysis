@@ -1125,6 +1125,36 @@ def path_length(x, y, closed: bool = True) -> float:
     return float(np.hypot(np.diff(px), np.diff(py)).sum())
 
 
+def line_segments(x, y) -> np.ndarray:
+    """einen (x, y)-streckenzug in einzelsegmente zerlegen.
+
+    das eingabeformat fuer matplotlibs ``LineCollection``, mit der sich eine
+    streckenkarte abschnittsweise einfaerben laesst (je segment eine eigene
+    farbe, statt einer linie in einer farbe). die umformung selbst ist der
+    unauffaellige teil: erst auf (n, 1, 2) bringen, dann jeden punkt mit
+    seinem nachfolger paaren.
+
+    Args:
+        x, y: koordinaten in derselben einheit, gleiche laenge.
+
+    Returns:
+        array der form (n-1, 2, 2): je zeile ein segment aus start- und
+        endpunkt. weniger als zwei punkte ergeben ein leeres (0, 2, 2).
+
+    Raises:
+        ValueError: wenn x und y unterschiedlich lang sind.
+    """
+    px = np.asarray(x, dtype=float)
+    py = np.asarray(y, dtype=float)
+    if px.size != py.size:
+        raise ValueError("x und y muessen gleich lang sein")
+    if px.size < 2:
+        return np.empty((0, 2, 2), dtype=float)
+
+    punkte = np.column_stack([px, py]).reshape(-1, 1, 2)
+    return np.concatenate([punkte[:-1], punkte[1:]], axis=1)
+
+
 # --------------------------------------------------------- rundenzeit-simulation (P37)
 def track_curvature(x, y, dist, window: int = 21) -> np.ndarray:
     """kruemmung kappa(s) = |x'y'' - y'x''| / (x'^2+y'^2)^1.5 einer ideallinie,
