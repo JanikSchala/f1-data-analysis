@@ -16,6 +16,7 @@ from f1lab.session import (
     TELEMETRY_MARKER,
     TIMING_MARKER,
     TRACK_STATUS,
+    _duelle,
     cache_ready,
     cached_sessions,
     compare_braking_zones,
@@ -27,6 +28,7 @@ from f1lab.session import (
     parse_track_limits,
     sc_compaction,
     season_sessions,
+    temperature_effect,
 )
 
 
@@ -670,3 +672,92 @@ class TestDirtyAirEffect:
     def test_korrigierte_spalte_wird_ergaenzt(self):
         _, _, _, d = dirty_air_effect(self._df(steigung_reifen=0.05))
         assert "sec_corr" in d.columns
+
+
+class TestTemperatureEffect:
+    """Streckentemperatur-Effekt, kontrolliert um Fahrer und Reifenalter
+    (siehe P17: gepoolt geht der Effekt fast immer in der Streuung unter)."""
+
+    @staticmethod
+    def _merged(n=40, *, temp=None, tyre=None, coef_temp=0.0, coef_tyre=0.0,
+                regen=False):
+        temp = np.linspace(30.0, 40.0, n) if temp is None else temp
+        tyre = np.tile(np.arange(1.0, 11.0), n // 10) if tyre is None else tyre
+        return pd.DataFrame({
+            "Rainfall": np.full(n, regen),
+            "TrackTemp": temp,
+            "TyreLife": tyre,
+            "Driver": np.tile(["VER", "NOR"], n // 2),
+            "corr": 90.0 + coef_temp * temp + coef_tyre * tyre,
+        })
+
+    def test_zu_wenige_trockene_runden(self):
+        assert self._temp_n(self._merged(n=10)) == 0
+
+    @staticmethod
+    def _temp_n(df):
+        from f1lab.session import temperature_effect
+        return temperature_effect(df)["n"]
+
+    def test_regen_wird_ausgeschlossen(self):
+        assert self._temp_n(self._merged(regen=True)) == 0
+
+    def test_konstante_temperatur_stuerzt_nicht_ab(self):
+        """ohne Variation ist die Temperaturspalte identisch zum
+        Achsenabschnitt - die Regressionsmatrix wird singulaer. vorher
+        LinAlgError, jetzt ein ehrliches leeres Ergebnis."""
+        got = temperature_effect(self._merged(temp=np.full(40, 31.0)))
+        assert got == {"n": 0}
+
+    def test_konstantes_reifenalter_stuerzt_nicht_ab(self):
+        got = temperature_effect(self._merged(tyre=np.full(40, 5.0)))
+        assert got == {"n": 0}
+
+    def test_findet_den_gesetzten_temperatureffekt(self):
+        got = temperature_effect(self._merged(coef_temp=0.2))
+        assert got["n"] > 0
+        assert got["coef_temp"] == pytest.approx(0.2, abs=1e-6)
+
+    def test_reifenalter_wird_herausgerechnet(self):
+        """haengt die Rundenzeit nur am Reifenalter, darf kein
+        Temperatureffekt uebrig bleiben - der Befund aus P17 in klein."""
+        got = temperature_effect(self._merged(coef_tyre=0.05))
+        assert abs(got["coef_temp"]) < 1e-6
+
+    def test_partial_spalte_fuer_den_plot(self):
+        got = temperature_effect(self._merged(coef_temp=0.2))
+        assert "partial" in got["dry"].columns
+
+
+class TestDuelle:
+    """teaminterne Duelle: nur wer genau zwei Fahrer im Team hat."""
+
+    @staticmethod
+    def _tab(zeilen):
+        return pd.DataFrame(zeilen, columns=["Team", "Driver", "LapTime"])
+
+    def test_schnellerer_fahrer_ist_a(self):
+        got = _duelle(self._tab([("RBR", "VER", 90.0), ("RBR", "PER", 91.0)]),
+                      "Team", "Driver", "LapTime")
+        assert got[0]["a"] == "VER" and got[0]["b"] == "PER"
+        assert got[0]["score_a"] == 1.0
+
+    def test_delta_in_prozent(self):
+        got = _duelle(self._tab([("RBR", "VER", 100.0), ("RBR", "PER", 101.0)]),
+                      "Team", "Driver", "LapTime")
+        assert got[0]["delta_pct"] == pytest.approx(1.0)
+
+    def test_team_mit_nur_einem_fahrer_faellt_raus(self):
+        """kommt real vor: wenn alle Runden des Teamkollegen gestrichen oder
+        unplausibel sind, bleibt nur ein Fahrer - allein gibt es kein Duell."""
+        got = _duelle(self._tab([("RBR", "VER", 90.0),
+                                 ("MCL", "NOR", 90.5), ("MCL", "PIA", 90.7)]),
+                      "Team", "Driver", "LapTime")
+        assert [d["team"] for d in got] == ["MCL"]
+
+    def test_team_mit_drei_fahrern_faellt_raus(self):
+        """Fahrerwechsel innerhalb einer Saison - ein Dreieck ist kein Duell."""
+        got = _duelle(self._tab([("RB", "RIC", 90.0), ("RB", "TSU", 90.2),
+                                 ("RB", "LAW", 90.4)]),
+                      "Team", "Driver", "LapTime")
+        assert got == []

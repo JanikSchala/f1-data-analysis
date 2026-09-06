@@ -1480,6 +1480,13 @@ def temperature_effect(merged: pd.DataFrame) -> dict:
         subset=["TrackTemp", "corr", "TyreLife"]).copy()
     if len(dry) < 20:
         return {"n": 0}
+    # ohne variation in der temperatur gibt es keinen temperatureffekt zu
+    # messen: die spalte waere identisch zum achsenabschnitt, die
+    # regressionsmatrix damit singulaer (LinAlgError). kommt bei kurzen
+    # trockenphasen vor, in denen alle messpunkte auf denselben gerundeten
+    # wert fallen.
+    if dry["TrackTemp"].nunique() < 2 or dry["TyreLife"].nunique() < 2:
+        return {"n": 0}
 
     naiv_slope, naiv_inter = np.polyfit(dry["TrackTemp"], dry["corr"], 1)
     naiv_pred = naiv_slope * dry["TrackTemp"] + naiv_inter
