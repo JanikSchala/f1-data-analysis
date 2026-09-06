@@ -56,7 +56,7 @@ def dominanz_und_nationen(erg: Ergast) -> pd.DataFrame:
             "nation_anteil": nat_anteil,
         })
         time.sleep(0.15)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["season", "champion", "anteil", "teams", "nation_anteil"])
 
 
 def dnf_rate(erg: Ergast) -> pd.DataFrame:
@@ -71,7 +71,7 @@ def dnf_rate(erg: Ergast) -> pd.DataFrame:
             "Finished|Lap", na=False), "count"].sum()
         rows.append({"season": year, "dnf_rate": 1 - finished / total})
         time.sleep(0.15)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["season", "dnf_rate"])
 
 
 def kalendergroesse(erg: Ergast) -> pd.DataFrame:
@@ -84,7 +84,7 @@ def kalendergroesse(erg: Ergast) -> pd.DataFrame:
         rows.append({"season": year, "rennen": len(sched),
                     "laender": sched["country"].nunique()})
         time.sleep(0.15)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["season", "rennen", "laender"])
 
 
 def rundenzeit_je_strecke(erg: Ergast) -> pd.DataFrame:
@@ -111,7 +111,7 @@ def rundenzeit_je_strecke(erg: Ergast) -> pd.DataFrame:
                 continue
             rows.append({"strecke": name, "season": year, "rundenzeit_s": sekunden})
             time.sleep(0.15)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["strecke", "season", "rundenzeit_s"])
 
 
 def zeichne_dominanz(ax, dom: pd.DataFrame) -> None:
@@ -187,26 +187,31 @@ def main():
     print(f"[1/4] Konstrukteurs-Standings {ERSTE_KONSTRUKTEURS_WM}-2024 "
          f"(VORGEHEN 1-2, Nationen) ...")
     dom = dominanz_und_nationen(erg)
-    print(f"      {len(dom)} Saisons geladen. Dominanteste Titel:")
-    print(dom.nlargest(5, "anteil")[["season", "champion", "anteil"]]
-         .to_string(index=False))
-    print("\n      Ausgeglichenste Titel:")
-    print(dom.nsmallest(5, "anteil")[["season", "champion", "anteil"]]
-         .to_string(index=False))
+    print(f"      {len(dom)} Saisons geladen.")
+    if not dom.empty:
+        print("      Dominanteste Titel:")
+        print(dom.nlargest(5, "anteil")[["season", "champion", "anteil"]]
+             .to_string(index=False))
+        print("\n      Ausgeglichenste Titel:")
+        print(dom.nsmallest(5, "anteil")[["season", "champion", "anteil"]]
+             .to_string(index=False))
 
     print(f"\n[2/4] DNF-Rate {DNF_AB}-2024 (VORGEHEN 3) ...")
     dnf = dnf_rate(erg)
-    print(f"      {len(dnf)} Saisons. Hoechste/niedrigste DNF-Rate:")
-    print(f"      {dnf.loc[dnf['dnf_rate'].idxmax(), 'season']}: "
-         f"{dnf['dnf_rate'].max():.1%}  /  "
-         f"{dnf.loc[dnf['dnf_rate'].idxmin(), 'season']}: "
-         f"{dnf['dnf_rate'].min():.1%}")
+    print(f"      {len(dnf)} Saisons.")
+    if not dnf.empty:
+        print(f"      Hoechste/niedrigste DNF-Rate: "
+             f"{dnf.loc[dnf['dnf_rate'].idxmax(), 'season']}: "
+             f"{dnf['dnf_rate'].max():.1%}  /  "
+             f"{dnf.loc[dnf['dnf_rate'].idxmin(), 'season']}: "
+             f"{dnf['dnf_rate'].min():.1%}")
 
     print(f"\n[3/4] Kalendergroesse {ERSTE_KONSTRUKTEURS_WM}-2024 "
          f"(VORGEHEN 4, Streckenwandel) ...")
     kal = kalendergroesse(erg)
-    print(f"      {kal.iloc[0]['season']}: {kal.iloc[0]['rennen']} Rennen "
-         f"-> {kal.iloc[-1]['season']}: {kal.iloc[-1]['rennen']} Rennen")
+    if not kal.empty:
+        print(f"      {kal.iloc[0]['season']}: {kal.iloc[0]['rennen']} Rennen "
+             f"-> {kal.iloc[-1]['season']}: {kal.iloc[-1]['rennen']} Rennen")
 
     print(f"\n[4/4] AUSBAUSTUFE: Rundenzeiten {', '.join(STRECKEN.values())} "
          f"(alle {SCHRITT_STRECKEN} Jahre) ...")
