@@ -1633,7 +1633,12 @@ TRACKLIM_RUNDE = re.compile(
 
 
 def parse_penalties(rcm: pd.DataFrame) -> pd.DataFrame:
-    """strafmeldungen der rennleitung parsen (siehe P19)."""
+    """strafmeldungen der rennleitung parsen (siehe P19).
+
+    ein rennen ganz ohne strafen ist normal. der rueckgabewert traegt
+    deshalb auch dann seine spalten - ein spaltenloses DataFrame wuerde
+    aufrufer mit einem KeyError treffen statt mit einer leeren tabelle.
+    """
     zeilen = []
     for m in rcm.itertuples():
         treffer = PENALTY.search(str(m.Message))
@@ -1641,7 +1646,8 @@ def parse_penalties(rcm: pd.DataFrame) -> pd.DataFrame:
             zeilen.append({"lap": m.Lap, "strafmass": treffer.group(1).upper(),
                            "nr": treffer.group(2), "driver": treffer.group(3),
                            "grund": treffer.group(4)})
-    return pd.DataFrame(zeilen)
+    return pd.DataFrame(zeilen,
+                        columns=["lap", "strafmass", "nr", "driver", "grund"])
 
 
 def blue_flags(session, rcm: pd.DataFrame) -> pd.DataFrame:
@@ -1699,7 +1705,10 @@ def deleted_reason_crosscheck(session, rcm: pd.DataFrame) -> pd.DataFrame:
 
 
 def parse_track_limits(rcm: pd.DataFrame) -> pd.DataFrame:
-    """track-limit-meldungen je fahrer und kurve parsen (siehe P19)."""
+    """track-limit-meldungen je fahrer und kurve parsen (siehe P19).
+
+    spalten bleiben auch ohne treffer erhalten, siehe :func:`parse_penalties`.
+    """
     zeilen = []
     for m in rcm.itertuples():
         treffer = TRACKLIM.search(str(m.Message))
@@ -1707,7 +1716,7 @@ def parse_track_limits(rcm: pd.DataFrame) -> pd.DataFrame:
             zeilen.append({"lap": m.Lap, "nr": treffer.group(1),
                            "driver": treffer.group(2),
                            "turn": int(treffer.group(3))})
-    return pd.DataFrame(zeilen)
+    return pd.DataFrame(zeilen, columns=["lap", "nr", "driver", "turn"])
 
 
 def track_limit_crosscheck(

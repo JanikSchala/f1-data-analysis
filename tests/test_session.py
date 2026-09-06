@@ -21,6 +21,8 @@ from f1lab.session import (
     ergast_retry,
     find_cache,
     not_deleted_mask,
+    parse_penalties,
+    parse_track_limits,
     season_sessions,
 )
 
@@ -435,3 +437,85 @@ class TestSeasonSessions:
         assert aufrufe == []
         next(gen)
         assert len(aufrufe) == 1
+
+
+class TestRaceControlParser:
+    """die Strafen-Regex traf bei ihrer Einfuehrung 0 von 6 echten Meldungen
+    (siehe P19). die Beispiele hier sind deshalb keine erfundenen Strings,
+    sondern woertliche Meldungen aus Oesterreich 2024."""
+
+    ECHTE_STRAFEN = [
+        "FIA STEWARDS: 10 SECOND TIME PENALTY FOR CAR 14 (ALO) - CAUSING A COLLISION",
+        "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 11 (PER) - SPEEDING IN THE PIT LANE",
+        "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 4 (NOR) - TRACK LIMITS",
+        "FIA STEWARDS: 10 SECOND TIME PENALTY FOR CAR 1 (VER) - CAUSING A COLLISION",
+    ]
+    ECHTE_LIMITS = [
+        "CAR 3 (RIC) LAP DELETED - TRACK LIMITS AT TURN 3 LAP 1 15:03:32",
+        "CAR 27 (HUL) TIME 1:29.202 DELETED - TRACK LIMITS AT TURN 3 LAP 12 15:16:58",
+        "CAR 4 (NOR) TIME 1:11.751 DELETED - TRACK LIMITS AT TURN 3 LAP 10 15:14:03",
+    ]
+
+    @staticmethod
+    def _rcm(nachrichten):
+        return pd.DataFrame({"Lap": list(range(1, len(nachrichten) + 1)),
+                             "Message": nachrichten})
+
+    def test_echte_strafmeldungen_werden_alle_getroffen(self):
+        got = parse_penalties(self._rcm(self.ECHTE_STRAFEN))
+        assert len(got) == len(self.ECHTE_STRAFEN)
+        assert got["driver"].tolist() == ["ALO", "PER", "NOR", "VER"]
+        assert got["nr"].tolist() == ["14", "11", "4", "1"]
+
+    def test_praefix_vor_der_strafe_stoert_nicht(self):
+        """echte Meldungen beginnen mit "FIA STEWARDS: ". ein Wechsel von
+        search() auf match() wuerde genau hier alles stillschweigend
+        verlieren - das war der urspruengliche Fund in P19."""
+        ohne = "10 SECOND TIME PENALTY FOR CAR 14 (ALO) - CAUSING A COLLISION"
+        mit = "FIA STEWARDS: " + ohne
+        assert len(parse_penalties(self._rcm([ohne]))) == 1
+        assert len(parse_penalties(self._rcm([mit]))) == 1
+
+    def test_strafmass_und_grund_getrennt(self):
+        got = parse_penalties(self._rcm([self.ECHTE_STRAFEN[1]]))
+        assert got["strafmass"].iloc[0] == "5 SECOND TIME PENALTY"
+        assert got["grund"].iloc[0] == "SPEEDING IN THE PIT LANE"
+
+    def test_grund_mit_gedankenstrich_bleibt_vollstaendig(self):
+        """ein echter Grund enthaelt einen Halbgeviertstrich, nicht nur
+        ASCII - er darf den Text nicht abschneiden."""
+        msg = ("FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 44 (HAM) - FAILING "
+               "TO FOLLOW RACE DIRECTORS INSTRUCTIONS – CROSSING THE LINE "
+               "AT PIT ENTRY")
+        got = parse_penalties(self._rcm([msg]))
+        assert got["grund"].iloc[0].endswith("CROSSING THE LINE AT PIT ENTRY")
+
+    def test_andere_meldungen_ergeben_keine_strafe(self):
+        harmlos = ["GREEN LIGHT - PIT EXIT OPEN", "DRS ENABLED",
+                   "CAR 3 (RIC) LAP DELETED - TRACK LIMITS AT TURN 3 LAP 1"]
+        assert parse_penalties(self._rcm(harmlos)).empty
+
+    def test_echte_track_limit_meldungen(self):
+        got = parse_track_limits(self._rcm(self.ECHTE_LIMITS))
+        assert got["driver"].tolist() == ["RIC", "HUL", "NOR"]
+        assert got["turn"].tolist() == [3, 3, 3]
+
+    def test_rundenzeit_in_der_meldung_verwirrt_die_kurve_nicht(self):
+        """"TIME 1:29.202" steht vor der Kurvennummer und enthaelt selbst
+        Ziffern - die Kurve muss trotzdem 3 sein, nicht 1 oder 29."""
+        got = parse_track_limits(self._rcm([self.ECHTE_LIMITS[1]]))
+        assert got["turn"].iloc[0] == 3
+
+    def test_leeres_ergebnis_behaelt_seine_spalten(self):
+        """ein Rennen ohne Strafen ist normal. ein spaltenloses DataFrame
+        wuerde Aufrufer mit einem KeyError treffen statt mit einer leeren
+        Tabelle - genau der Fehler, der sieg_attribution() schon einmal
+        zerlegt hat."""
+        leer = self._rcm(["GREEN LIGHT - PIT EXIT OPEN"])
+        pen, lim = parse_penalties(leer), parse_track_limits(leer)
+        assert pen.empty and lim.empty
+        assert list(pen.columns) == ["lap", "strafmass", "nr", "driver", "grund"]
+        assert list(lim.columns) == ["lap", "nr", "driver", "turn"]
+        # so greifen die Aufrufer darauf zu (13_RaceControl.py, P19)
+        assert pen.groupby("driver").size().empty
+        assert lim.groupby("turn").size().empty

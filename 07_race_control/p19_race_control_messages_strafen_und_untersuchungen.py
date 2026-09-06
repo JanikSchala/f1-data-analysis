@@ -66,6 +66,13 @@ def zeichne_strafen(ax, pen: pd.DataFrame) -> None:
 
 
 def zeichne_tracklimits_lokal(ax, lim: pd.DataFrame) -> None:
+    if lim.empty:
+        # wie zeichne_strafen(): nicht jedes Rennen produziert Meldungen,
+        # das ist kein Fehler sondern eine leere Aussage.
+        ax.text(0.5, 0.5, "keine Track-Limit-Meldungen", ha="center",
+               va="center", color=MUTED)
+        ax.axis("off")
+        return
     je_kurve = lim.groupby("turn").size().sort_index()
     ax.bar([f"T{t}" for t in je_kurve.index], je_kurve.to_numpy(),
           color=SERIEN[0], width=0.6)
