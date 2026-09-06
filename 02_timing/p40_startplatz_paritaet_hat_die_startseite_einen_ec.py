@@ -19,7 +19,7 @@ import pandas as pd
 from scipy.stats import ttest_ind
 
 import f1lab
-from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
+from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil, rampe_farben
 
 warnings.filterwarnings("ignore")
 
@@ -53,13 +53,18 @@ def zeichne_strecken(ax, ergebnisse: pd.DataFrame) -> None:
 def zeichne_konsistenz(ax, saison_diffs: pd.DataFrame) -> None:
     """zeigt ob die richtung des effekts in jeder einzelnen saison haelt."""
     strecken = KONSISTENZ_STRECKEN
-    breite = 0.8 / max(len(saison_diffs["season"].unique()), 1)
-    for i, s in enumerate(sorted(saison_diffs["season"].unique())):
+    saisons = sorted(saison_diffs["season"].unique())
+    breite = 0.8 / max(len(saisons), 1)
+    # saisons sind geordnet und regelmaessig mehr als MAX_SERIEN. die
+    # kategoriepalette zyklisch weiterzudrehen gaebe 2018, 2021 und 2024
+    # dieselbe farbe - nebeneinander im selben diagramm, ohne zweite
+    # unterscheidung. die sequenzielle rampe traegt die reihenfolge selbst.
+    farben = rampe_farben(len(saisons))
+    for i, s in enumerate(saisons):
         werte = saison_diffs[saison_diffs["season"] == s].set_index("gp")
         werte = werte.reindex(strecken)
         x = np.arange(len(strecken)) + i * breite
-        ax.bar(x, werte["diff"], width=breite, color=SERIEN[i % len(SERIEN)],
-              label=str(s))
+        ax.bar(x, werte["diff"], width=breite, color=farben[i], label=str(s))
     ax.axhline(0, color=MUTED, lw=1)
     ax.set_xticks(np.arange(len(strecken)) + 0.35)
     ax.set_xticklabels([s.replace(" Grand Prix", "") for s in strecken])

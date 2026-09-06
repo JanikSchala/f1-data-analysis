@@ -68,6 +68,53 @@ RAMPE = ["#14413a", "#199e70", "#6fe3bb"]
 # dieselbe rampe als Plotly-colorscale.
 RAMPE_SCALE = [[i / (len(RAMPE) - 1), f] for i, f in enumerate(RAMPE)]
 
+
+def rampe_farben(n: int) -> list[str]:
+    """n farben aus :data:`RAMPE`, dunkel nach hell.
+
+    fuer *geordnete* reihen mit mehr als :data:`MAX_SERIEN` eintraegen -
+    saisons, jahrgaenge, stufen. die kategoriepalette darf dafuer nicht
+    zyklisch weitergedreht werden: bei vier reihen bekaeme die vierte
+    dieselbe farbe wie die erste, und zwei verschiedene dinge waeren im
+    diagramm nicht mehr auseinanderzuhalten.
+
+    die rampe hat dieses problem nicht, weil sie die reihenfolge selbst
+    traegt statt identitaeten zu vergeben. fuer *ungeordnete* kategorien ist
+    sie deshalb falsch - dort braucht es eine andere darstellungsform (siehe
+    modul-docstring).
+
+    Args:
+        n: anzahl gewuenschter farben, mindestens 1.
+
+    Returns:
+        hex-farben von dunkel nach hell. n=1 gibt den mittleren ton.
+    """
+    if n < 1:
+        raise ValueError(f"mindestens eine farbe noetig, {n} angefragt")
+
+    stufen = [_hex_zu_rgb(f) for f in RAMPE]
+    if n == 1:
+        return [_rgb_zu_hex(stufen[len(stufen) // 2])]
+
+    out = []
+    for i in range(n):
+        pos = i / (n - 1) * (len(stufen) - 1)
+        unten = min(int(pos), len(stufen) - 2)
+        t = pos - unten
+        a, b = stufen[unten], stufen[unten + 1]
+        out.append(_rgb_zu_hex(tuple(round(a[k] + t * (b[k] - a[k]))
+                                     for k in range(3))))
+    return out
+
+
+def _hex_zu_rgb(farbe: str) -> tuple[int, int, int]:
+    h = farbe.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _rgb_zu_hex(rgb) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
 IDENT_NAME = {
     "FP1": "1. Freies Training", "FP2": "2. Freies Training",
     "FP3": "3. Freies Training", "Q": "Qualifying",

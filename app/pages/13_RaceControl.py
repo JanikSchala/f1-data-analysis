@@ -126,7 +126,7 @@ with tab_sc:
                     fig3.add_trace(go.Bar(
                         x=[f"Deployment {j + 1}" for j in range(len(tab_sek))],
                         y=tab_sek[col], name=f"Sektor {int(col)}",
-                        marker={"color": d.SERIEN[i % len(d.SERIEN)]}))
+                        marker={"color": d.SERIEN[i]}))
                 zeige(fig3, hoehe=340, barmode="group", xaxis=namensachse(),
                      yaxis=achse("Fahrer"))
 

@@ -622,7 +622,7 @@ with tab_trends:
                 g = g.sort_values("season")
                 fig5.add_trace(go.Scatter(
                     x=g["season"], y=g["rundenzeit_s"], mode="lines+markers",
-                    name=strecke, line={"color": d.SERIEN[i % len(d.SERIEN)]}))
+                    name=strecke, line={"color": d.SERIEN[i]}))
             fig5.add_vline(x=1979, line_color=d.MUTED, line_dash="dot")
             fig5.add_annotation(x=1979, y=1, yref="paper", showarrow=False,
                                text="Spa fehlt 1971-82,<br>kehrt verkuerzt zurueck",

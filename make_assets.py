@@ -472,7 +472,7 @@ def historic_lap_times():
     for i, (strecke, g) in enumerate(rz.groupby("strecke")):
         g = g.sort_values("season")
         ax.plot(g["season"], g["rundenzeit_s"], marker="o", ms=4, lw=1.6,
-               color=SERIEN[i % len(SERIEN)], label=strecke)
+               color=SERIEN[i], label=strecke)
     ax.axvline(1979, color=MUTED, lw=1, ls=":")
     ax.text(1979, ax.get_ylim()[1], " Spa fehlt 1971-82,\n kehrt verkuerzt zurueck",
            fontsize=8, color=MUTED, va="top")
