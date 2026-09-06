@@ -11,7 +11,6 @@ datensaetze liegen dauerhaft im diskcache, nur der erste aufruf dauert.
 """
 from __future__ import annotations
 
-import fastf1
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -80,27 +79,17 @@ def _quali_zeit(row: pd.Series) -> float:
 
 def _sammle_quali(jahre: range) -> pd.DataFrame:
     rows = []
-    for jahr in jahre:
-        sched = fastf1.get_event_schedule(jahr, include_testing=False)
-        for _, event in sched.iterrows():
-            rnd = int(event["RoundNumber"])
-            try:
-                q = f1lab.load(jahr, rnd, "Q", telemetry=False, weather=False,
-                              messages=False)
-            except Exception:
-                continue
-            res = q.results
-            if res.empty:
-                continue
-            zeiten = res.apply(_quali_zeit, axis=1)
-            pole = zeiten.min()
-            for (_, r), zt in zip(res.iterrows(), zeiten, strict=True):
-                rows.append({
-                    "season": jahr, "round": rnd, "event": event["EventName"],
-                    "driver": r["Abbreviation"], "team": r["TeamName"],
-                    "position": r["Position"],
-                    "zeit_rel": zt / pole if pd.notna(zt) and pole else np.nan,
-                })
+    for jahr, rnd, event, q in f1lab.season_sessions(jahre, "Q"):
+        res = q.results
+        zeiten = res.apply(_quali_zeit, axis=1)
+        pole = zeiten.min()
+        for (_, r), zt in zip(res.iterrows(), zeiten, strict=True):
+            rows.append({
+                "season": jahr, "round": rnd, "event": event["EventName"],
+                "driver": r["Abbreviation"], "team": r["TeamName"],
+                "position": r["Position"],
+                "zeit_rel": zt / pole if pd.notna(zt) and pole else np.nan,
+            })
     return pd.DataFrame(rows)
 
 
@@ -745,25 +734,15 @@ RENN_FORM_FENSTER = 5
 
 def _sammle_rennen(jahre) -> pd.DataFrame:
     rows = []
-    for jahr in jahre:
-        sched = fastf1.get_event_schedule(jahr, include_testing=False)
-        for _, event in sched.iterrows():
-            rnd = int(event["RoundNumber"])
-            try:
-                ses = f1lab.load(jahr, rnd, "R", telemetry=False, weather=False,
-                                 messages=False)
-            except Exception:
-                continue
-            res = ses.results
-            if res.empty:
-                continue
-            for _, r in res.iterrows():
-                rows.append({
-                    "season": jahr, "round": rnd, "event": event["EventName"],
-                    "driver": r["Abbreviation"], "team": r["TeamName"],
-                    "grid": r["GridPosition"], "position": r["Position"],
-                    "status": r["Status"], "points": r["Points"],
-                })
+    for jahr, rnd, event, ses in f1lab.season_sessions(jahre, "R"):
+        res = ses.results
+        for _, r in res.iterrows():
+            rows.append({
+                "season": jahr, "round": rnd, "event": event["EventName"],
+                "driver": r["Abbreviation"], "team": r["TeamName"],
+                "grid": r["GridPosition"], "position": r["Position"],
+                "status": r["Status"], "points": r["Points"],
+            })
     df = pd.DataFrame(rows)
     df["dnf"] = ~df["status"].isin(["Finished", "Lapped"])
     df["podium"] = (df["position"] <= 3) & ~df["dnf"]

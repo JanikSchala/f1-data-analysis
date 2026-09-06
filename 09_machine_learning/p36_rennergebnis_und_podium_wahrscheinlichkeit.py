@@ -43,25 +43,15 @@ def sammle_rennen(jahre: range) -> pd.DataFrame:
     """Grid/Ziel/Status je Fahrer und Rennen, direkt aus der FastF1-Session (Session.results).
     Konsequent ohne Ergast für Daten, die FastF1 selbst schon liefert."""
     rows = []
-    for jahr in jahre:
-        sched = fastf1.get_event_schedule(jahr, include_testing=False)
-        for _, event in sched.iterrows():
-            rnd = int(event["RoundNumber"])
-            try:
-                ses = f1lab.load(jahr, rnd, "R", telemetry=False, weather=False,
-                                 messages=False)
-            except Exception:
-                continue
-            res = ses.results
-            if res.empty:
-                continue
-            for _, r in res.iterrows():
-                rows.append({
-                    "season": jahr, "round": rnd, "event": event["EventName"],
-                    "driver": r["Abbreviation"], "team": r["TeamName"],
-                    "grid": r["GridPosition"], "position": r["Position"],
-                    "status": r["Status"], "points": r["Points"],
-                })
+    for jahr, rnd, event, ses in f1lab.season_sessions(jahre, "R"):
+        res = ses.results
+        for _, r in res.iterrows():
+            rows.append({
+                "season": jahr, "round": rnd, "event": event["EventName"],
+                "driver": r["Abbreviation"], "team": r["TeamName"],
+                "grid": r["GridPosition"], "position": r["Position"],
+                "status": r["Status"], "points": r["Points"],
+            })
     df = pd.DataFrame(rows)
     df["dnf"] = ~df["status"].isin(["Finished", "Lapped"])
     df["podium"] = (df["position"] <= 3) & ~df["dnf"]

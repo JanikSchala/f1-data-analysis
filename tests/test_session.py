@@ -21,6 +21,7 @@ from f1lab.session import (
     ergast_retry,
     find_cache,
     not_deleted_mask,
+    season_sessions,
 )
 
 
@@ -347,3 +348,90 @@ class TestErgastRetry:
 
     def test_argumente_gehen_unveraendert_durch(self):
         assert ergast_retry(lambda a, b=0: (a, b), 1, b=2) == (1, 2)
+
+
+class TestSeasonSessions:
+    """das Rueckgrat jedes Saison-Scans. lag vorher fuenfmal einzeln im Repo,
+    jedes Mal mit demselben nackten except-continue."""
+
+    class _Session:
+        def __init__(self, results):
+            self.results = results
+
+    @pytest.fixture
+    def kalender(self, monkeypatch):
+        """zwei Saisons a zwei Runden, ohne Netz."""
+        def fake_schedule(jahr, include_testing=False):
+            assert include_testing is False   # Testfahrten sind keine Rennen
+            return pd.DataFrame({"RoundNumber": [1, 2],
+                                 "EventName": [f"GP {jahr}-1", f"GP {jahr}-2"]})
+        monkeypatch.setattr(session_mod.fastf1, "get_event_schedule",
+                            fake_schedule)
+
+    def _lade(self, monkeypatch, verhalten):
+        """verhalten: (jahr, runde) -> Session, None (leer) oder Exception."""
+        aufrufe = []
+
+        def fake_load(jahr, rnd, identifier, **kwargs):
+            aufrufe.append((jahr, rnd, identifier, kwargs))
+            was = verhalten(jahr, rnd)
+            if isinstance(was, Exception):
+                raise was
+            return was
+        monkeypatch.setattr(session_mod, "load", fake_load)
+        return aufrufe
+
+    def test_liefert_jede_ladbare_session(self, kalender, monkeypatch):
+        voll = self._Session(pd.DataFrame({"Position": [1]}))
+        self._lade(monkeypatch, lambda j, r: voll)
+        got = list(season_sessions([2023, 2024]))
+        assert [(j, r) for j, r, _, _ in got] == [
+            (2023, 1), (2023, 2), (2024, 1), (2024, 2)]
+        assert got[0][2]["EventName"] == "GP 2023-1"
+
+    def test_nicht_ladbare_runde_wird_uebersprungen(self, kalender, monkeypatch):
+        """der Cache deckt nie jede Session ab - das ist der Normalfall."""
+        voll = self._Session(pd.DataFrame({"Position": [1]}))
+        self._lade(monkeypatch,
+                   lambda j, r: ValueError("nicht im Cache") if r == 1 else voll)
+        got = list(season_sessions([2024]))
+        assert [(j, r) for j, r, _, _ in got] == [(2024, 2)]
+
+    def test_leere_ergebnistabelle_wird_uebersprungen(self, kalender, monkeypatch):
+        leer = self._Session(pd.DataFrame())
+        voll = self._Session(pd.DataFrame({"Position": [1]}))
+        self._lade(monkeypatch, lambda j, r: leer if r == 1 else voll)
+        assert [r for _, r, _, _ in season_sessions([2024])] == [2]
+
+    def test_leere_ergebnisse_bleiben_wenn_gewuenscht(self, kalender, monkeypatch):
+        """Auswertungen auf laps statt results brauchen die Session trotzdem."""
+        leer = self._Session(pd.DataFrame())
+        self._lade(monkeypatch, lambda j, r: leer)
+        got = list(season_sessions([2024], mit_ergebnis=False))
+        assert len(got) == 2
+
+    def test_identifier_geht_durch(self, kalender, monkeypatch):
+        voll = self._Session(pd.DataFrame({"Position": [1]}))
+        aufrufe = self._lade(monkeypatch, lambda j, r: voll)
+        list(season_sessions([2024], "Q"))
+        assert {a[2] for a in aufrufe} == {"Q"}
+
+    def test_laedt_ohne_telemetrie_wetter_meldungen(self, kalender, monkeypatch):
+        """ein Scan ueber drei Jahre braucht die Ergebnistabelle, nicht den
+        um ein Vielfaches groesseren Rest."""
+        voll = self._Session(pd.DataFrame({"Position": [1]}))
+        aufrufe = self._lade(monkeypatch, lambda j, r: voll)
+        list(season_sessions([2024]))
+        for _, _, _, kwargs in aufrufe:
+            assert kwargs == {"telemetry": False, "weather": False,
+                              "messages": False}
+
+    def test_ist_ein_generator_laedt_erst_beim_iterieren(self, kalender,
+                                                         monkeypatch):
+        """sonst wuerde ein Scan ueber viele Saisons alles auf einmal laden."""
+        voll = self._Session(pd.DataFrame({"Position": [1]}))
+        aufrufe = self._lade(monkeypatch, lambda j, r: voll)
+        gen = season_sessions([2024])
+        assert aufrufe == []
+        next(gen)
+        assert len(aufrufe) == 1

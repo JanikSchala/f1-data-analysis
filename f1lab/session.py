@@ -203,6 +203,45 @@ def load(year: int, gp, identifier: str = "R",
     return ses
 
 
+def season_sessions(jahre, identifier: str = "R", *, mit_ergebnis: bool = True):
+    """jede session eines typs ueber mehrere saisons, der reihe nach geladen.
+
+    das rueckgrat jedes saison-scans: kalender je jahr holen, jede runde
+    laden, alles ueberspringen was sich nicht auswerten laesst. genau diese
+    ueberspring-regel lag vorher fuenfmal einzeln im repo, jedes mal als
+    nacktes ``except Exception: continue`` ohne gemeinsame beschreibung.
+
+    geladen wird bewusst ohne telemetrie, wetter und meldungen - ein
+    saison-scan ueber drei jahre braucht die ergebnistabelle, nicht den
+    vielfach groesseren rest.
+
+    Args:
+        jahre: iterable von saisons.
+        identifier: session-typ wie bei :func:`load` ("R", "Q", ...).
+        mit_ergebnis: sessions ohne ``results``-zeilen ueberspringen. fuer
+            auswertungen auf ``laps`` statt ``results`` abschaltbar.
+
+    Yields:
+        ``(jahr, runde, event, session)`` je auswertbarer session. ``event``
+        ist die kalenderzeile, sie traegt u.a. ``EventName``.
+    """
+    for jahr in jahre:
+        sched = fastf1.get_event_schedule(int(jahr), include_testing=False)
+        for _, event in sched.iterrows():
+            rnd = int(event["RoundNumber"])
+            try:
+                ses = load(int(jahr), rnd, identifier, telemetry=False,
+                           weather=False, messages=False)
+            except Exception:
+                # eine nicht geladene runde ist der normalfall, nicht der
+                # ausnahmefall: der cache deckt nie jede session ab, und
+                # kuenftige runden gibt es noch gar nicht.
+                continue
+            if mit_ergebnis and ses.results.empty:
+                continue
+            yield jahr, rnd, event, ses
+
+
 def ergast_retry(fn, *args, versuche: int = 5, pause: float = 3.0,
                  leer_bei_fehlschlag: bool = False, **kwargs):
     """einen Ergast/jolpica-aufruf mit backoff wiederholen.

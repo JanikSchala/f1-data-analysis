@@ -51,27 +51,17 @@ def quali_zeit(row: pd.Series) -> float:
 def sammle_quali(jahre: range) -> pd.DataFrame:
     """Reine Quali-Ergebnisse über alle Jahre als Grundlage für Vorjahresposition und Teamform. Kein FP-Laden nötig."""
     rows = []
-    for jahr in jahre:
-        sched = fastf1.get_event_schedule(jahr, include_testing=False)
-        for _, event in sched.iterrows():
-            rnd = int(event["RoundNumber"])
-            try:
-                q = f1lab.load(jahr, rnd, "Q", telemetry=False, weather=False,
-                              messages=False)
-            except Exception:
-                continue
-            res = q.results
-            if res.empty:
-                continue
-            zeiten = res.apply(quali_zeit, axis=1)
-            pole = zeiten.min()
-            for (_, r), zt in zip(res.iterrows(), zeiten, strict=True):
-                rows.append({
-                    "season": jahr, "round": rnd, "event": event["EventName"],
-                    "driver": r["Abbreviation"], "team": r["TeamName"],
-                    "position": r["Position"],
-                    "zeit_rel": zt / pole if pd.notna(zt) and pole else np.nan,
-                })
+    for jahr, rnd, event, q in f1lab.season_sessions(jahre, "Q"):
+        res = q.results
+        zeiten = res.apply(quali_zeit, axis=1)
+        pole = zeiten.min()
+        for (_, r), zt in zip(res.iterrows(), zeiten, strict=True):
+            rows.append({
+                "season": jahr, "round": rnd, "event": event["EventName"],
+                "driver": r["Abbreviation"], "team": r["TeamName"],
+                "position": r["Position"],
+                "zeit_rel": zt / pole if pd.notna(zt) and pole else np.nan,
+            })
     return pd.DataFrame(rows)
 
 
