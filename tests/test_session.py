@@ -496,6 +496,19 @@ class TestRaceControlParser:
         got = parse_penalties(self._rcm([msg]))
         assert got["grund"].iloc[0].endswith("CROSSING THE LINE AT PIT ENTRY")
 
+    def test_verweis_mit_to_car_statt_for_car(self):
+        """woertlich aus Oesterreich 2018. ein Verweis, der an eine
+        Zwischenfall-Meldung angehaengt wird, heisst "REPRIMAND TO CAR" -
+        nicht "FOR CAR" wie sonst. mit der alten Regex fiel diese Strafe
+        still unter den Tisch und P19 meldete 0 Strafen fuer das Rennen."""
+        msg = ("TURN 1 INCIDENT INVOLVING CARS 31 (OCO) AND 55 (SAI) - "
+               "REPRIMAND TO CAR 55 (SAI)")
+        got = parse_penalties(self._rcm([msg]))
+        assert len(got) == 1
+        assert got["strafmass"].iloc[0] == "REPRIMAND"
+        assert got["driver"].iloc[0] == "SAI"
+        assert got["nr"].iloc[0] == "55"
+
     def test_andere_meldungen_ergeben_keine_strafe(self):
         harmlos = ["GREEN LIGHT - PIT EXIT OPEN", "DRS ENABLED",
                    "CAR 3 (RIC) LAP DELETED - TRACK LIMITS AT TURN 3 LAP 1"]

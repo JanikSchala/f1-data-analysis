@@ -46,7 +46,7 @@ def saison_scan() -> pd.DataFrame:
         lim = f1lab.parse_track_limits(ses.race_control_messages)
         for r in lim.itertuples():
             zeilen.append({"gp": gp, "driver": r.driver, "turn": r.turn})
-    return pd.DataFrame(zeilen)
+    return pd.DataFrame(zeilen, columns=["gp", "driver", "turn"])
 
 
 def zeichne_strafen(ax, pen: pd.DataFrame) -> None:
@@ -87,6 +87,11 @@ def zeichne_tracklimits_lokal(ax, lim: pd.DataFrame) -> None:
 
 def zeichne_saison_ranking(ax, scan: pd.DataFrame) -> None:
     """strecken-ranking."""
+    if scan.empty:
+        ax.text(0.5, 0.5, "keine Track-Limit-Meldungen in dieser Saison",
+               ha="center", va="center", color=MUTED)
+        ax.axis("off")
+        return
     je_strecke = scan.groupby("gp").size().sort_values(ascending=False).head(10)
     farben = [SERIEN[1] if i == 0 else MUTED for i in range(len(je_strecke))]
     ax.barh(je_strecke.index[::-1], je_strecke.to_numpy()[::-1],
@@ -119,10 +124,15 @@ def zeichne_blaue_flaggen(ax, bf: pd.DataFrame) -> None:
     ax.set_axisbelow(True)
 
 
-def zeichne_top_strecke(ax, scan: pd.DataFrame, top_gp: str) -> None:
+def zeichne_top_strecke(ax, scan: pd.DataFrame, top_gp: str | None) -> None:
     """kurven-aufschlüsselung der strecke mit den meisten meldungen."""
     je_kurve = (scan[scan["gp"] == top_gp].groupby("turn").size()
-               .sort_values(ascending=False))
+               .sort_values(ascending=False)) if top_gp else pd.Series(dtype=int)
+    if je_kurve.empty:
+        ax.text(0.5, 0.5, "keine Track-Limit-Meldungen in dieser Saison",
+               ha="center", va="center", color=MUTED)
+        ax.axis("off")
+        return
     farben = [SERIEN[1] if i == 0 else MUTED for i in range(len(je_kurve))]
     ax.bar([f"T{t}" for t in je_kurve.index], je_kurve.to_numpy(), color=farben,
           width=0.6)
@@ -181,10 +191,15 @@ def main():
          f"Rennen) ...")
     scan = saison_scan()
     je_strecke = scan.groupby("gp").size().sort_values(ascending=False)
-    print(je_strecke.head(10).to_string())
-    top_gp = je_strecke.index[0]
-    print(f"\n      {top_gp}: Kurven-Aufschluesselung")
-    print(scan[scan["gp"] == top_gp]["turn"].value_counts().to_string())
+    # 2018 und frueher kennt die Rennleitung das Meldungsformat noch nicht,
+    # der Scan bleibt dann leer - kein Fehler, nur nichts auszuwerten.
+    top_gp = je_strecke.index[0] if not je_strecke.empty else None
+    if top_gp is None:
+        print("      keine Track-Limit-Meldungen in dieser Saison")
+    else:
+        print(je_strecke.head(10).to_string())
+        print(f"\n      {top_gp}: Kurven-Aufschluesselung")
+        print(scan[scan["gp"] == top_gp]["turn"].value_counts().to_string())
 
     print("\nGrafik ...")
     fig, ax = plt.subplots(2, 2, figsize=(15, 10))

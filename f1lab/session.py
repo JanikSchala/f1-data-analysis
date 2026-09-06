@@ -1637,9 +1637,14 @@ def sc_deployment_sectors(session) -> pd.DataFrame:
 # VORGEHEN 2 (P19): reale FIA-meldungen nennen strafmass und fahrer in
 # umgekehrter reihenfolge zur naheliegenden annahme ("10 SECOND ... FOR CAR
 # 14 (ALO)", nicht "CAR 14 (ALO) ... 10 SECOND").
+# "FOR CAR" ist die uebliche Formulierung, "TO CAR" kommt bei Verweisen vor,
+# die an eine Zwischenfall-Meldung angehaengt werden ("... INCIDENT INVOLVING
+# CARS 31 (OCO) AND 55 (SAI) - REPRIMAND TO CAR 55 (SAI)"). ohne die zweite
+# Variante faellt so eine Strafe still unter den Tisch, statt als 0 gezaehlt
+# zu werden - im Cache betrifft das Oesterreich 2018.
 PENALTY = re.compile(
     r"(\d+ SECOND (?:TIME|STOP/GO) PENALTY|DRIVE.?THROUGH PENALTY|REPRIMAND)"
-    r" FOR CAR (\d+) \(([A-Z]{3})\)(?: - (.*))?", re.I)
+    r" (?:FOR|TO) CAR (\d+) \(([A-Z]{3})\)(?: - (.*))?", re.I)
 TRACKLIM = re.compile(r"CAR (\d+) \(([A-Z]{3})\).*TRACK LIMITS AT TURN (\d+)", re.I)
 # fuer die gegenpruefung zusaetzlich die im text genannte betroffene runde,
 # NICHT dieselbe runde, in der die meldung gepostet wurde (die loeschung
