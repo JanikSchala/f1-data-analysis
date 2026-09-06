@@ -51,17 +51,6 @@ AUSSCHLUSS_SCHLUESSEL = ("disqualified", "excluded", "did not qualify",
                         "did not prequalify", "did not start", "withdrew")
 
 
-def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """Ergast/jolpica limitiert die Anfragerate bei Serienabfragen ueber viele Saisons."""
-    for i in range(versuche):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            if i == versuche - 1:
-                return None
-            time.sleep(3 * (i + 1))
-    return None
-
 
 def alle_ergebnisse(erg: Ergast, saison: int) -> pd.DataFrame:
     """paginiert vollstaendig durch eine saison. der server deckelt eine
@@ -71,8 +60,9 @@ def alle_ergebnisse(erg: Ergast, saison: int) -> pd.DataFrame:
     ihrer eigenen runde getaggt statt ganze content-bloecke anzunehmen."""
     off, total, teile = 0, None, []
     while total is None or off < total:
-        res = _mit_wiederholung(erg.get_race_results, season=saison,
-                                limit=100, offset=off)
+        res = f1lab.ergast_retry(erg.get_race_results, season=saison,
+                                 limit=100, offset=off,
+                                 leer_bei_fehlschlag=True)
         if res is None or not res.content:
             break
         total = res.total_results

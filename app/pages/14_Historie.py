@@ -14,7 +14,6 @@ from __future__ import annotations
 import time
 
 import fastf1
-import fastf1.exceptions
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -23,6 +22,7 @@ from common import achse, hinweis, namensachse, setup, zeige
 from fastf1.ergast import Ergast
 from scipy.stats import pearsonr
 
+import f1lab
 from f1lab import design as d
 
 YEAR = pd.Timestamp.now().year
@@ -56,22 +56,6 @@ setup("Historie", "WM-Stand-Simulator fuer die laufende Saison, und 75 "
 tab_wm, tab_konstrukteure, tab_trends = st.tabs(
     ["Fahrer-WM-Simulator", "Konstrukteurs-WM-Simulator", "75-Jahre-Trends"])
 
-
-def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """siehe 11_Boxenstopps.py: ``ErgastInvalidRequestError`` ("Not
-    Cached") liess sich beim testen fuer die laufende saison durch die app
-    reproduzierbar ausloesen, wiederholen aendert daran nichts - dort ohne
-    wiederholung, hier genauso."""
-    for i in range(versuche):
-        try:
-            return fn(*args, **kwargs)
-        except fastf1.exceptions.ErgastInvalidRequestError:
-            raise
-        except Exception:
-            if i == versuche - 1:
-                raise
-            time.sleep(3 * (i + 1))
-    return None
 
 
 def _punkte_array(tabelle: dict) -> np.ndarray:
@@ -143,8 +127,8 @@ def _monte_carlo_team(base_points, teams, pos_hist, sprint_hist, sprint_flags,
 @st.cache_data(ttl=3600, show_spinner=False)
 def _wm_daten(jahr: int):
     erg = Ergast(result_type="pandas", auto_cast=True)
-    standings = _mit_wiederholung(erg.get_driver_standings, season=jahr).content[0]
-    sched = _mit_wiederholung(erg.get_race_schedule, season=jahr)
+    standings = f1lab.ergast_retry(erg.get_driver_standings, season=jahr).content[0]
+    sched = f1lab.ergast_retry(erg.get_race_schedule, season=jahr)
     remaining = fastf1.get_events_remaining(include_testing=False)
     sprint_flags = remaining["EventFormat"].str.contains(
         "sprint", case=False).tolist()
@@ -153,7 +137,7 @@ def _wm_daten(jahr: int):
     race_frames, sprint_frames = [], []
     for r in range(1, gefahrene_runden + 1):
         try:
-            res = _mit_wiederholung(erg.get_race_results, season=jahr, round=r).content
+            res = f1lab.ergast_retry(erg.get_race_results, season=jahr, round=r).content
             if res:
                 race_frames.append(res[0])
         except Exception:
@@ -162,7 +146,7 @@ def _wm_daten(jahr: int):
             pass
         time.sleep(0.2)
         try:
-            sp = _mit_wiederholung(erg.get_sprint_results, season=jahr, round=r).content
+            sp = f1lab.ergast_retry(erg.get_sprint_results, season=jahr, round=r).content
             if sp:
                 sprint_frames.append(sp[0])
         except Exception:
@@ -180,7 +164,7 @@ def _wm_daten(jahr: int):
 @st.cache_data(ttl=3600, show_spinner=False)
 def _konstrukteurs_standings(jahr: int) -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)
-    return _mit_wiederholung(erg.get_constructor_standings, season=jahr).content[0]
+    return f1lab.ergast_retry(erg.get_constructor_standings, season=jahr).content[0]
 
 
 with tab_wm:
@@ -411,7 +395,8 @@ def _dominanz_und_nationen() -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)
     rows = []
     for year in range(ERSTE_KONSTRUKTEURS_WM, 2025):
-        cs = _mit_wiederholung(erg.get_constructor_standings, season=year)
+        cs = f1lab.ergast_retry(erg.get_constructor_standings, season=year,
+                                leer_bei_fehlschlag=True)
         if cs is None or not cs.content or cs.content[0].empty:
             continue
         cs = cs.content[0]
@@ -435,7 +420,8 @@ def _dnf_rate() -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)
     rows = []
     for year in range(DNF_AB, 2025):
-        s = _mit_wiederholung(erg.get_finishing_status, season=year)
+        s = f1lab.ergast_retry(erg.get_finishing_status, season=year,
+                               leer_bei_fehlschlag=True)
         if s is None or s.empty:
             continue
         total = s["count"].sum()
@@ -451,7 +437,8 @@ def _kalendergroesse() -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)
     rows = []
     for year in range(ERSTE_KONSTRUKTEURS_WM, 2025):
-        sched = _mit_wiederholung(erg.get_race_schedule, season=year)
+        sched = f1lab.ergast_retry(erg.get_race_schedule, season=year,
+                                   leer_bei_fehlschlag=True)
         if sched is None or sched.empty:
             continue
         rows.append({"season": year, "rennen": len(sched),
@@ -466,8 +453,9 @@ def _rundenzeit_je_strecke() -> pd.DataFrame:
     rows = []
     for circuit_id, name in STRECKEN.items():
         for year in range(1950, 2025, SCHRITT_STRECKEN):
-            res = _mit_wiederholung(erg.get_race_results, season=year,
-                                    circuit=circuit_id)
+            res = f1lab.ergast_retry(erg.get_race_results, season=year,
+                                     circuit=circuit_id,
+                                     leer_bei_fehlschlag=True)
             if res is None or not res.content or res.content[0].empty:
                 continue
             df = res.content[0]
@@ -500,8 +488,8 @@ def _pole_to_win() -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)
     rows = []
     for saison in range(ERSTE_SAISON_POLE, YEAR + 1):
-        res = _mit_wiederholung(erg.get_race_results, season=saison,
-                                grid_position=1)
+        res = f1lab.ergast_retry(erg.get_race_results, season=saison,
+                                 grid_position=1, leer_bei_fehlschlag=True)
         if res is None or not res.content:
             continue
         for beschreibung, df in zip(res.description.itertuples(), res.content):
@@ -538,8 +526,9 @@ def _zuverlaessigkeit() -> pd.DataFrame:
     for saison in range(ERSTE_SAISON_POLE, YEAR + 1):
         off, total = 0, None
         while total is None or off < total:
-            res = _mit_wiederholung(erg.get_race_results, season=saison,
-                                    limit=100, offset=off)
+            res = f1lab.ergast_retry(erg.get_race_results, season=saison,
+                                     limit=100, offset=off,
+                                     leer_bei_fehlschlag=True)
             if res is None or not res.content:
                 break
             total = res.total_results

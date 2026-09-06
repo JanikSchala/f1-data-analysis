@@ -730,7 +730,7 @@ def constructors_championship():
         "08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py")
 
     erg = Ergast(result_type="pandas", auto_cast=True)
-    standings = p45._mit_wiederholung(
+    standings = f1lab.ergast_retry(
         erg.get_constructor_standings, season=p45.YEAR).content[0]
     remaining = fastf1.get_events_remaining(include_testing=False)
     sprint_flags = remaining["EventFormat"].str.contains(

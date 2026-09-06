@@ -33,16 +33,6 @@ PTS_SPRINT = {1: 8, 2: 7, 3: 6, 4: 5, 5: 4, 6: 3, 7: 2, 8: 1}
 N_SIM = 50_000
 
 
-def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """Ergast/jolpica limitiert die Anfragerate bei Serienabfragen ueber eine ganze Saison."""
-    for i in range(versuche):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            if i == versuche - 1:
-                raise
-            time.sleep(3 * (i + 1))
-
 
 def punkte_array(tabelle: dict) -> np.ndarray:
     arr = np.zeros(25)
@@ -58,11 +48,11 @@ def saison_verlauf(erg: Ergast, jahr: int, runden: int
     driverId gruppiert."""
     race_frames, sprint_frames = [], []
     for r in range(1, runden + 1):
-        res = _mit_wiederholung(erg.get_race_results, season=jahr, round=r).content
+        res = f1lab.ergast_retry(erg.get_race_results, season=jahr, round=r).content
         if res:
             race_frames.append(res[0])
         time.sleep(0.2)
-        sp = _mit_wiederholung(erg.get_sprint_results, season=jahr, round=r).content
+        sp = f1lab.ergast_retry(erg.get_sprint_results, season=jahr, round=r).content
         if sp:
             sprint_frames.append(sp[0])
         time.sleep(0.2)
@@ -178,7 +168,7 @@ def main():
     erg = Ergast(result_type="pandas", auto_cast=True)
 
     print(f"[1/4] Konstrukteurs-Stand {YEAR} laden (VORGEHEN 1) ...")
-    standings = _mit_wiederholung(erg.get_constructor_standings, season=YEAR).content[0]
+    standings = f1lab.ergast_retry(erg.get_constructor_standings, season=YEAR).content[0]
     print(standings[["position", "points", "wins", "constructorName"]]
          .head(10).to_string(index=False))
 

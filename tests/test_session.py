@@ -9,6 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from fastf1.exceptions import ErgastInvalidRequestError
 
 import f1lab.session as session_mod
 from f1lab.session import (
@@ -17,6 +18,7 @@ from f1lab.session import (
     TRACK_STATUS,
     cache_ready,
     cached_sessions,
+    ergast_retry,
     find_cache,
     not_deleted_mask,
 )
@@ -260,3 +262,88 @@ class TestCacheReady:
     def test_true_nach_enable_cache_aufruf(self, monkeypatch, tmp_path):
         monkeypatch.setattr(session_mod, "_active_cache", tmp_path)
         assert cache_ready() is True
+
+
+class TestErgastRetry:
+    """die Wiederholung lag vorher sechsmal als eigene Kopie in den
+    Skripten. alle sechs wiederholten auch den einen Fall, der sich durch
+    Wiederholen nie aendert: ErgastInvalidRequestError ("Not Cached").
+    fuer die laufende Saison kostete das bis zu 30s pro Aufruf und lieferte
+    danach trotzdem nichts."""
+
+    @pytest.fixture(autouse=True)
+    def _keine_echten_pausen(self, monkeypatch):
+        """Wartezeiten protokollieren statt sie abzusitzen."""
+        self.pausen: list[float] = []
+        monkeypatch.setattr(session_mod.time, "sleep", self.pausen.append)
+
+    def test_erfolg_beim_ersten_versuch_wartet_nicht(self):
+        assert ergast_retry(lambda: "da") == "da"
+        assert self.pausen == []
+
+    def test_wiederholt_nach_voruebergehendem_fehler(self):
+        rufe = []
+
+        def flatterhaft():
+            rufe.append(1)
+            if len(rufe) < 3:
+                raise ConnectionError("429")
+            return "endlich"
+
+        assert ergast_retry(flatterhaft) == "endlich"
+        assert len(rufe) == 3
+        assert self.pausen == [3.0, 6.0]  # backoff waechst linear
+
+    def test_versuche_ist_die_gesamtzahl_nicht_die_der_wiederholungen(self):
+        rufe = []
+
+        def immer_kaputt():
+            rufe.append(1)
+            raise ConnectionError("429")
+
+        with pytest.raises(ConnectionError):
+            ergast_retry(immer_kaputt, versuche=3)
+        assert len(rufe) == 3
+
+    def test_erschoepfte_versuche_werfen_standardmaessig_weiter(self):
+        def immer_kaputt():
+            raise ConnectionError("429")
+
+        with pytest.raises(ConnectionError):
+            ergast_retry(immer_kaputt, versuche=2)
+
+    def test_erschoepfte_versuche_geben_none_wenn_gewuenscht(self):
+        """fuer Scans ueber viele Saisons: ein fehlendes Jahr ueberspringen
+        statt die ganze Auswertung abzubrechen (siehe P22/P46/P50)."""
+        def immer_kaputt():
+            raise ConnectionError("429")
+
+        assert ergast_retry(immer_kaputt, versuche=2,
+                            leer_bei_fehlschlag=True) is None
+
+    def test_eindeutige_absage_wird_nicht_wiederholt(self):
+        """der eigentliche Fund: die Antwort ist eindeutig, nicht flatterhaft."""
+        rufe = []
+
+        def nicht_gecacht():
+            rufe.append(1)
+            raise ErgastInvalidRequestError("Server response: 'Not Cached'")
+
+        with pytest.raises(ErgastInvalidRequestError):
+            ergast_retry(nicht_gecacht)
+        assert len(rufe) == 1
+        assert self.pausen == []
+
+    def test_eindeutige_absage_auch_ohne_wiederholung_ueberspringbar(self):
+        rufe = []
+
+        def nicht_gecacht():
+            rufe.append(1)
+            raise ErgastInvalidRequestError("Server response: 'Not Cached'")
+
+        assert ergast_retry(nicht_gecacht, leer_bei_fehlschlag=True) is None
+        assert len(rufe) == 1
+        assert self.pausen == []
+
+    def test_argumente_gehen_unveraendert_durch(self):
+        assert ergast_retry(lambda a, b=0: (a, b), 1, b=2) == (1, 2)

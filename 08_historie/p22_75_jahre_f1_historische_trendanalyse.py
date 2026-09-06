@@ -34,23 +34,13 @@ SCHRITT_STRECKEN = 4   # nur jedes 4. Jahr abfragen, sonst zu viele Calls
 plt.rcParams.update(matplotlib_stil())
 
 
-def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """Ergast/jolpica limitiert die Anfragerate bei Serienabfragen."""
-    for i in range(versuche):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            if i == versuche - 1:
-                return None
-            time.sleep(3 * (i + 1))
-    return None
-
 
 def dominanz_und_nationen(erg: Ergast) -> pd.DataFrame:
     """nutzt dieselben Constructor-Standings-Calls auch für den Nationen-Trend, keine zusätzlichen Anfragen nötig."""
     rows = []
     for year in range(ERSTE_KONSTRUKTEURS_WM, 2025):
-        cs = _mit_wiederholung(erg.get_constructor_standings, season=year)
+        cs = f1lab.ergast_retry(erg.get_constructor_standings, season=year,
+                                leer_bei_fehlschlag=True)
         if cs is None or not cs.content or cs.content[0].empty:
             continue
         cs = cs.content[0]
@@ -72,7 +62,8 @@ def dominanz_und_nationen(erg: Ergast) -> pd.DataFrame:
 def dnf_rate(erg: Ergast) -> pd.DataFrame:
     rows = []
     for year in range(DNF_AB, 2025):
-        st = _mit_wiederholung(erg.get_finishing_status, season=year)
+        st = f1lab.ergast_retry(erg.get_finishing_status, season=year,
+                                leer_bei_fehlschlag=True)
         if st is None or st.empty:
             continue
         total = st["count"].sum()
@@ -86,7 +77,8 @@ def dnf_rate(erg: Ergast) -> pd.DataFrame:
 def kalendergroesse(erg: Ergast) -> pd.DataFrame:
     rows = []
     for year in range(ERSTE_KONSTRUKTEURS_WM, 2025):
-        sched = _mit_wiederholung(erg.get_race_schedule, season=year)
+        sched = f1lab.ergast_retry(erg.get_race_schedule, season=year,
+                                   leer_bei_fehlschlag=True)
         if sched is None or sched.empty:
             continue
         rows.append({"season": year, "rennen": len(sched),
@@ -100,8 +92,9 @@ def rundenzeit_je_strecke(erg: Ergast) -> pd.DataFrame:
     rows = []
     for circuit_id, name in STRECKEN.items():
         for year in range(1950, 2025, SCHRITT_STRECKEN):
-            res = _mit_wiederholung(erg.get_race_results, season=year,
-                                    circuit=circuit_id)
+            res = f1lab.ergast_retry(erg.get_race_results, season=year,
+                                     circuit=circuit_id,
+                                     leer_bei_fehlschlag=True)
             if res is None or not res.content or res.content[0].empty:
                 continue
             df = res.content[0]

@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -200,6 +201,48 @@ def load(year: int, gp, identifier: str = "R",
     ses = fastf1.get_session(year, gp, identifier)
     ses.load(telemetry=telemetry, weather=weather, messages=messages)
     return ses
+
+
+def ergast_retry(fn, *args, versuche: int = 5, pause: float = 3.0,
+                 leer_bei_fehlschlag: bool = False, **kwargs):
+    """einen Ergast/jolpica-aufruf mit backoff wiederholen.
+
+    die API drosselt serienabfragen ueber viele saisons, ein einzelner 429
+    ist deshalb kein grund aufzugeben. ``ErgastInvalidRequestError`` dagegen
+    ist eine eindeutige antwort des servers (z.b. jolpicas "Not Cached" fuer
+    eine noch nicht abgeschlossene runde) - wiederholen kostet dort bis zu
+    ``versuche``-mal die wartezeit und aendert am ergebnis nichts. deshalb
+    fliegt die sofort weiter.
+
+    Args:
+        fn: der aufzurufende Ergast-methodenzeiger, args/kwargs gehen durch.
+        versuche: gesamtzahl der versuche, nicht der wiederholungen.
+        pause: grundwartezeit, waechst linear (1x, 2x, 3x ...).
+        leer_bei_fehlschlag: was passiert, wenn alle versuche scheitern.
+            ``False`` wirft die letzte ausnahme weiter - richtig, wenn ohne
+            diesen einen aufruf gar kein ergebnis zustande kommt. ``True``
+            gibt ``None`` zurueck - richtig fuer scans ueber viele saisons,
+            in denen ein einzelnes fehlendes jahr uebersprungen und der rest
+            trotzdem ausgewertet werden soll.
+
+    Returns:
+        was ``fn`` liefert, oder ``None`` bei erschoepften versuchen mit
+        ``leer_bei_fehlschlag=True``.
+    """
+    for i in range(versuche):
+        try:
+            return fn(*args, **kwargs)
+        except fastf1.exceptions.ErgastInvalidRequestError:
+            if leer_bei_fehlschlag:
+                return None
+            raise
+        except Exception:
+            if i == versuche - 1:
+                if leer_bei_fehlschlag:
+                    return None
+                raise
+            time.sleep(pause * (i + 1))
+    return None
 
 
 def not_deleted_mask(deleted) -> pd.Series:

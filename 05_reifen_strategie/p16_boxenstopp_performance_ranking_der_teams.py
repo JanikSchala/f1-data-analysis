@@ -32,27 +32,17 @@ DAUER_MIN, DAUER_MAX = 15.0, 35.0     # volle boxengassen-zeit, nicht die reine 
 plt.rcParams.update(matplotlib_stil())
 
 
-def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """ergast/jolpica limitiert die anfragerate. exponentielles backoff statt abbruch beim ersten 429."""
-    for i in range(versuche):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            if i == versuche - 1:
-                raise
-            time.sleep(3 * (i + 1))
-
 
 def hole_saison(erg: Ergast, jahr: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     """pitstops und rennergebnisse aller runden, mit paging und retry."""
-    sched = _mit_wiederholung(erg.get_race_schedule, season=jahr)
+    sched = f1lab.ergast_retry(erg.get_race_schedule, season=jahr)
 
     pit_frames, res_frames = [], []
     for _, race in sched.iterrows():
         rnd = int(race["round"])
-        stops = _mit_wiederholung(erg.get_pit_stops, season=jahr, round=rnd,
+        stops = f1lab.ergast_retry(erg.get_pit_stops, season=jahr, round=rnd,
                                   limit=200).content
-        res = _mit_wiederholung(erg.get_race_results, season=jahr,
+        res = f1lab.ergast_retry(erg.get_race_results, season=jahr,
                                 round=rnd).content
         if stops and not stops[0].empty:
             s = stops[0].copy()

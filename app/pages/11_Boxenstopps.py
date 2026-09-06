@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import time
 
-import fastf1.exceptions
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -35,6 +34,7 @@ from common import (
 from fastf1.ergast import Ergast
 from scipy.stats import pearsonr
 
+import f1lab
 from f1lab import design as d
 
 DAUER_MIN, DAUER_MAX = 15.0, 35.0
@@ -51,42 +51,19 @@ with st.sidebar:
     saison = st.selectbox("Jahr", saisons, key="pit_saison")
 
 
-def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """wiederholt bei voruebergehenden fehlern, nicht bei eindeutigen.
-
-    ``ErgastInvalidRequestError`` (jolpicas "Not Cached") liess sich beim
-    testen fuer die laufende saison reproduzierbar durch die app selbst
-    ausloesen - ein einzelner, isolierter aufruf ausserhalb der app gelang
-    dagegen zuverlaessig. worin genau der unterschied liegt, war von hier aus
-    nicht abschliessend zu klaeren, vermutlich eine serverseitige eigenart
-    von jolpica bei dieser abfolge. fuenffaches wiederholen aendert daran
-    nichts und kostet bis zu 30s je runde - deshalb hier ohne wiederholung,
-    dafuer wird die runde in :func:`_saison_pitstops` uebersprungen statt die
-    ganze saison abzubrechen.
-    """
-    for i in range(versuche):
-        try:
-            return fn(*args, **kwargs)
-        except fastf1.exceptions.ErgastInvalidRequestError:
-            raise
-        except Exception:
-            if i == versuche - 1:
-                raise
-            time.sleep(3 * (i + 1))
-
 
 @st.cache_data(persist="disk", show_spinner=False)
 def _saison_pitstops(saison: int) -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)
-    sched = _mit_wiederholung(erg.get_race_schedule, season=saison)
+    sched = f1lab.ergast_retry(erg.get_race_schedule, season=saison)
 
     pit_frames, res_frames = [], []
     for _, race in sched.iterrows():
         rnd = int(race["round"])
         try:
-            stops = _mit_wiederholung(erg.get_pit_stops, season=saison,
+            stops = f1lab.ergast_retry(erg.get_pit_stops, season=saison,
                                       round=rnd, limit=200).content
-            res = _mit_wiederholung(erg.get_race_results, season=saison,
+            res = f1lab.ergast_retry(erg.get_race_results, season=saison,
                                     round=rnd).content
         except Exception:
             # eine einzelne kaputte/fehlende runde soll nicht die ganze

@@ -40,17 +40,6 @@ ERAS = [
 ]
 
 
-def _mit_wiederholung(fn, *args, versuche: int = 5, **kwargs):
-    """Ergast/jolpica limitiert die Anfragerate bei Serienabfragen ueber viele Saisons."""
-    for i in range(versuche):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            if i == versuche - 1:
-                return None
-            time.sleep(3 * (i + 1))
-    return None
-
 
 def era_von(saison: int) -> str:
     for start, ende, name in ERAS:
@@ -65,8 +54,8 @@ def saison_verlauf(erg: Ergast) -> pd.DataFrame:
     ueber alle Runden der Saison hinweg (siehe VORGEHEN)."""
     rows = []
     for saison in range(ERSTE_SAISON, LETZTE_SAISON + 1):
-        res = _mit_wiederholung(erg.get_race_results, season=saison,
-                                grid_position=1)
+        res = f1lab.ergast_retry(erg.get_race_results, season=saison,
+                                 grid_position=1, leer_bei_fehlschlag=True)
         if res is None or not res.content:
             continue
         for beschreibung, df in zip(res.description.itertuples(), res.content):
