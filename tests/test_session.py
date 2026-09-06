@@ -18,11 +18,14 @@ from f1lab.session import (
     TRACK_STATUS,
     cache_ready,
     cached_sessions,
+    compare_braking_zones,
+    dirty_air_effect,
     ergast_retry,
     find_cache,
     not_deleted_mask,
     parse_penalties,
     parse_track_limits,
+    sc_compaction,
     season_sessions,
 )
 
@@ -519,3 +522,151 @@ class TestRaceControlParser:
         # so greifen die Aufrufer darauf zu (13_RaceControl.py, P19)
         assert pen.groupby("driver").size().empty
         assert lim.groupby("turn").size().empty
+
+
+class TestCompareBrakingZones:
+    """paart die Bremszonen zweier Fahrer ueber die Distanz."""
+
+    @staticmethod
+    def _zonen(*starts):
+        return pd.DataFrame({"start_m": list(starts)})
+
+    def test_paare_nach_naehe(self):
+        got = compare_braking_zones(self._zonen(100.0, 900.0),
+                                    self._zonen(120.0, 880.0))
+        assert got["start_m_a"].tolist() == [100.0, 900.0]
+        assert got["delta_m"].tolist() == [20.0, -20.0]
+
+    def test_nach_distanz_sortiert(self):
+        got = compare_braking_zones(self._zonen(900.0, 100.0),
+                                    self._zonen(880.0, 120.0))
+        assert got["start_m_a"].tolist() == sorted(got["start_m_a"].tolist())
+
+    def test_ausserhalb_der_toleranz_kein_paar(self):
+        got = compare_braking_zones(self._zonen(100.0), self._zonen(400.0),
+                                    tolerance_m=150.0)
+        assert got.empty
+
+    def test_kein_einziges_paar_stuerzt_nicht_ab(self):
+        """beide Fahrer haben Zonen, nur passt keine zur anderen. vorher
+        brach das Sortieren hier mit KeyError('start_m_a') ab - erreichbar
+        ueber die Fahrerauswahl auf der Telemetrie-Seite."""
+        got = compare_braking_zones(self._zonen(100.0, 900.0),
+                                    self._zonen(500.0, 1400.0),
+                                    tolerance_m=150.0)
+        assert got.empty
+        assert list(got.columns) == ["start_m_a", "start_m_b", "delta_m"]
+
+    def test_leere_eingabe_behaelt_spalten(self):
+        got = compare_braking_zones(self._zonen(), self._zonen(100.0))
+        assert list(got.columns) == ["start_m_a", "start_m_b", "delta_m"]
+
+
+class TestScCompaction:
+    """Feldstreckung vor gegen waehrend einer Neutralisation (siehe P18)."""
+
+    @staticmethod
+    def _phase(start, ende):
+        return pd.DataFrame([{"lap_start": start, "lap_end": ende}])
+
+    def test_baseline_ist_median_der_drei_runden_davor(self):
+        spread = pd.Series({1: 30.0, 2: 20.0, 3: 40.0, 4: 10.0, 5: 12.0})
+        got = sc_compaction(self._phase(4, 5), spread)
+        assert got["baseline_s"].iloc[0] == 30.0     # median(30, 20, 40)
+
+    def test_nimmt_das_minimum_waehrend_der_phase_nicht_den_schnitt(self):
+        """bewusste Entscheidung: der Mittelwert waere vom ausloesenden
+        Zwischenfall verzerrt, die Phase beginnt ja mit gestrecktem Feld."""
+        spread = pd.Series({1: 30.0, 2: 30.0, 3: 30.0, 4: 28.0, 5: 6.0})
+        got = sc_compaction(self._phase(4, 5), spread)
+        assert got["minimum_s"].iloc[0] == 6.0
+        assert got["kompaktierung_pct"].iloc[0] == pytest.approx(80.0)
+
+    def test_phase_am_rennstart_wird_uebersprungen(self):
+        """ein Safety Car in Runde 1 hat keine drei gruenen Runden davor."""
+        spread = pd.Series({1: 30.0, 2: 10.0, 3: 12.0})
+        assert sc_compaction(self._phase(1, 2), spread).empty
+
+    def test_leeres_ergebnis_behaelt_spalten(self):
+        spread = pd.Series({1: 30.0, 2: 10.0})
+        got = sc_compaction(self._phase(1, 2), spread)
+        assert list(got.columns) == ["start", "ende", "baseline_s",
+                                     "minimum_s", "kompaktierung_pct"]
+
+    def test_mehrere_phasen_ergeben_mehrere_zeilen(self):
+        spread = pd.Series({i: 30.0 for i in range(1, 21)})
+        spread[10] = 5.0
+        spread[18] = 6.0
+        phasen = pd.DataFrame([{"lap_start": 10, "lap_end": 11},
+                               {"lap_start": 18, "lap_end": 19}])
+        assert len(sc_compaction(phasen, spread)) == 2
+
+
+class TestDirtyAirEffect:
+    """Rundenzeit gegen Nahanteil, nach Herausrechnen der Degradation (P32)."""
+
+    @staticmethod
+    def _df(n=40, *, steigung_nah=0.0, steigung_reifen=0.0):
+        import numpy as np
+        anteil = np.linspace(0, 1, n)
+        reifen = np.arange(n, dtype=float)
+        return pd.DataFrame({
+            "gap_median_m": np.full(n, 50.0),
+            "tyre_life": reifen,
+            "anteil_nah": anteil,
+            "sec_fuel": 90.0 + steigung_nah * anteil + steigung_reifen * reifen,
+        })
+
+    def test_zu_wenige_runden_geben_nan(self):
+        slope, inter, r2, _ = dirty_air_effect(self._df(n=4))
+        assert np.isnan(slope) and np.isnan(inter) and np.isnan(r2)
+
+    def test_konstantes_reifenalter_gibt_nan(self):
+        """ohne Variation im Reifenalter laesst sich die Degradation nicht
+        herausrechnen."""
+        df = self._df()
+        df["tyre_life"] = 5.0
+        slope, *_ = dirty_air_effect(df)
+        assert np.isnan(slope)
+
+    def test_weite_abstaende_fliegen_raus(self):
+        df = self._df()
+        df.loc[df.index[:20], "gap_median_m"] = 900.0
+        _, _, _, d = dirty_air_effect(df)
+        assert len(d) == 20
+
+    def test_reine_degradation_ergibt_keinen_dirty_air_effekt(self):
+        """der eigentliche Zweck der Korrektur: haengt die Rundenzeit nur am
+        Reifenalter, darf am Ende kein Effekt des Nahanteils uebrig bleiben.
+        genau diese Verwechslung war der Befund in P32."""
+        slope, _, _, _ = dirty_air_effect(self._df(steigung_reifen=0.05))
+        assert abs(slope) < 1e-6
+
+    def test_echter_effekt_bleibt_erhalten(self):
+        """Nahanteil sauber unabhaengig vom Reifenalter: jedes Reifenalter
+        kommt genau einmal mit freier und einmal mit naher Fahrt vor. nur so
+        sind die beiden Groessen wirklich trennbar, und dann muss der Effekt
+        die Degradations-Korrektur unveraendert ueberleben."""
+        alter = np.arange(1.0, 11.0)
+        df = pd.DataFrame({
+            "gap_median_m": np.full(20, 50.0),
+            "tyre_life": np.concatenate([alter, alter]),
+            "anteil_nah": np.concatenate([np.zeros(10), np.ones(10)]),
+        })
+        df["sec_fuel"] = 90.0 + 2.0 * df["anteil_nah"]
+        assert np.corrcoef(df["tyre_life"], df["anteil_nah"])[0, 1] == \
+            pytest.approx(0.0, abs=1e-12)
+        slope, _, _, _ = dirty_air_effect(df)
+        assert slope == pytest.approx(2.0, abs=1e-6)
+
+    def test_kollinearer_nahanteil_wird_von_der_korrektur_geschluckt(self):
+        """methodische Grenze, kein Fehler: steigt der Nahanteil im
+        Gleichschritt mit dem Reifenalter, kann keine Rechnung der Welt die
+        beiden auseinanderhalten. die Degradations-Korrektur nimmt den
+        Effekt dann fuer sich in Anspruch und uebrig bleibt null."""
+        slope, _, _, _ = dirty_air_effect(self._df(steigung_nah=2.0))
+        assert abs(slope) < 1e-6
+
+    def test_korrigierte_spalte_wird_ergaenzt(self):
+        _, _, _, d = dirty_air_effect(self._df(steigung_reifen=0.05))
+        assert "sec_corr" in d.columns

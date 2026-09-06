@@ -853,14 +853,20 @@ def compare_braking_zones(zones_a: pd.DataFrame, zones_b: pd.DataFrame,
     """bremszonen zweier fahrer paaren und den abstand ihrer bremspunkte
     zeigen (siehe P07/P08). nutzt :func:`f1lab.core.match_by_distance`.
     """
+    spalten = ["start_m_a", "start_m_b", "delta_m"]
     if zones_a.empty or zones_b.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=spalten)
     paare = match_by_distance(zones_a["start_m"], zones_b["start_m"],
                               tolerance_m)
     zeilen = [{"start_m_a": zones_a["start_m"].iloc[i],
               "start_m_b": zones_b["start_m"].iloc[j],
               "delta_m": zones_b["start_m"].iloc[j] - zones_a["start_m"].iloc[i]}
              for i, j in paare]
+    # beide fahrer koennen zonen haben, ohne dass ein einziges paar
+    # innerhalb der toleranz liegt. dann bleibt zeilen leer, und ein
+    # spaltenloses DataFrame wuerde beim sortieren mit KeyError abbrechen.
+    if not zeilen:
+        return pd.DataFrame(columns=spalten)
     return pd.DataFrame(zeilen).sort_values("start_m_a", ignore_index=True)
 
 
@@ -1577,7 +1583,11 @@ def sc_compaction(neutral: pd.DataFrame, spread: pd.Series) -> pd.DataFrame:
             "baseline_s": vorher.median(), "minimum_s": waehrend.min(),
             "kompaktierung_pct": 100 * (1 - waehrend.min() / vorher.median()),
         })
-    return pd.DataFrame(zeilen)
+    # eine phase direkt am rennstart hat keine drei gruenen runden davor und
+    # faellt oben raus. ist das die einzige, bleibt die tabelle leer - dann
+    # aber mit spalten, wie bei den schwesterfunktionen.
+    return pd.DataFrame(zeilen, columns=["start", "ende", "baseline_s",
+                                         "minimum_s", "kompaktierung_pct"])
 
 
 def sc_deployment_sectors(session) -> pd.DataFrame:
