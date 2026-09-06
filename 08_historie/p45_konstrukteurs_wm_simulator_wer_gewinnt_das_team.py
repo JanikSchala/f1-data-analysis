@@ -168,7 +168,12 @@ def main():
     erg = Ergast(result_type="pandas", auto_cast=True)
 
     print(f"[1/4] Konstrukteurs-Stand {YEAR} laden (VORGEHEN 1) ...")
-    standings = f1lab.ergast_retry(erg.get_constructor_standings, season=YEAR).content[0]
+    stand_antwort = f1lab.ergast_retry(erg.get_constructor_standings, season=YEAR)
+    if not stand_antwort.content or stand_antwort.content[0].empty:
+        print(f"      Saison {YEAR} hat noch nicht begonnen, kein WM-Stand "
+              "vorhanden.")
+        return
+    standings = stand_antwort.content[0]
     print(standings[["position", "points", "wins", "constructorName"]]
          .head(10).to_string(index=False))
 

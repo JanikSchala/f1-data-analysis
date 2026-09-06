@@ -127,7 +127,12 @@ def _monte_carlo_team(base_points, teams, pos_hist, sprint_hist, sprint_flags,
 @st.cache_data(ttl=3600, show_spinner=False)
 def _wm_daten(jahr: int):
     erg = Ergast(result_type="pandas", auto_cast=True)
-    standings = f1lab.ergast_retry(erg.get_driver_standings, season=jahr).content[0]
+    stand_antwort = f1lab.ergast_retry(erg.get_driver_standings, season=jahr)
+    if not stand_antwort.content or stand_antwort.content[0].empty:
+        # vor dem ersten Rennen einer Saison gibt es noch keinen Stand. das
+        # ist kein Netzproblem und darf nicht als solches gemeldet werden.
+        return pd.DataFrame(), [], pd.DataFrame(), pd.DataFrame()
+    standings = stand_antwort.content[0]
     sched = f1lab.ergast_retry(erg.get_race_schedule, season=jahr)
     remaining = fastf1.get_events_remaining(include_testing=False)
     sprint_flags = remaining["EventFormat"].str.contains(
@@ -164,7 +169,10 @@ def _wm_daten(jahr: int):
 @st.cache_data(ttl=3600, show_spinner=False)
 def _konstrukteurs_standings(jahr: int) -> pd.DataFrame:
     erg = Ergast(result_type="pandas", auto_cast=True)
-    return f1lab.ergast_retry(erg.get_constructor_standings, season=jahr).content[0]
+    antwort = f1lab.ergast_retry(erg.get_constructor_standings, season=jahr)
+    if not antwort.content or antwort.content[0].empty:
+        return pd.DataFrame()
+    return antwort.content[0]
 
 
 with tab_wm:

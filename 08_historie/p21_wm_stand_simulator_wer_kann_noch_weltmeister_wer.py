@@ -160,12 +160,21 @@ def main():
     erg = Ergast(result_type="pandas", auto_cast=True)
 
     print(f"[1/4] Fahrer- und Team-Stand {YEAR} laden (VORGEHEN 1) ...")
-    standings = f1lab.ergast_retry(erg.get_driver_standings, season=YEAR).content[0]
+    stand_antwort = f1lab.ergast_retry(erg.get_driver_standings, season=YEAR)
+    if not stand_antwort.content or stand_antwort.content[0].empty:
+        # zwischen Silvester und dem ersten Rennen gibt es noch keinen
+        # Stand - kein Fehler, nur nichts zu simulieren.
+        print(f"      Saison {YEAR} hat noch nicht begonnen, kein WM-Stand "
+              "vorhanden.")
+        return
+    standings = stand_antwort.content[0]
     print(standings[["position", "points", "wins", "familyName",
                      "constructorNames"]].head(10).to_string(index=False))
-    konstr = f1lab.ergast_retry(erg.get_constructor_standings, season=YEAR).content[0]
-    print(f"\n      Konstrukteurs-Fuehrung: {konstr.iloc[0]['constructorName']} "
-         f"({konstr.iloc[0]['points']:.0f} Punkte)")
+    konstr_antwort = f1lab.ergast_retry(erg.get_constructor_standings, season=YEAR)
+    if konstr_antwort.content and not konstr_antwort.content[0].empty:
+        konstr = konstr_antwort.content[0]
+        print(f"\n      Konstrukteurs-Fuehrung: {konstr.iloc[0]['constructorName']} "
+             f"({konstr.iloc[0]['points']:.0f} Punkte)")
 
     print("\n[2/4] Verbleibende Events (VORGEHEN 2) ...")
     remaining = fastf1.get_events_remaining(include_testing=False)

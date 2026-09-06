@@ -107,6 +107,10 @@ def main():
     print("\nKorrigiert (Treibstoffeffekt herausgerechnet):")
     print(korr[["driver", "team", "laps", "delta_s"]].to_string(index=False))
 
+    if roh.empty or korr.empty:
+        print("\n      keine auswertbare Pace - zu wenige saubere Runden je "
+             "Fahrer (abgebrochenes Rennen?)")
+        return
     fuehrend_roh, fuehrend_korr = roh["driver"].iloc[0], korr["driver"].iloc[0]
     print(f"\nFuehrend roh: {fuehrend_roh}  |  Fuehrend korrigiert: "
          f"{fuehrend_korr}"
