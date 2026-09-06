@@ -374,11 +374,22 @@ def race_pace(session, threshold: float = 1.07, min_laps: int = 8,
     return sorted(entries, key=lambda e: e.median_s)
 
 
+PACE_SPALTEN = ["driver", "team", "laps", "median_s", "delta_s",
+                "ci_lo", "ci_hi", "ci_width"]
+
+
 def pace_table(session, **kwargs) -> pd.DataFrame:
-    """race_pace() als DataFrame mit delta zum schnellsten."""
+    """race_pace() als DataFrame mit delta zum schnellsten.
+
+    kein fahrer mit genug sauberen runden ist ein realer fall, kein fehler:
+    Belgien 2021 war praktisch ein reines regen-abbruch-rennen ohne echte
+    renndistanz. das ergebnis traegt auch dann seine spalten - frueher kam
+    hier eine spaltenlose DataFrame zurueck, an der sich jeder aufrufer
+    einen KeyError holen konnte (siehe sieg_attribution und P04).
+    """
     entries = race_pace(session, **kwargs)
     if not entries:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=PACE_SPALTEN)
     best = entries[0].median_s
     return pd.DataFrame([{
         "driver": e.driver, "team": e.team, "laps": e.laps,
@@ -1866,13 +1877,12 @@ def sieg_attribution(session) -> dict:
     grund = sieg_grund(entscheidende_runde, rivale_dnf_nah, in_sc_fenster,
                        rivale_hat_gepittet, war_ueberholung, rivale_bricht_ein)
 
-    # pace_table() liefert bei zu wenigen sauberen runden je fahrer (z.b.
-    # Belgien 2021, praktisch ein reines regen-abbruch-rennen ohne echte
-    # renndistanz) eine komplett leere, spaltenlose DataFrame zurueck -
-    # "driver" darauf zu pruefen wuerde dann mit KeyError abbrechen.
+    # pace_table() kann bei zu wenigen sauberen runden je fahrer leer sein
+    # (z.b. Belgien 2021, praktisch ein reines regen-abbruch-rennen ohne
+    # echte renndistanz). dann gibt es keinen pace-rang, das ist kein fehler.
     pace = pace_table(session).reset_index(drop=True)
     pace_rang = None
-    if "driver" in pace.columns and sieger in pace["driver"].to_numpy():
+    if sieger in pace["driver"].to_numpy():
         pace_rang = int(pace.index[pace["driver"] == sieger][0]) + 1
 
     duelle = undercut_duels(session)

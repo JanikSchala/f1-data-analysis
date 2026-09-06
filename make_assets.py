@@ -185,6 +185,9 @@ def race_pace(year=2024, gp="Spain"):
     # dieselbe funktion wie in den tests
     pace = f1lab.pace_table(ses)
     laps_clean = f1lab.clean_laps(ses)
+    if pace.empty:
+        raise SystemExit(f"    keine auswertbare Pace fuer {gp} {year} - "
+                         "anderes Rennen fuer das README-Highlight waehlen")
 
     fig, ax = plt.subplots(figsize=(10, 8))
     colors = [f1plt.get_team_color(t, session=ses) for t in pace["team"]]

@@ -29,6 +29,13 @@ plt.rcParams.update(matplotlib_stil())
 
 def zeichne_ranking(ax, tab: pd.DataFrame) -> None:
     """horizontaler barplot der korrigierten pace wie auf der pace-seite."""
+    if tab.empty:
+        # kein fahrer mit genug sauberen runden - kommt bei abgebrochenen
+        # regenrennen real vor (siehe pace_table-Docstring).
+        ax.text(0.5, 0.5, "keine auswertbare Pace", ha="center", va="center",
+               color=MUTED)
+        ax.axis("off")
+        return
     p = tab.iloc[::-1]
     bester_hi = tab["ci_hi"].iloc[0]
     farben = [POSITIV if lo > bester_hi else SERIEN[0] for lo in p["ci_lo"]]

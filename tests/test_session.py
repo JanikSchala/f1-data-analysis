@@ -13,6 +13,7 @@ from fastf1.exceptions import ErgastInvalidRequestError
 
 import f1lab.session as session_mod
 from f1lab.session import (
+    PACE_SPALTEN,
     TELEMETRY_MARKER,
     TIMING_MARKER,
     TRACK_STATUS,
@@ -809,6 +810,20 @@ class TestZeitBeiSpeed:
         assert _zeit_bei_speed(t, v, 100.0, t0=0.0) == 2.0
 
 
+def _leere_pace_tabelle():
+    """pace_table() ohne Session nachstellen: race_pace() liefert fuer ein
+    abgebrochenes Regenrennen keine Eintraege, dann greift der leere Pfad."""
+    import f1lab.session as sm
+    class _KeineEintraege:
+        pass
+    echt = sm.race_pace
+    sm.race_pace = lambda session, **kw: []
+    try:
+        return sm.pace_table(_KeineEintraege())
+    finally:
+        sm.race_pace = echt
+
+
 class TestLeereErgebnisseBehaltenSpalten:
     """ein leeres Ergebnis muss seine Spalten tragen.
 
@@ -837,6 +852,9 @@ class TestLeereErgebnisseBehaltenSpalten:
             lambda: compare_braking_zones(pd.DataFrame({"start_m": []}),
                                           pd.DataFrame({"start_m": []})),
             ["start_m_a", "start_m_b", "delta_m"]),
+        "pace_table (kein Fahrer mit genug Runden)": (
+            lambda: _leere_pace_tabelle(),
+            PACE_SPALTEN),
         "sc_compaction (Phase am Start)": (
             lambda: sc_compaction(pd.DataFrame([{"lap_start": 1, "lap_end": 2}]),
                                   pd.Series({1: 30.0, 2: 10.0})),
