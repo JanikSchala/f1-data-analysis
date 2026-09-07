@@ -108,6 +108,62 @@ PAKETE = {
 }
 
 
+class TestRequirementsPasstZuPyproject:
+    """zwei Listen fuer dieselbe Sache driften auseinander.
+
+    setup.sh installiert requirements.txt, die CI installiert
+    pyproject-Extras, und dieselben Pakete stehen damit an zwei Stellen.
+    Die geltende Regel ist einfach: requirements.txt ist alles aus
+    pyproject.toml ausser der dev-Gruppe - wer das Repo einrichtet, will
+    die Analysen laufen lassen, nicht linten. Genau diese Aufteilung war
+    schon einmal die Fehlerquelle (torch stand in requirements.txt und in
+    keiner Gruppe), deshalb steht sie hier fest.
+    """
+
+    def _requirements(self) -> set[str]:
+        zeilen = (WURZEL / "requirements.txt").read_text().splitlines()
+        return {_spec_zu_dist(z) for z in zeilen
+                if z.strip() and not z.strip().startswith("#")}
+
+    def _pyproject(self, *, ohne_dev: bool) -> set[str]:
+        import tomllib
+        projekt = tomllib.loads(
+            (WURZEL / "pyproject.toml").read_text())["project"]
+        specs = list(projekt["dependencies"])
+        for name, gruppe in projekt["optional-dependencies"].items():
+            if ohne_dev and name == "dev":
+                continue
+            specs.extend(gruppe)
+        return {_spec_zu_dist(s) for s in specs}
+
+    def test_requirements_ist_nicht_leer(self):
+        assert len(self._requirements()) >= 10
+
+    def test_nichts_steht_nur_in_requirements(self):
+        """der gefaehrliche Fall: ein Skript braucht ein Paket, das nur in
+        requirements.txt steht - wer nach pyproject installiert, bekommt
+        eine Umgebung, in der es beim Import abbricht."""
+        nur_req = self._requirements() - self._pyproject(ohne_dev=False)
+        assert not nur_req, (
+            f"{sorted(nur_req)} steht in requirements.txt, aber in keiner "
+            f"Gruppe von pyproject.toml")
+
+    def test_nichts_fehlt_ausser_den_dev_werkzeugen(self):
+        fehlend = self._pyproject(ohne_dev=True) - self._requirements()
+        assert not fehlend, (
+            f"{sorted(fehlend)} steht in pyproject.toml, fehlt aber in "
+            f"requirements.txt - setup.sh richtet damit eine unvollstaendige "
+            f"Umgebung ein")
+
+
+def _spec_zu_dist(spec: str) -> str:
+    """"scikit-learn>=1.3" -> "scikit_learn"."""
+    roh = spec.split(";")[0].split("[")[0]
+    for trenner in (">", "<", "=", "!", "~"):
+        roh = roh.split(trenner)[0]
+    return roh.strip().lower().replace("-", "_")
+
+
 def _modul_zu_dist() -> dict[str, set[str]]:
     """Modulname -> Distributionen, die ihn liefern (scipy -> {"scipy"},
     sklearn -> {"scikit-learn"})."""
