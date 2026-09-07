@@ -6,13 +6,29 @@ name: Tests
 # (f1analyze-ci.yml, ebenfalls hier - GitHub Actions erkennt nur
 # .github/workflows/ im Repo-Wurzelverzeichnis) - diese hier deckt den Rest ab.
 
+# Der Ausschluss trifft f1analyzes *Code* und *Tests*, nicht seine
+# Fixtures: seit tests/test_session_fixture.py laeuft auch die
+# Hauptsuite gegen den Bahrain-Cache unter tests/fixtures/. Wuerde der
+# hier mit ignoriert, koennte ihn jemand aendern oder entfernen, ohne
+# dass diese Suite je anspringt - dieselbe Luecke wie die, durch die
+# f1analyze bei f1lab-Aenderungen nicht anlief, nur andersherum.
+# paths-ignore kennt keine Ausnahmen, deshalb sind die Pfade einzeln
+# aufgezaehlt statt mit einem Sternchen ueber allem.
 on:
   push:
     paths-ignore:
-      - "10_data_engineering/f1analyze/**"
+      - "10_data_engineering/f1analyze/f1analyze/**"
+      - "10_data_engineering/f1analyze/tests/test_*.py"
+      - "10_data_engineering/f1analyze/tests/conftest.py"
+      - "10_data_engineering/f1analyze/pyproject.toml"
+      - "10_data_engineering/f1analyze/README.md"
   pull_request:
     paths-ignore:
-      - "10_data_engineering/f1analyze/**"
+      - "10_data_engineering/f1analyze/f1analyze/**"
+      - "10_data_engineering/f1analyze/tests/test_*.py"
+      - "10_data_engineering/f1analyze/tests/conftest.py"
+      - "10_data_engineering/f1analyze/pyproject.toml"
+      - "10_data_engineering/f1analyze/README.md"
   workflow_dispatch: {}
 
 jobs:
