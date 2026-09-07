@@ -22,11 +22,11 @@ repos:
       - id: mypy-f1lab
         name: mypy (f1lab + app + Tests)
         entry: >
-          .venv/bin/python -m mypy f1lab app check_setup.py conftest.py tests
-          --ignore-missing-imports
+          .venv/bin/python -m mypy f1lab app check_setup.py conftest.py
+          robustheit.py tests --ignore-missing-imports
         language: system
         pass_filenames: false
-        files: ^(f1lab|app|tests)/|^(check_setup|conftest)\.py$
+        files: ^(f1lab|app|tests)/|^(check_setup|conftest|robustheit)\.py$
       - id: mypy-skripte
         name: mypy (Analyseskripte)
         entry: >

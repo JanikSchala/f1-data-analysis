@@ -29,7 +29,7 @@ jobs:
       # in pyproject.toml deklariert ist.
       - run: pip install -e ".[dev,ml,warehouse,api,dashboard,cli]" mypy
       - run: ruff check .
-      - run: mypy f1lab app check_setup.py conftest.py tests --ignore-missing-imports
+      - run: mypy f1lab app check_setup.py conftest.py robustheit.py tests --ignore-missing-imports
       - run: >
           mypy 01_grundlagen 02_timing 03_telemetrie 04_strecke
           05_reifen_strategie 06_wetter 07_race_control 08_historie
