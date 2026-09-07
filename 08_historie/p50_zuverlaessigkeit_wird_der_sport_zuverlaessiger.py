@@ -83,7 +83,12 @@ def alle_ergebnisse(erg: Ergast, saison: int) -> pd.DataFrame:
 
 def sammle_saisons(erg: Ergast, erste: int, letzte: int) -> pd.DataFrame:
     rows = [alle_ergebnisse(erg, s) for s in range(erste, letzte + 1)]
-    return pd.concat([r for r in rows if not r.empty], ignore_index=True)
+    gefuellt = [r for r in rows if not r.empty]
+    if not gefuellt:
+        # pd.concat([]) wirft ValueError. faellt Ergast ganz aus, ist das
+        # der Normalfall (siehe f1lab.ergast_retry).
+        return pd.DataFrame(columns=["driverId", "status", "round", "season"])
+    return pd.concat(gefuellt, ignore_index=True)
 
 
 def kategorie(status: str) -> str:
@@ -165,6 +170,14 @@ def main():
     print(f"[1/4] Rennergebnisse {ERSTE_SAISON}-{LETZTE_SAISON} laden, je "
          "Saison vollstaendig paginiert (VORGEHEN 1) ...")
     daten = sammle_saisons(erg, ERSTE_SAISON, LETZTE_SAISON)
+    if daten.empty:
+        # faellt Ergast ganz aus, sind alle Saisons uebersprungen worden
+        # (siehe f1lab.ergast_retry). Trendtest, Regelaera-Vergleich und
+        # Grafik brauchen alle Daten - ein frueher Ausstieg statt mehrerer
+        # Einzelguards, die ohnehin nichts zu sagen haetten.
+        print("      keine Saison konnte geladen werden - Ergast/jolpica "
+             "nicht erreichbar?")
+        return
     daten["kategorie"] = daten["status"].apply(kategorie)
     daten = daten[daten["kategorie"] != "ausschluss"].copy()
     daten["technisch"] = daten["kategorie"] == "technisch"

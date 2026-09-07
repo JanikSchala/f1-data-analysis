@@ -69,7 +69,7 @@ def saison_verlauf(erg: Ergast) -> pd.DataFrame:
                 "dnf": not str(r["status"]).startswith(("Finished", "+")),
             })
         time.sleep(0.2)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["season", "round", "race", "sieg", "dnf"])
 
 
 def zeichne_saisonverlauf(ax, verlauf: pd.DataFrame) -> None:
@@ -115,6 +115,12 @@ def main():
     print(f"[1/3] Saisonverlauf {ERSTE_SAISON}-{LETZTE_SAISON} laden "
          "(je Saison ein Aufruf mit grid_position=1, VORGEHEN 1) ...")
     verlauf = saison_verlauf(erg)
+    if verlauf.empty:
+        # faellt Ergast ganz aus, sind alle Saisons uebersprungen worden
+        # (siehe f1lab.ergast_retry, leer_bei_fehlschlag=True).
+        print("      keine Saison konnte geladen werden - Ergast/jolpica "
+             "nicht erreichbar?")
+        return
     verlauf["era"] = verlauf["season"].apply(era_von)
     print(f"      {len(verlauf)} Rennen mit bekanntem Startplatz-1-Fahrer "
          f"ueber {verlauf['season'].nunique()} Saisons")
