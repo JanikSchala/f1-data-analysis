@@ -206,13 +206,25 @@ def main():
                     ergebnisse_2018["lokalisiert"].sum() - drs_n_2018.sum()],
                    [drs_n_2024.sum(),
                     ergebnisse["lokalisiert"].sum() - drs_n_2024.sum()]]
-    _, p_chi, _, _ = chi2_contingency(tabelle_2x2)
-    print(f"      Gepoolt: 2018 {drs_n_2018.sum()}/"
-         f"{ergebnisse_2018['lokalisiert'].sum()} = "
-         f"{100 * drs_n_2018.sum() / ergebnisse_2018['lokalisiert'].sum():.1f}%, "
-         f"2024 {drs_n_2024.sum()}/{ergebnisse['lokalisiert'].sum()} = "
-         f"{100 * drs_n_2024.sum() / ergebnisse['lokalisiert'].sum():.1f}%, "
-         f"Chi-Quadrat p={p_chi:.2e}")
+    # chi2_contingency verlangt, dass keine erwartete Haeufigkeit null ist.
+    # Steht eine Zeile oder Spalte komplett auf null - keine lokalisierte
+    # Ueberholung in einer der beiden Saisons, oder in keiner davon eine in
+    # der DRS-Zone -, dann gibt es nichts zu testen, und die Funktion wirft
+    # statt das zu sagen.
+    zeilen_summen = [sum(z) for z in tabelle_2x2]
+    spalten_summen = [sum(sp) for sp in zip(*tabelle_2x2, strict=True)]
+    # kein return: die Grafiken darunter haengen nicht an diesem Test.
+    if 0 in zeilen_summen or 0 in spalten_summen:
+        print(f"      Gepoolt: Kontingenztafel {tabelle_2x2} hat eine leere "
+             f"Zeile oder Spalte - kein Chi-Quadrat-Test moeglich")
+    else:
+        _, p_chi, _, _ = chi2_contingency(tabelle_2x2)
+        print(f"      Gepoolt: 2018 {drs_n_2018.sum()}/"
+             f"{ergebnisse_2018['lokalisiert'].sum()} = "
+             f"{100 * drs_n_2018.sum() / ergebnisse_2018['lokalisiert'].sum():.1f}%, "
+             f"2024 {drs_n_2024.sum()}/{ergebnisse['lokalisiert'].sum()} = "
+             f"{100 * drs_n_2024.sum() / ergebnisse['lokalisiert'].sum():.1f}%, "
+             f"Chi-Quadrat p={p_chi:.2e}")
 
     print("\nGrafik ...")
     fig = plt.figure(figsize=(15, 21))

@@ -13,7 +13,9 @@ from fastf1.exceptions import DataNotLoadedError, ErgastInvalidRequestError
 
 import f1lab.session as session_mod
 from f1lab.session import (
+    BREMSZONEN_DTYPEN,
     DEGRADATION_SPALTEN,
+    DRS_ZONEN_DTYPEN,
     PACE_SPALTEN,
     TELEMETRY_MARKER,
     TIMING_MARKER,
@@ -27,6 +29,7 @@ from f1lab.session import (
     dirty_air_effect,
     ergast_retry,
     find_cache,
+    leerer_rahmen,
     not_deleted_mask,
     parse_penalties,
     parse_track_limits,
@@ -927,6 +930,11 @@ class TestLeereErgebnisseBehaltenSpalten:
             ["start", "ende", "baseline_s", "minimum_s", "kompaktierung_pct"]),
         "degradation (kein Stint lang genug)": (
             _leere_degradation, DEGRADATION_SPALTEN),
+        "driver_braking_zones (keine gewertete Runde)": (
+            lambda: leerer_rahmen(BREMSZONEN_DTYPEN),
+            list(BREMSZONEN_DTYPEN)),
+        "drs_zones (keine offene Zone)": (
+            lambda: leerer_rahmen(DRS_ZONEN_DTYPEN), list(DRS_ZONEN_DTYPEN)),
     }
 
     def test_leere_degradation_ueberlebt_die_reliable_maske(self):

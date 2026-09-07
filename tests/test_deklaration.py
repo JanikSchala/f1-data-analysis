@@ -64,8 +64,13 @@ def _fremd_importe(dateien: list[pathlib.Path]) -> dict[str, set[str]]:
             and not m.startswith("_")}
 
 
-def _deklarierte_distributionen(pyproject: pathlib.Path) -> set[str]:
-    """Basis plus jede Extra-Gruppe *einer* pyproject.toml."""
+def _deklarierte_distributionen(pyproject: pathlib.Path, *,
+                                nur_basis: bool = False) -> set[str]:
+    """Basis plus jede Extra-Gruppe *einer* pyproject.toml.
+
+    Args:
+        nur_basis: nur die Pflicht-Abhaengigkeiten, ohne Extra-Gruppen.
+    """
     if sys.version_info >= (3, 11):
         import tomllib
     else:                                        # pragma: no cover
@@ -73,8 +78,9 @@ def _deklarierte_distributionen(pyproject: pathlib.Path) -> set[str]:
 
     projekt = tomllib.loads(pyproject.read_text())["project"]
     specs = list(projekt.get("dependencies", []))
-    for gruppe in projekt.get("optional-dependencies", {}).values():
-        specs.extend(gruppe)
+    if not nur_basis:
+        for gruppe in projekt.get("optional-dependencies", {}).values():
+            specs.extend(gruppe)
 
     namen = set()
     for spec in specs:
@@ -100,6 +106,105 @@ PAKETE = {
         F1ANALYZE / "pyproject.toml",
         lambda p: F1ANALYZE in p.parents),
 }
+
+
+def _modul_zu_dist() -> dict[str, set[str]]:
+    """Modulname -> Distributionen, die ihn liefern (scipy -> {"scipy"},
+    sklearn -> {"scikit-learn"})."""
+    aus = {}
+    for modul, dists in packages_distributions().items():
+        aus[modul] = {d.lower().replace("-", "_") for d in dists}
+    return aus
+
+
+def _check_setup_listen() -> tuple[list[str], list[str]]:
+    """CORE und OPTIONAL aus check_setup.py, ohne es zu importieren.
+
+    Das Skript arbeitet schon beim Import: es druckt, legt den Cache-Ordner
+    an und fragt die F1-API ab. Ein Test darf das nicht ausloesen, deshalb
+    ueber den Syntaxbaum.
+    """
+    baum = ast.parse((WURZEL / "check_setup.py").read_text())
+    werte = {}
+    for knoten in baum.body:
+        if isinstance(knoten, ast.Assign) and len(knoten.targets) == 1:
+            ziel = knoten.targets[0]
+            if isinstance(ziel, ast.Name) and ziel.id in ("CORE", "OPTIONAL"):
+                werte[ziel.id] = ast.literal_eval(knoten.value)
+    return list(werte["CORE"]), list(werte["OPTIONAL"])
+
+
+class TestCheckSetupPasstZurDeklaration:
+    """check_setup.py ist das erste, was ein neuer Nutzer aufruft - es soll
+    genau dann "Alles bereit" sagen, wenn es das auch ist.
+
+    Vor diesem Durchgang fehlte scipy in CORE, obwohl es eine
+    Basis-Abhaengigkeit ist und 22 Dateien es importieren: das Skript
+    konnte gruen melden und die Analyseskripte danach reihenweise beim
+    Import abbrechen. Ein Pruefskript, das seine eigene Pruefliste von
+    Hand pflegt, driftet - dieser Test bindet sie an pyproject.toml.
+    """
+
+    def test_jede_basis_abhaengigkeit_steht_in_core(self):
+        core, _ = _check_setup_listen()
+        modul_zu_dist = _modul_zu_dist()
+        abgedeckt = {d for modul in core
+                     for d in modul_zu_dist.get(modul, {modul})}
+
+        fehlend = _deklarierte_distributionen(
+            WURZEL / "pyproject.toml", nur_basis=True) - abgedeckt
+        assert not fehlend, (
+            f"Basis-Abhaengigkeit(en) {sorted(fehlend)} fehlen in "
+            f"check_setup.CORE - das Skript kann 'Alles bereit' melden, "
+            f"waehrend Skripte beim Import abbrechen")
+
+    def test_core_verlangt_nichts_optionales(self):
+        """umgekehrt genauso falsch: was nur in einer Extra-Gruppe steht,
+        darf nicht als fehlend gemeldet werden."""
+        core, _ = _check_setup_listen()
+        modul_zu_dist = _modul_zu_dist()
+        basis = _deklarierte_distributionen(WURZEL / "pyproject.toml",
+                                            nur_basis=True)
+        zuviel = [m for m in core
+                  if not (modul_zu_dist.get(m, {m}) & basis)]
+        assert not zuviel, (
+            f"{zuviel} steht in CORE, ist aber keine Basis-Abhaengigkeit")
+
+    def test_jede_extra_gruppe_ist_in_optional_vertreten(self):
+        """Geprueft wird je *Gruppe*, nicht je Paket.
+
+        check_setup.py ist ein Wegweiser, kein vollstaendiges Manifest -
+        "sklearn fehlt, gebraucht fuer Projekte 23/24/36" ist die
+        nuetzliche Auskunft, nicht das Aufzaehlen jeder transitiven
+        Abhaengigkeit (pydantic kommt ohnehin mit fastapi). Eine Gruppe
+        ganz zu verschweigen ist der Fehler: genau so war torch nirgends
+        erwaehnt, obwohl P25 und die ML-Seite es brauchen.
+
+        dev bleibt aussen vor - Entwicklungswerkzeuge sind nicht das, was
+        ein Nutzer beim Setup vermisst.
+        """
+        import tomllib
+        gruppen = tomllib.loads(
+            (WURZEL / "pyproject.toml").read_text()
+        )["project"]["optional-dependencies"]
+
+        _, optional = _check_setup_listen()
+        modul_zu_dist = _modul_zu_dist()
+        genannt = {d for modul in optional
+                   for d in modul_zu_dist.get(modul, {modul})}
+
+        stumm = []
+        for name, specs in gruppen.items():
+            if name == "dev":
+                continue
+            dists = {s.split(">")[0].split("=")[0].split("[")[0]
+                     .strip().lower().replace("-", "_") for s in specs}
+            if not dists & genannt:
+                stumm.append(f"{name} ({', '.join(sorted(dists))})")
+
+        assert not stumm, (
+            f"Extra-Gruppe(n) ohne einen einzigen Vertreter in "
+            f"check_setup.OPTIONAL: {stumm}")
 
 
 class TestOptionalIstWirklichOptional:

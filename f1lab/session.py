@@ -976,6 +976,14 @@ def corner_speeds(session, window_m: float = 60.0) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------- bremszonen
+BREMSZONEN_DTYPEN = {"start_m": "float64", "end_m": "float64",
+                     "length_m": "float64", "v_entry_kmh": "float64",
+                     "v_min_kmh": "float64", "duration_s": "float64",
+                     "decel_g": "float64"}
+DRS_ZONEN_DTYPEN = {"start_m": "float64", "end_m": "float64",
+                    "length_m": "float64"}
+
+
 def driver_braking_zones(session, driver: str, min_length_m: float = 20.0
                          ) -> pd.DataFrame:
     """bremszonen der schnellsten runde eines fahrers (siehe P08).
@@ -985,11 +993,13 @@ def driver_braking_zones(session, driver: str, min_length_m: float = 20.0
     """
     lap = session.laps.pick_drivers(driver).pick_fastest()
     if lap is None or pd.isna(lap["LapTime"]):
-        return pd.DataFrame()
+        return leerer_rahmen(BREMSZONEN_DTYPEN)
     car = lap.get_car_data().add_distance()
-    return pd.DataFrame(braking_zones(
+    zonen = braking_zones(
         car["Brake"], car["Distance"], car["Speed"],
-        car["Time"].dt.total_seconds(), min_length_m=min_length_m))
+        car["Time"].dt.total_seconds(), min_length_m=min_length_m)
+    # auch eine gefahrene Runde kann null erkannte Bremszonen haben
+    return pd.DataFrame(zonen) if zonen else leerer_rahmen(BREMSZONEN_DTYPEN)
 
 
 def compare_braking_zones(zones_a: pd.DataFrame, zones_b: pd.DataFrame,
@@ -1025,11 +1035,13 @@ def drs_zones(session, driver: str, min_length_m: float = 100.0
     """
     lap = session.laps.pick_drivers(driver).pick_fastest()
     if lap is None or pd.isna(lap["LapTime"]):
-        return pd.DataFrame()
+        return leerer_rahmen(DRS_ZONEN_DTYPEN)
     car = lap.get_car_data().add_distance()
     offen = drs_state(car["DRS"].to_numpy()) == 2
-    return pd.DataFrame(active_distance_zones(offen, car["Distance"].to_numpy(),
-                                              min_length_m=min_length_m))
+    zonen = active_distance_zones(offen, car["Distance"].to_numpy(),
+                                  min_length_m=min_length_m)
+    # eine Strecke ohne offene DRS-Zone in dieser Runde ist moeglich
+    return pd.DataFrame(zonen) if zonen else leerer_rahmen(DRS_ZONEN_DTYPEN)
 
 
 DRS_USAGE_DTYPEN = {"driver": "object", "team": "object", "drs_s": "float64",

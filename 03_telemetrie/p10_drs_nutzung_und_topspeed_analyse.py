@@ -94,10 +94,20 @@ def main():
         laengen[jahr] = car["Distance"].max()
         print(f"      {jahr}: {len(zonen[jahr])} Zonen, "
              f"Streckenlaenge {laengen[jahr]:.0f} m")
-    verschiebung = (zonen[ZONEN_JAHRE[1]]["start_m"].to_numpy()
-                   - zonen[ZONEN_JAHRE[0]]["start_m"].to_numpy())
-    print(f"      Verschiebung Zonenbeginn: "
-         f"{', '.join(f'{v:+.0f} m' for v in verschiebung)}")
+    # Zonen paarweise vergleichen setzt gleich viele voraus. Eine Strecke
+    # kann zwischen zwei Jahren eine Zone dazubekommen oder verlieren -
+    # genau die Frage, die dieser Abschnitt stellt -, und in einer Runde
+    # ohne offenes DRS gibt es gar keine. Die Subtraktion waere dann ein
+    # roher Shape-Fehler statt der Aussage.
+    n_zonen = {j: len(zonen[j]) for j in ZONEN_JAHRE}
+    if len(set(n_zonen.values())) != 1 or not any(n_zonen.values()):
+        print(f"      Zonenzahl unterschiedlich oder null {n_zonen} - "
+             f"kein paarweiser Vergleich der Zonenbeginne moeglich")
+    else:
+        verschiebung = (zonen[ZONEN_JAHRE[1]]["start_m"].to_numpy()
+                       - zonen[ZONEN_JAHRE[0]]["start_m"].to_numpy())
+        print(f"      Verschiebung Zonenbeginn: "
+             f"{', '.join(f'{v:+.0f} m' for v in verschiebung)}")
 
     print("\n[3/3] Grafik ...")
     fig = plt.figure(figsize=(15, 11))

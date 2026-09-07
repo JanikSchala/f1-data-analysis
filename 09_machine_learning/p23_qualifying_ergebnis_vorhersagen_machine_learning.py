@@ -190,12 +190,23 @@ def main():
         m_pos.fit(X.iloc[tr], y_pos.iloc[tr])
         mae_pos.append(mean_absolute_error(y_pos.iloc[te], m_pos.predict(X.iloc[te])))
 
-        m_zeit = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
+        # aeltere Saisons liefern die Q-Zeit nicht durchgehend; ein
+        # Trainings-Fold kann dadurch ganz ohne gueltigen Zielwert
+        # dastehen. sklearn meldet das als "Found array with 0 sample(s)",
+        # was nach einem Bug aussieht statt nach fehlenden Daten. Nur das
+        # Zeit-Modell faellt dann aus - Positions-Modell, MLP und der
+        # Testindex fuer die Permutation Importance haengen nicht daran.
         gueltig = y_zeit.iloc[tr].notna()
-        m_zeit.fit(X.iloc[tr][gueltig], y_zeit.iloc[tr][gueltig])
-        pred_zeit = m_zeit.predict(X.iloc[te])
-        mae_zeit_als_position.append(
-            positions_mae_aus_zeit(data.iloc[te], pred_zeit))
+        if gueltig.any():
+            m_zeit = HistGradientBoostingRegressor(max_iter=300,
+                                                   learning_rate=0.06)
+            m_zeit.fit(X.iloc[tr][gueltig], y_zeit.iloc[tr][gueltig])
+            pred_zeit = m_zeit.predict(X.iloc[te])
+            mae_zeit_als_position.append(
+                positions_mae_aus_zeit(data.iloc[te], pred_zeit))
+        else:
+            print(f"      Fold ohne gueltige Qualifying-Zeit: Zeit-Modell "
+                 f"uebersprungen ({len(tr)} Trainingszeilen)")
 
         m_mlp = mlp_pipeline()
         m_mlp.fit(X.iloc[tr], y_pos.iloc[tr])
@@ -205,9 +216,13 @@ def main():
 
     print(f"      Target=Position (Baum):  MAE = {np.mean(mae_pos):.2f} "
          f"Positionen (je Fold: {[round(v, 2) for v in mae_pos]})")
-    print(f"      Target=Zeit->Rang (Baum): MAE = "
-         f"{np.mean(mae_zeit_als_position):.2f} Positionen (je Fold: "
-         f"{[round(v, 2) for v in mae_zeit_als_position]})")
+    if mae_zeit_als_position:
+        print(f"      Target=Zeit->Rang (Baum): MAE = "
+             f"{np.mean(mae_zeit_als_position):.2f} Positionen (je Fold: "
+             f"{[round(v, 2) for v in mae_zeit_als_position]})")
+    else:
+        print("      Target=Zeit->Rang (Baum): kein Fold mit gueltiger "
+             "Qualifying-Zeit")
     print(f"      Target=Position (MLP):   MAE = {np.mean(mae_mlp):.2f} "
          f"Positionen (je Fold: {[round(v, 2) for v in mae_mlp]})")
     baseline = mean_absolute_error(y_pos, np.full(len(y_pos), y_pos.median()))
@@ -215,6 +230,9 @@ def main():
          f"{baseline:.2f}")
 
     print("\n[4/4] Permutation Importance auf letztem Testfold (VORGEHEN 5) ...")
+    if letzter_test_idx is None:
+        raise SystemExit("      kein einziger auswertbarer Fold - zu wenige "
+                         "Wochenenden fuer die Validierung")
     m_final = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.06)
     tr_final = np.setdiff1d(np.arange(len(X)), letzter_test_idx)
     m_final.fit(X.iloc[tr_final], y_pos.iloc[tr_final])

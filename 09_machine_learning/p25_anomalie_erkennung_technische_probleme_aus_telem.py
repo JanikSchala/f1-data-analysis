@@ -228,7 +228,11 @@ def ausfall_analyse(df: pd.DataFrame, anomalien: pd.DataFrame,
             "anomalien_auf_strecke": len(auf_strecke),
             "runden_vorlauf_auf_strecke": vorlauf,
         })
-    return pd.DataFrame(zeilen)
+    # ein Rennen ohne technischen Ausfall ist ein moegliches Ergebnis - ohne
+    # die Spalten faellt der Aufrufer beim Zugriff auf "driver" um.
+    return pd.DataFrame(zeilen, columns=[
+        "driver", "status", "letzte_runde", "anomalien_boxenrunden",
+        "anomalien_auf_strecke", "runden_vorlauf_auf_strecke"])
 
 
 def zeichne_verlauf(ax, df: pd.DataFrame, anomalien: pd.DataFrame,

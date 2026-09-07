@@ -72,7 +72,11 @@ def zeichne_positionsspalte(ax, wechsel: pd.DataFrame, order: list[str]) -> None
     for drv in order:
         g = wechsel[wechsel["Driver"] == drv].sort_values("stint")
         for s in g.itertuples():
-            if pd.isna(s.gain):
+            # stint kann fehlen: aeltere Saisons liefern die Nummer nicht
+            # durchgehend (Oesterreich 2018: 31 % der Stints ohne). Ohne
+            # x-Koordinate laesst sich der Punkt nicht setzen, und
+            # ax.scatter() wirft ueber pd.NA einen rohen TypeError.
+            if pd.isna(s.gain) or pd.isna(s.stint):
                 continue
             farbe = POSITIV if s.gain > 0 else (NEGATIV if s.gain < 0 else MUTED)
             ax.scatter(s.stint, drv, s=90, color=farbe, zorder=3,
@@ -84,7 +88,9 @@ def zeichne_positionsspalte(ax, wechsel: pd.DataFrame, order: list[str]) -> None
     ax.tick_params(axis="y", left=False, labelleft=False)
     # kein eigenes invert_yaxis() nötig: ax teilt die y-achse mit dem gantt (sharey)
     # und übernimmt dessen bereits invertierte reihenfolge automatisch
-    ax.set_xticks(range(1, int(wechsel["stint"].max()) + 1))
+    hoechster = wechsel["stint"].max()
+    if pd.notna(hoechster):
+        ax.set_xticks(range(1, int(hoechster) + 1))
     ax.set_xlabel("Stint")
     ax.set_title("Positions-\ndelta", loc="left", color=FG, fontsize=13, pad=10)
     for side in ("top", "right", "left"):
