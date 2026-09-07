@@ -216,6 +216,11 @@ def main():
          f"Runden je Fahrer und Strecke im Schnitt")
     agg = df.groupby("driver").mean(numeric_only=True)
     print(agg.round(2).to_string())
+    # StandardScaler/PCA/Silhouette brauchen mehr Zeilen als Cluster-
+    # Kandidaten; unter vier Fahrern gibt es nichts zu clustern.
+    if len(agg) < 4:
+        raise SystemExit(f"      nur {len(agg)} Fahrer mit auswertbarer "
+                         "Telemetrie - zu wenig fuer ein Clustering")
 
     print("\n[2/3] Standardisieren, PCA, k-Means (VORGEHEN 3-4) ...")
     X = StandardScaler().fit_transform(agg)

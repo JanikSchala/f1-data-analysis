@@ -18,7 +18,7 @@ import pandas as pd
 from matplotlib.collections import LineCollection
 
 import f1lab
-from f1lab.design import FG, GRID, SERIEN, matplotlib_stil
+from f1lab.design import FG, GRID, MUTED, SERIEN, matplotlib_stil
 
 warnings.filterwarnings("ignore")
 
@@ -83,8 +83,14 @@ def zeichne_speedtraps(ax, laps: pd.DataFrame, sec: pd.DataFrame) -> None:
 
 
 def zeichne_streckenkarte(ax, telemetrie: dict[str, pd.DataFrame],
-                          edges: np.ndarray, gewinner: np.ndarray,
+                          edges: np.ndarray | None,
+                          gewinner: np.ndarray | None,
                           fahrer: list[str]) -> None:
+    if edges is None or gewinner is None or not telemetrie:
+        ax.text(0.5, 0.5, "kein Mini-Sektor-Vergleich moeglich", ha="center",
+               va="center", color=MUTED)
+        ax.axis("off")
+        return
     farbe = dict(zip(fahrer, SERIEN, strict=True))
     referenz = telemetrie[fahrer[0]]
     x = referenz["X"].to_numpy()
@@ -122,6 +128,11 @@ def main():
 
     print("[2/4] Sektor-Zerlegung ...")
     sec = sektor_tabelle(laps)
+    # die Sektortabelle ist die Grundlage aller vier Teile - ohne gewertete
+    # Runde gibt es weder Potenzial noch Speed-Traps noch Mini-Sektoren.
+    if sec.empty:
+        raise SystemExit(f"      keine gewerteten Runden in {EVENT} {SEASON} "
+                         f"{IDENT} - andere Session waehlen")
     print(sec[["real", "theoretisch", "ungenutzt"]].round(3).to_string())
 
     print(f"\n[3/4] Mini-Sektoren (Top 3, n={N_MINISEKTOREN}) ...")
@@ -129,16 +140,23 @@ def main():
     r = f1lab.mini_sectors(ses, top3, n=N_MINISEKTOREN)
     telemetrie, edges, gewinner, dauer = (r["telemetrie"], r["edges"],
                                           r["gewinner"], r["dauer"])
-    for drv in top3:
-        print(f"      {drv}: {int((gewinner == drv).sum())} Mini-Sektoren gewonnen")
+    # weniger als zwei verwertbare Runden heisst: es gibt keinen Vergleich.
+    # mini_sectors() setzt edges/gewinner/dauer dann auf None.
+    if dauer is None:
+        print("      weniger als zwei Fahrer mit verwertbarer Runde - kein "
+             "Mini-Sektor-Vergleich moeglich")
+    else:
+        for drv in top3:
+            print(f"      {drv}: {int((gewinner == drv).sum())} "
+                 f"Mini-Sektoren gewonnen")
 
-    arr = np.sort(dauer.to_numpy(), axis=1)
-    lueck = arr[:, 1] - arr[:, 0]
-    engster, weitester = int(np.argmin(lueck)), int(np.argmax(lueck))
-    print(f"      engster Mini-Sektor: #{engster + 1} "
-         f"({lueck[engster] * 1000:.0f} ms Unterschied)")
-    print(f"      groesster Vorsprung: #{weitester + 1} "
-         f"({lueck[weitester] * 1000:.0f} ms Unterschied)")
+        arr = np.sort(dauer.to_numpy(), axis=1)
+        lueck = arr[:, 1] - arr[:, 0]
+        engster, weitester = int(np.argmin(lueck)), int(np.argmax(lueck))
+        print(f"      engster Mini-Sektor: #{engster + 1} "
+             f"({lueck[engster] * 1000:.0f} ms Unterschied)")
+        print(f"      groesster Vorsprung: #{weitester + 1} "
+             f"({lueck[weitester] * 1000:.0f} ms Unterschied)")
 
     print("[4/4] Grafik ...")
     fig = plt.figure(figsize=(15, 10.5))

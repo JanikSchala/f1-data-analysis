@@ -1495,9 +1495,15 @@ def mini_sectors(session, drivers: list[str], n: int = 25) -> dict:
     sinnvoll, siehe P06-docstring.
 
     Returns:
-        dict mit ``telemetrie`` (distanz/zeit/X/Y je fahrer),
-        ``edges`` (grenzen der abschnitte) und ``gewinner`` (fahrer je
-        abschnitt, laenge n).
+        dict mit ``telemetrie`` (distanz/zeit/X/Y je fahrer), ``edges``
+        (grenzen der abschnitte), ``gewinner`` (fahrer je abschnitt,
+        laenge n) und ``dauer`` (zeit je abschnitt und fahrer).
+
+        haben weniger als zwei der uebergebenen fahrer eine verwertbare
+        runde, gibt es nichts zu vergleichen: ``edges``, ``gewinner`` und
+        ``dauer`` sind dann None. die schluessel sind trotzdem da - ein
+        fehlender schluessel waere beim aufrufer ein KeyError statt einer
+        aussage (siehe P06).
     """
     telemetrie = {}
     for drv in drivers:
@@ -1512,7 +1518,8 @@ def mini_sectors(session, drivers: list[str], n: int = 25) -> dict:
             "Y": tel["Y"].to_numpy(dtype=float),
         })
     if len(telemetrie) < 2:
-        return {"telemetrie": telemetrie, "edges": None, "gewinner": None}
+        return {"telemetrie": telemetrie, "edges": None,
+                "gewinner": None, "dauer": None}
 
     strecke = min(t["Distance"].max() for t in telemetrie.values())
     edges = np.linspace(0, strecke, n + 1)

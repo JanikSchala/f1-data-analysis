@@ -8,6 +8,7 @@ import threading
 import time
 import urllib.request
 import warnings
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -34,8 +35,14 @@ app = FastAPI(title="F1 Telemetry API", version="1.0")
 # zweite cache-ebene vor den teuren endpunkten: ein antwort-cache mit TTL,
 # unabhaengig vom f1lab.load()-sessioncache darunter. steht hier in-process
 # statt extern (Redis) zur vermeidung zusaetzlicher infrastruktur.
-_ANTWORT_CACHE: dict[str, tuple[float, object]] = {}
+#
+# OrderedDict statt dict und ein Deckel: der Cache haelt ganze
+# Telemetrie-Antworten (bis zu 5000 Punkte je Eintrag), und der Schluessel
+# enthaelt frei waehlbare Parameter aus der URL. Ohne Obergrenze bestimmt
+# der Aufrufer, wie viel Speicher der Prozess belegt.
+_ANTWORT_CACHE: OrderedDict[str, tuple[float, object]] = OrderedDict()
 CACHE_TTL_S = 300.0
+CACHE_MAX = 256
 
 
 def cache_get(key: str):
@@ -44,13 +51,19 @@ def cache_get(key: str):
         return None
     gesetzt_um, wert = treffer
     if time.monotonic() - gesetzt_um > CACHE_TTL_S:
-        del _ANTWORT_CACHE[key]
+        # FastAPI faehrt synchrone Endpunkte in einem Threadpool: zwei
+        # Anfragen koennen denselben abgelaufenen Schluessel gleichzeitig
+        # sehen, und der zweite del wuerde einen KeyError werfen.
+        _ANTWORT_CACHE.pop(key, None)
         return None
     return wert
 
 
 def cache_set(key: str, wert: object) -> None:
     _ANTWORT_CACHE[key] = (time.monotonic(), wert)
+    _ANTWORT_CACHE.move_to_end(key)
+    while len(_ANTWORT_CACHE) > CACHE_MAX:
+        _ANTWORT_CACHE.popitem(last=False)     # aeltester Zugriff zuerst raus
 
 
 class LapOut(BaseModel):

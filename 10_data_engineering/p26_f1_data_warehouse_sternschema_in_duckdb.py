@@ -174,10 +174,15 @@ def dims_schreiben(season: int, driver_frames: list[pd.DataFrame]) -> None:
 
 
 def views_anlegen(con) -> None:
+    # kein hive_partitioning=1, obwohl die Ordner "season=2024" heissen: die
+    # Fakten tragen Season ohnehin als echte Spalte, DuckDB legt deshalb
+    # keine zweite an, und ein Filter auf Season trifft die Spalte statt den
+    # Partitionsschluessel - nachgemessen, weder eine zusaetzliche Spalte
+    # noch ein Datei-Filter im Plan. Das Flag sah nach Partition-Pruning
+    # aus, ohne welches zu bewirken.
     for tabelle in ("fact_lap", "fact_pitstop", "fact_overtake"):
         con.execute(f"""CREATE OR REPLACE VIEW {tabelle} AS
-            SELECT * FROM read_parquet('{WH}/{tabelle}/*/*.parquet',
-                                       hive_partitioning=1)""")
+            SELECT * FROM read_parquet('{WH}/{tabelle}/*/*.parquet')""")
     for tabelle in ("dim_event", "dim_driver", "dim_team"):
         con.execute(f"""CREATE OR REPLACE VIEW {tabelle} AS
             SELECT * FROM read_parquet('{WH}/{tabelle}/*.parquet')""")
