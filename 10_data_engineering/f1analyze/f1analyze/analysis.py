@@ -61,26 +61,21 @@ def traffic_scenario(session, alt_stops: int, delta: float = 0.15,
                      start_gap: float = 3.0, p_overtake: float = 0.15,
                      n_sim: int = 3000) -> dict:
     """zwei DAG-optimale Plaene gegen einen Rivalen simuliert: aendert
-    Verkehr die Empfehlung? Szenario-Parameter, keine gemessenen Werte."""
-    cfg = f1lab.race_config_from_session(session)
-    hero = f1lab.optimal_strategy(cfg)
-    kandidaten = {n: s for n, s in f1lab.frontier_by_stops(cfg, up_to=4).items()
-                 if s is not None}
-    if alt_stops not in kandidaten:
-        raise ValueError(f"{alt_stops}-Stopp nicht moeglich in dieser Session "
-                         f"(verfuegbar: {sorted(kandidaten)})")
-    alt = kandidaten[alt_stops]
-    hero_t = f1lab.lap_times_for_strategy(cfg, hero)
-    alt_t = f1lab.lap_times_for_strategy(cfg, alt)
-    rivale_t = hero_t + delta
-    c_hero, _ = f1lab.traffic_cost(hero_t, rivale_t, start_gap, p_overtake,
-                                   n_sim=n_sim, seed=1)
-    c_alt, _ = f1lab.traffic_cost(alt_t, rivale_t, start_gap, p_overtake,
-                                  n_sim=n_sim, seed=1)
+    Verkehr die Empfehlung? Szenario-Parameter, keine gemessenen Werte.
+
+    Die Kette selbst steckt seit dem letzten Durchgang in
+    f1lab.traffic_scenario() - sie lag hier, in der API (P27) und auf der
+    Dashboard-Seite dreimal unabhaengig nachgebaut. Hier bleibt die
+    Aufbereitung fuer die CLI.
+    """
+    erg = f1lab.traffic_scenario(session, alt_stops, delta=delta,
+                                 start_gap=start_gap, p_overtake=p_overtake,
+                                 n_sim=n_sim)
+    hero, alt = erg["hero"], erg["alt"]
     return {"hero_stops": hero.n_stops, "hero_frei": hero.green_time,
-           "hero_verkehr": hero.green_time + c_hero,
+           "hero_verkehr": hero.green_time + erg["hero_kosten"],
            "alt_stops": alt_stops, "alt_frei": alt.green_time,
-           "alt_verkehr": alt.green_time + c_alt}
+           "alt_verkehr": alt.green_time + erg["alt_kosten"]}
 
 
 def overtake_summary(session, quali_session) -> dict:

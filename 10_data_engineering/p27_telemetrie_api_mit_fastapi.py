@@ -260,32 +260,19 @@ def traffic(year: int, gp: str, alt_stops: int,
     if cached is not None:
         return cached
 
+    # die Simulationskette selbst steckt in f1lab.traffic_scenario(); sie
+    # lag hier, im CLI-Paket f1analyze und auf der Dashboard-Seite dreimal
+    # unabhaengig nachgebaut. Hier bleibt die HTTP-Aufbereitung.
     try:
         s = f1lab.load(year, gp, "R", telemetry=False)
-        cfg = f1lab.race_config_from_session(s)
-        hero = f1lab.optimal_strategy(cfg)
-        kandidaten = {n: st_ for n, st_ in
-                     f1lab.frontier_by_stops(cfg, up_to=4).items()
-                     if st_ is not None}
-        if alt_stops not in kandidaten:
-            raise HTTPException(
-                404, f"{alt_stops}-Stopp nicht moeglich, verfuegbar: "
-                    f"{sorted(kandidaten)}")
-        alt = kandidaten[alt_stops]
-        hero_t = f1lab.lap_times_for_strategy(cfg, hero)
-        alt_t = f1lab.lap_times_for_strategy(cfg, alt)
-        rivale_t = hero_t + delta
-        c_hero, _ = f1lab.traffic_cost(hero_t, rivale_t, gap, p_overtake,
-                                       n_sim=3000, seed=1)
-        c_alt, _ = f1lab.traffic_cost(alt_t, rivale_t, gap, p_overtake,
-                                      n_sim=3000, seed=1)
-    except HTTPException:
-        raise
+        erg = f1lab.traffic_scenario(s, alt_stops, delta=delta, start_gap=gap,
+                                     p_overtake=p_overtake)
     except Exception as exc:
         raise HTTPException(404, str(exc)) from exc
 
-    hero_traffic = hero.green_time + c_hero
-    alt_traffic = alt.green_time + c_alt
+    hero, alt = erg["hero"], erg["alt"]
+    hero_traffic = hero.green_time + erg["hero_kosten"]
+    alt_traffic = alt.green_time + erg["alt_kosten"]
     out = TrafficOut(
         hero_stops=hero.n_stops, hero_free_s=hero.green_time,
         hero_traffic_s=hero_traffic, alt_stops=alt_stops,

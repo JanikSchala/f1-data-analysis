@@ -32,12 +32,16 @@ from .core import (
     elevation_profile,
     estimate_pit_loss,
     fit_degradation,
+    frontier_by_stops,
     fuel_correct,
+    lap_times_for_strategy,
     match_by_distance,
+    optimal_strategy,
     path_length,
     sieg_grund,
     status_intervals,
     track_curvature,
+    traffic_cost,
 )
 
 CACHE_DIR = Path.home() / "f1_cache"
@@ -550,6 +554,61 @@ def race_config_from_session(session, fit_min_laps: int = 6,
         tyres=tuple(tyres), min_stint=optimizer_min_stint,
         require_two_compounds=require_two_compounds,
         fuel_effect=FUEL_KG_PER_LAP * FUEL_S_PER_KG)
+
+
+
+def traffic_scenario(session, alt_stops: int, *, delta: float = 0.15,
+                     start_gap: float = 3.0, p_overtake: float = 0.15,
+                     n_sim: int = 3000, seed: int = 1) -> dict:
+    """DAG-optimaler Plan gegen eine Alternative mit fester Stoppzahl, beide
+    gegen einen Rivalen simuliert: aendert Verkehr die Empfehlung?
+
+    die Kette race_config_from_session -> optimal_strategy ->
+    frontier_by_stops -> lap_times_for_strategy -> traffic_cost lag dreimal
+    unabhaengig im Repository: in der API (P27), im CLI-Paket f1analyze und
+    auf der Dashboard-Seite. Gerechnet wird ausschliesslich in f1lab, die
+    drei formatieren nur noch.
+
+    ``delta``, ``start_gap`` und ``p_overtake`` sind Szenario-Annahmen,
+    keine gemessenen Werte.
+
+    Args:
+        alt_stops: Stoppzahl der Alternative, gegen die das Optimum antritt.
+
+    Returns:
+        dict mit ``cfg``, ``hero``/``alt`` (Strategy), ``hero_kosten``/
+        ``alt_kosten`` (erwarteter Verlust durch Verkehr in s), den
+        zugehoerigen Standardfehlern ``hero_se``/``alt_se``, den freien
+        Rundenzeiten ``hero_zeiten``/``alt_zeiten``/``rivale_zeiten`` und
+        ``moegliche_stopps``.
+
+    Raises:
+        ValueError: ``alt_stops`` ist in dieser Session nicht fahrbar (der
+            Text nennt die moeglichen Stoppzahlen), oder
+            race_config_from_session findet keine belastbaren Fits.
+    """
+    cfg = race_config_from_session(session)
+    hero = optimal_strategy(cfg)
+    kandidaten = {n: st for n, st in frontier_by_stops(cfg, up_to=4).items()
+                  if st is not None}
+    if alt_stops not in kandidaten:
+        raise ValueError(f"{alt_stops}-Stopp nicht moeglich in dieser Session "
+                         f"(verfuegbar: {sorted(kandidaten)})")
+    alt = kandidaten[alt_stops]
+
+    hero_zeiten = lap_times_for_strategy(cfg, hero)
+    alt_zeiten = lap_times_for_strategy(cfg, alt)
+    rivale_zeiten = hero_zeiten + delta
+    hero_kosten, hero_se = traffic_cost(hero_zeiten, rivale_zeiten, start_gap,
+                                        p_overtake, n_sim=n_sim, seed=seed)
+    alt_kosten, alt_se = traffic_cost(alt_zeiten, rivale_zeiten, start_gap,
+                                      p_overtake, n_sim=n_sim, seed=seed)
+    return {"cfg": cfg, "hero": hero, "alt": alt,
+            "hero_kosten": hero_kosten, "hero_se": hero_se,
+            "alt_kosten": alt_kosten, "alt_se": alt_se,
+            "hero_zeiten": hero_zeiten, "alt_zeiten": alt_zeiten,
+            "rivale_zeiten": rivale_zeiten,
+            "moegliche_stopps": sorted(kandidaten)}
 
 
 # --------------------------------------------------------------- Boxenstopps

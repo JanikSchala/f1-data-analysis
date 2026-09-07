@@ -89,22 +89,17 @@ k[1].metric(f"{alt_n}-Stopp, frei", f"{alt.green_time:.2f} s",
 @st.cache_data(show_spinner="Verkehr wird simuliert ...")
 def _traffic(cache_pfad: str, season: int, event: str, ident: str,
             alt_n: int, delta: float, start_gap: float, p_overtake: float):
+    # gerechnet wird nichts hier: die Kette steckt in
+    # f1lab.traffic_scenario() und lag vorher dreimal unabhaengig im
+    # Repository (hier, in der API P27 und im CLI-Paket f1analyze).
     s = f1lab.load(season, event, ident, telemetry=False)
-    c = f1lab.race_config_from_session(s)
-    hero = f1lab.optimal_strategy(c)
-    kand = {n: st_ for n, st_ in f1lab.frontier_by_stops(c, up_to=4).items()
-           if st_ is not None}
-    alt_ = kand[alt_n]
-    hero_t = f1lab.lap_times_for_strategy(c, hero)
-    alt_t = f1lab.lap_times_for_strategy(c, alt_)
-    rivale_t = hero_t + delta
-    c_hero, se_hero = f1lab.traffic_cost(hero_t, rivale_t, start_gap,
-                                         p_overtake, n_sim=3000, seed=1)
-    c_alt, se_alt = f1lab.traffic_cost(alt_t, rivale_t, start_gap,
-                                       p_overtake, n_sim=3000, seed=1)
-    verlauf, _ = f1lab.gap_evolution(hero_t, rivale_t, start_gap, p_overtake,
+    erg = f1lab.traffic_scenario(s, alt_n, delta=delta, start_gap=start_gap,
+                                 p_overtake=p_overtake)
+    verlauf, _ = f1lab.gap_evolution(erg["hero_zeiten"], erg["rivale_zeiten"],
+                                     start_gap, p_overtake,
                                      rng=random.Random(1))
-    return c_hero, se_hero, c_alt, se_alt, verlauf
+    return (erg["hero_kosten"], erg["hero_se"],
+            erg["alt_kosten"], erg["alt_se"], verlauf)
 
 
 c_hero, se_hero, c_alt, se_alt, verlauf = _traffic(
