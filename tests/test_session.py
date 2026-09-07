@@ -816,6 +816,64 @@ class TestZeitBeiSpeed:
         assert _zeit_bei_speed(t, v, 100.0, t0=0.0) == 2.0
 
 
+class TestLoadPrueftDieRunden:
+    """``Session.load()`` kann ohne Ausnahme zurueckkehren, ohne dass die
+    Runden da sind.
+
+    FastF1 faengt einen Teil seiner eigenen API-Fehler intern ab und loggt
+    nur eine WARNING. Erst der Zugriff auf ``session.laps`` wirft dann -
+    also eine Zeile spaeter, ausserhalb des ``try: load(...) except:
+    continue``, das die Aufrufer rund um jeden Saison-Scan gelegt haben.
+    Neunzehn Stellen im Repository haben diese Form; zwei Dashboard-Seiten
+    sind daran real umgefallen, und der woechentliche PDF-Report auch.
+    Deshalb prueft load() selbst.
+    """
+
+    class _KaputteLaps:
+        @property
+        def laps(self):
+            raise DataNotLoadedError("keine Runden")
+
+        def load(self, **kw):
+            pass
+
+    class _HeileLaps:
+        laps = "runden"
+
+        def load(self, **kw):
+            self.geladen_mit = kw
+
+    def _patch(self, monkeypatch, ses):
+        monkeypatch.setattr(session_mod, "_active_cache", "irgendwas")
+        monkeypatch.setattr(session_mod.fastf1, "get_session",
+                            lambda *a, **kw: ses)
+
+    def test_fehlende_runden_werden_gemeldet(self, monkeypatch):
+        self._patch(monkeypatch, self._KaputteLaps())
+        with pytest.raises(DataNotLoadedError, match="Rundendaten fehlen"):
+            session_mod.load.__wrapped__(2026, "Bahrain", "R")
+
+    def test_die_meldung_nennt_die_session(self, monkeypatch):
+        """ein Saison-Scan ueberspringt solche Sessions still - wer dem
+        nachgeht, muss wissen welche."""
+        self._patch(monkeypatch, self._KaputteLaps())
+        with pytest.raises(DataNotLoadedError, match="2026 Bahrain R"):
+            session_mod.load.__wrapped__(2026, "Bahrain", "R")
+
+    def test_heile_session_kommt_unveraendert_zurueck(self, monkeypatch):
+        ses = self._HeileLaps()
+        self._patch(monkeypatch, ses)
+        assert session_mod.load.__wrapped__(2024, "Bahrain", "R") is ses
+
+    def test_die_optionen_werden_durchgereicht(self, monkeypatch):
+        ses = self._HeileLaps()
+        self._patch(monkeypatch, ses)
+        session_mod.load.__wrapped__(2024, "Bahrain", "R", telemetry=True,
+                                     weather=True, messages=True)
+        assert ses.geladen_mit == {"telemetry": True, "weather": True,
+                                   "messages": True}
+
+
 class TestReferenceLap:
     """``pick_fastest()`` gibt ``None`` zurueck statt zu werfen, und zwar
     nicht nur bei leeren Laps: es reicht, dass keine Runde als persoenliche

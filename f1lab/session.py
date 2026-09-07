@@ -199,11 +199,36 @@ def load(year: int, gp, identifier: str = "R",
     ein zuvor gesetzter cache bleibt erhalten: wer :func:`enable_cache` mit
     eigenem pfad oder ``offline=True`` aufgerufen hat, soll das hier nicht
     stillschweigend zurueckgesetzt bekommen.
+
+    Raises:
+        fastf1.exceptions.DataNotLoadedError: ``Session.load()`` ist
+            durchgelaufen, die runden sind trotzdem nicht da.
+
+    zur letzten zeile: fastf1 faengt einen teil seiner eigenen api-fehler
+    intern ab und loggt nur eine WARNING - ``load()`` kehrt dann ohne
+    ausnahme zurueck, und erst der zugriff auf ``session.laps`` wirft.
+    das ist zweimal teuer geworden: der woechentliche PDF-report ist so
+    gescheitert, und die dashboard-seite zum ueberholschwierigkeits-
+    vergleich fiel bei jedem saison-scan um. beide hatten ein
+    ``try: load(...) except: continue`` - das aber nichts fing, weil der
+    fehler erst eine zeile spaeter kam.
+
+    im hiesigen cache betrifft das elf sessions: zehn eintraege der
+    laufenden saison 2026, deren ordner schon existiert, und Monza 2018.
+    sie stehen im inventar von :func:`cached_sessions`, weil die
+    timing-datei da ist, lassen sich aber nicht auswerten. hier einmal
+    geprueft, statt es neunzehn aufrufern zu ueberlassen.
     """
     if _active_cache is None:
         enable_cache()
     ses = fastf1.get_session(year, gp, identifier)
     ses.load(telemetry=telemetry, weather=weather, messages=messages)
+    try:
+        _ = ses.laps          # loest den DataNotLoadedError aus, falls einer kommt
+    except Exception as exc:
+        raise fastf1.exceptions.DataNotLoadedError(
+            f"{year} {gp} {identifier}: Session.load() lief durch, die "
+            f"Rundendaten fehlen trotzdem ({type(exc).__name__})") from exc
     return ses
 
 
