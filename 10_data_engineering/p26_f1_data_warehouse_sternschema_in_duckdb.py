@@ -41,11 +41,15 @@ def bereits_geladen(con, season: int, rnd: int, sess: str) -> bool:
         [season, rnd, sess]).fetchone()[0] > 0
 
 
+PITSTOP_SPALTEN = ["Driver", "Team", "InLap", "StintVor", "CompoundVor",
+                   "CompoundNach", "DurationS"]
+
+
 def pitstops_extrahieren(laps: pd.DataFrame) -> pd.DataFrame:
     """fact_pitstop: PitInTime steht auf der runde vor der box.
     PitOutTime steht auf der direkt folgenden runde. ein stopp ist deshalb
     ein paar aufeinanderfolgender zeilen desselben fahrers."""
-    zeilen = []
+    zeilen: list[dict] = []
     ein = laps[laps["PitInTime"].notna()]
     for r in ein.itertuples():
         aus = laps[(laps["Driver"] == r.Driver) & (laps["LapNumber"] == r.LapNumber + 1)]
@@ -58,7 +62,11 @@ def pitstops_extrahieren(laps: pd.DataFrame) -> pd.DataFrame:
             "CompoundNach": (aus.iloc[0]["Compound"] if len(aus) else None),
             "DurationS": dauer,
         })
-    return pd.DataFrame(zeilen)
+    # ohne columns= entsteht fuer eine session ohne boxenstopp eine
+    # spaltenlose tabelle. die landet als parquet mit abweichendem schema in
+    # derselben partition und bringt die read_parquet('*/*.parquet')-view
+    # zum kippen - eine kaputte partition reicht fuer die ganze tabelle.
+    return pd.DataFrame(zeilen, columns=PITSTOP_SPALTEN)
 
 
 def overtakes_extrahieren(session, season: int, rnd: int, sess: str) -> pd.DataFrame:
@@ -193,27 +201,64 @@ def tests_ausfuehren(con) -> None:
 
     "nicht_leer" ist kein randfall. eine leere tabelle erfuellt jede
     "0 zeilen verletzen die regel"-pruefung automatisch. ohne diesen
-    test wuerde eine kaputte pipeline unbemerkt bleiben."""
+    test wuerde eine kaputte pipeline unbemerkt bleiben.
+
+    die pruefungen laufen bewusst gegen die *rohen* fakten und ueber
+    tabellengrenzen hinweg. eine regel gegen ein stg_-modell abzufragen,
+    das genau diese regel schon im WHERE stehen hat, liefert per
+    konstruktion 0 und sagt nichts - hier standen dafuer frueher drei
+    beispiele (rundenzeit <= 0 gegen stg_fact_lap_clean, Compound =
+    'UNKNOWN' gegen mart_degradation, median IS NULL gegen einen
+    median() ueber eine NOT-NULL-spalte). ersetzt durch die drei
+    invarianten, die der ladepfad wirklich brechen kann.
+    """
     tests = {
         "stg_fact_lap_clean_nicht_leer":
             "SELECT CASE WHEN count(*) < 1000 THEN 1 ELSE 0 END "
             "FROM stg_fact_lap_clean",
-        "keine_negativen_rundenzeiten":
-            "SELECT count(*) FROM stg_fact_lap_clean WHERE LapTime_s <= 0",
-        "keine_nullwerte_im_pace_ranking":
-            "SELECT count(*) FROM mart_driver_pace WHERE median_pace_s IS NULL",
         "jeder_boxenstopp_hat_ein_team":
             "SELECT count(*) FROM fact_pitstop WHERE Team IS NULL",
-        "degradation_nur_bekannte_mischungen":
-            "SELECT count(*) FROM mart_degradation WHERE Compound = 'UNKNOWN'",
         "jede_ueberholung_hat_gainer_und_loser":
             "SELECT count(*) FROM fact_overtake "
             "WHERE Gainer IS NULL OR Loser IS NULL OR Gainer = Loser",
+        # sternschema: jede fahrer-fremdschluessel muss in der dimension
+        # ankommen. faellt um, sobald dim_driver aus einem teil-lauf stammt
+        # oder ein ersatzfahrer nur in den laps auftaucht.
+        "jede_runde_hat_einen_fahrer_in_dim_driver":
+            "SELECT count(*) FROM fact_lap f "
+            "LEFT JOIN dim_driver d ON d.Driver = f.Driver AND d.Season = f.Season "
+            "WHERE d.Driver IS NULL",
+        # idempotenz: ein zweiter lauf darf keine runde doppelt einspielen.
+        # bricht, sobald eine partition unter neuem namen danebengeschrieben
+        # wird statt die alte zu ersetzen.
+        "keine_doppelten_runden":
+            "SELECT coalesce(sum(n - 1), 0) FROM ("
+            "  SELECT count(*) AS n FROM fact_lap "
+            "  GROUP BY Season, Round, Session, Driver, LapNumber HAVING count(*) > 1)",
+        # das manifest ist die einzige quelle dafuer, was als geladen gilt.
+        # weicht es von den tatsaechlichen parquet-zeilen ab, ueberspringt
+        # event_laden() runden, die gar nicht vollstaendig dastehen.
+        "manifest_deckt_sich_mit_den_fakten":
+            "SELECT count(*) FROM ("
+            "  SELECT mf.lap_rows, count(f.LapNumber) AS ist FROM load_manifest mf "
+            "  LEFT JOIN fact_lap f ON f.Season = mf.season AND f.Round = mf.round "
+            "                      AND f.Session = mf.session "
+            "  GROUP BY mf.season, mf.round, mf.session, mf.lap_rows "
+            "  HAVING mf.lap_rows <> count(f.LapNumber))",
     }
+    fehler = []
     for name, sql in tests.items():
         n = con.execute(sql).fetchone()[0]
         status = "OK" if n == 0 else f"FEHLGESCHLAGEN ({n} Zeilen)"
         print(f"      [{'✓' if n == 0 else '✗'}] {name}: {status}")
+        if n:
+            fehler.append(f"{name} ({n})")
+    # ein test, dessen fehlschlag nur eine zeile ausgibt und weiterlaeuft,
+    # ist keiner: der lauf endet gruen und das ergebnis wandert trotzdem
+    # in die auswertung.
+    if fehler:
+        raise AssertionError("Warehouse-Tests fehlgeschlagen: "
+                             + ", ".join(fehler))
 
 
 def main():

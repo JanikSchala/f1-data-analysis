@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from fastf1.exceptions import DataNotLoadedError
 
 import f1lab
 
@@ -44,8 +45,12 @@ def telemetry(year: int, gp: str, driver_a: str, driver_b: str,
     """schnellste Runden zweier Fahrer vergleichen: Zeit, Speed-Trap,
     Bremszonen-Zeitpunkte."""
     ses = load_session(year, gp, session, telemetry=True)
-    la = ses.laps.pick_drivers(driver_a.upper()).pick_fastest()
-    lb = ses.laps.pick_drivers(driver_b.upper()).pick_fastest()
+    try:
+        la = f1lab.reference_lap(ses, driver_a.upper())
+        lb = f1lab.reference_lap(ses, driver_b.upper())
+    except DataNotLoadedError as exc:
+        typer.secho(str(exc), fg="red")
+        raise typer.Exit(1) from exc
     typer.echo(f"{driver_a.upper()}: {la['LapTime']}   "
               f"{driver_b.upper()}: {lb['LapTime']}")
 
@@ -91,7 +96,11 @@ def optimize(year: int, gp: str) -> None:
 def lap_sim(year: int, gp: str, session: str = "Q") -> None:
     """punktmassen-Rundenzeitsimulation der schnellsten Runde."""
     ses = load_session(year, gp, session, telemetry=True)
-    erg = analysis.lap_simulation(ses)
+    try:
+        erg = analysis.lap_simulation(ses)
+    except DataNotLoadedError as exc:
+        typer.secho(str(exc), fg="red")
+        raise typer.Exit(1) from exc
     typer.echo(f"mu_g={erg['mu_g']:.2f} m/s^2 ({erg['mu_g'] / 9.81:.2f}g)  "
               f"a_accel={erg['a_accel']:.2f} m/s^2  "
               f"a_brake={erg['a_brake']:.2f} m/s^2  "

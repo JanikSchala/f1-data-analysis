@@ -54,7 +54,7 @@ def lap_simulation(session) -> dict:
     """punktmassen-Rundenzeitsimulation der schnellsten Runde: kalibrierte
     Fahrzeugparameter plus Abweichung von der echten Zeit."""
     dist, kappa, speed_real = f1lab.lap_speed_profile(session)
-    t_real = float(session.laps.pick_fastest()["LapTime"].total_seconds())
+    t_real = float(f1lab.reference_lap(session)["LapTime"].total_seconds())
     params = f1lab.calibrate_lap_model(dist, kappa, speed_real)
     _, t_sim = f1lab.simulate_lap(dist, kappa, params["mu_g"], params["a_accel"],
                                   params["a_brake"], params["v_top"])

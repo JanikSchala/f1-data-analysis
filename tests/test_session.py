@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from fastf1.exceptions import ErgastInvalidRequestError
+from fastf1.exceptions import DataNotLoadedError, ErgastInvalidRequestError
 
 import f1lab.session as session_mod
 from f1lab.session import (
@@ -28,6 +28,7 @@ from f1lab.session import (
     not_deleted_mask,
     parse_penalties,
     parse_track_limits,
+    reference_lap,
     sc_compaction,
     season_sessions,
     temperature_effect,
@@ -808,6 +809,69 @@ class TestZeitBeiSpeed:
         t = np.array([0.0, 1.0, 2.0])
         v = np.array([np.nan, np.nan, 150.0])
         assert _zeit_bei_speed(t, v, 100.0, t0=0.0) == 2.0
+
+
+class TestReferenceLap:
+    """``pick_fastest()`` gibt ``None`` zurueck statt zu werfen, und zwar
+    nicht nur bei leeren Laps: es reicht, dass keine Runde als persoenliche
+    Bestzeit gewertet ist. Spa 2021 ist genau dieser Fall - 60 Runden in
+    den Daten, keine einzige IsPersonalBest, weil das Rennen hinter dem
+    Safety Car gewertet wurde. Aufrufer, die direkt ``lap["LapTime"]``
+    oder ``lap.get_telemetry()`` machen, bekommen dort ein TypeError bzw.
+    AttributeError ueber ``None`` statt der eigentlichen Aussage.
+    """
+
+    class _Laps:
+        def __init__(self, lap, erwartet_driver=None):
+            self._lap = lap
+            self._erwartet_driver = erwartet_driver
+            self.gewaehlt = None
+
+        def pick_drivers(self, driver):
+            self.gewaehlt = driver
+            return self
+
+        def pick_fastest(self):
+            return self._lap
+
+    class _Session:
+        def __init__(self, laps):
+            self.laps = laps
+
+    def _session(self, lap):
+        return self._Session(self._Laps(lap))
+
+    def test_gibt_die_runde_zurueck(self):
+        lap = {"LapTime": pd.Timedelta(np.timedelta64(80, "s")), "Driver": "VER"}
+        assert reference_lap(self._session(lap))["Driver"] == "VER"
+
+    def test_none_wird_zur_fachlichen_ausnahme(self):
+        """der Spa-2021-Fall."""
+        with pytest.raises(DataNotLoadedError, match="diese Session"):
+            reference_lap(self._session(None))
+
+    def test_nat_laptime_zaehlt_als_keine_runde(self):
+        """eine Runde ohne Zeit ist als Referenz genauso unbrauchbar wie
+        keine - sonst faellt erst der naechste Aufrufer um."""
+        lap = {"LapTime": pd.NaT, "Driver": "VER"}
+        with pytest.raises(DataNotLoadedError):
+            reference_lap(self._session(lap))
+
+    def test_fahrer_steht_in_der_meldung(self):
+        """ein vertipptes Kuerzel soll sagen, welches."""
+        with pytest.raises(DataNotLoadedError, match="Fahrer XXX"):
+            reference_lap(self._session(None), "XXX")
+
+    def test_ohne_fahrer_kein_pick_drivers(self):
+        """die Session-Referenz darf nicht auf einen Fahrer eingeengt werden."""
+        laps = self._Laps({"LapTime": pd.Timedelta(np.timedelta64(80, "s"))})
+        reference_lap(self._Session(laps))
+        assert laps.gewaehlt is None
+
+    def test_mit_fahrer_wird_eingeengt(self):
+        laps = self._Laps({"LapTime": pd.Timedelta(np.timedelta64(80, "s"))})
+        reference_lap(self._Session(laps), "HAM")
+        assert laps.gewaehlt == "HAM"
 
 
 def _leere_pace_tabelle():

@@ -669,6 +669,40 @@ def circuit_info(session):
             f"({type(exc).__name__})") from exc
 
 
+def reference_lap(session, driver: str | None = None):
+    """schnellste gewertete runde als referenz, mit einer klaren ausnahme
+    statt eines rohen ``NoneType``-absturzes.
+
+    ``Laps.pick_fastest()`` gibt ``None`` zurueck, wenn keine runde als
+    persoenliche bestzeit gewertet ist - nicht nur bei leeren laps. das
+    passiert real: das rennen in Spa 2021 wurde nach zwei runden hinter dem
+    safety car gewertet, 60 runden liegen in den daten, keine einzige ist
+    IsPersonalBest. jeder aufrufer, der direkt ``lap["LapTime"]`` oder
+    ``lap.get_telemetry()`` macht, bekommt dort ein ``TypeError``/
+    ``AttributeError`` ueber ``None`` und nicht die eigentliche aussage.
+
+    dieselbe uebersetzung wie in :func:`circuit_info`: raus kommt die
+    ausnahme, die app und skripte fuer fehlende daten ohnehin schon
+    abfangen. empfohlener weg an eine referenzrunde heran, auch fuer
+    aufrufer ausserhalb von f1lab.
+
+    Args:
+        driver: kuerzel oder startnummer. ohne angabe die schnellste runde
+            der gesamten session.
+
+    Raises:
+        fastf1.exceptions.DataNotLoadedError: keine gewertete runde
+            vorhanden.
+    """
+    laps = session.laps if driver is None else session.laps.pick_drivers(driver)
+    lap = laps.pick_fastest()
+    if lap is None or pd.isna(lap["LapTime"]):
+        wen = "diese Session" if driver is None else f"Fahrer {driver}"
+        raise fastf1.exceptions.DataNotLoadedError(
+            f"keine gewertete schnellste Runde fuer {wen}")
+    return lap
+
+
 def circuit_geometry(session) -> dict:
     """kurvenzahl, streckenlaenge und hoehenprofil einer geladenen session.
 
@@ -738,8 +772,7 @@ def lap_speed_profile(session) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     Returns:
         (distanz [m], kruemmung [1/m], geschwindigkeit [m/s])
     """
-    lap = session.laps.pick_fastest()
-    tel = lap.get_telemetry().add_distance()
+    tel = reference_lap(session).get_telemetry().add_distance()
     dist = tel["Distance"].to_numpy(dtype=float)
     kappa = track_curvature(tel["X"], tel["Y"], dist)
     speed_ms = tel["Speed"].to_numpy(dtype=float) / 3.6
@@ -755,7 +788,7 @@ def corner_labels(session) -> pd.DataFrame:
     strecke, mit der sich telemetrie faehrerbergreifend vergleichen laesst.
     """
     ci = circuit_info(session)
-    ref = session.laps.pick_fastest().get_telemetry().add_distance()
+    ref = reference_lap(session).get_telemetry().add_distance()
     ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
     ref_dist = ref["Distance"].to_numpy()
 
@@ -776,7 +809,7 @@ def marshal_sector_labels(session) -> pd.DataFrame:
     :func:`corner_labels`. dieselbe idee, andere punktliste (siehe P11).
     """
     ci = circuit_info(session)
-    ref = session.laps.pick_fastest().get_telemetry().add_distance()
+    ref = reference_lap(session).get_telemetry().add_distance()
     ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
     ref_dist = ref["Distance"].to_numpy()
 
@@ -795,7 +828,7 @@ def marshal_light_labels(session) -> pd.DataFrame:
     kein ``Distance`` (anders als ``corners``), deshalb dieselbe
     naechste-nachbar-projektion wie bei den anderen beiden."""
     ci = circuit_info(session)
-    ref = session.laps.pick_fastest().get_telemetry().add_distance()
+    ref = reference_lap(session).get_telemetry().add_distance()
     ref_xy = ref[["X", "Y"]].to_numpy(dtype=float)
     ref_dist = ref["Distance"].to_numpy()
 
@@ -1080,7 +1113,7 @@ def overtake_locations(session, drs_session=None, drs_referenz: str | None = Non
                            int(session.event["RoundNumber"]), "Q",
                            telemetry=True)
     if drs_referenz is None:
-        drs_referenz = str(drs_session.laps.pick_fastest()["Driver"])
+        drs_referenz = str(reference_lap(drs_session)["Driver"])
     zonen = drs_zones(drs_session, drs_referenz)
     zone_starts = zonen["start_m"].to_numpy() if not zonen.empty else np.array([])
     zone_ends = zonen["end_m"].to_numpy() if not zonen.empty else np.array([])
