@@ -98,9 +98,12 @@ SZENARIEN = {
 ZEITLIMIT_S = {"seiten": 900}
 ZEITLIMIT_STANDARD_S = 240
 # AppTest bricht selbst ab und wirft dabei einen RuntimeError. Sein Limit
-# muss klar unter dem Prozesslimit liegen, sonst laufen beide gegeneinander
-# und man sieht nicht, welches zuerst gegriffen hat.
-APPTEST_LIMIT_S = 600
+# muss unter dem Prozesslimit liegen, sonst laufen beide gegeneinander und
+# man sieht nicht, welches zuerst gegriffen hat - aber nur knapp darunter:
+# mit 600 Sekunden liefen drei Seiten ins Limit, die mit 900 durchlaufen
+# (die ML-Seite, der Startplatz-Scan mit seinen Wartezeiten und die
+# Renndynamik). Die Differenz reicht fuers Aufraeumen und Melden.
+APPTEST_LIMIT_S = 840
 
 
 def _seite_laufen(pfad: str, q) -> None:
