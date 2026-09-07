@@ -139,8 +139,12 @@ def main():
     ses = f1lab.load(*REFERENZ, telemetry=True)
     events = f1lab.overtake_events(ses)
     orte = f1lab.overtake_locations(ses)
+    # ein prozessionsartiges Rennen hat null Ueberholungen - dann ist die
+    # Lokalisierungsquote nicht 0 %, sondern nicht definiert.
+    anteil = (f"{100 * len(orte) / len(events):.1f}%" if events.size
+              else "keine Ueberholungen")
     print(f"      {len(events)} Ueberholungen, {len(orte)} lokalisiert "
-         f"({100 * len(orte) / len(events):.1f}%)")
+         f"({anteil})")
 
     print("\n[2/3] DRS-Zonen und Abgleich (VORGEHEN 3-4) ...")
     q = f1lab.load(REFERENZ[0], int(ses.event["RoundNumber"]), "Q",

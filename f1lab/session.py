@@ -426,9 +426,20 @@ DEGRADATION_DTYPEN = {
 DEGRADATION_SPALTEN = list(DEGRADATION_DTYPEN)
 
 
-def _leere_degradation() -> pd.DataFrame:
+def _leerer_rahmen(dtypen: dict[str, str]) -> pd.DataFrame:
+    """leerer DataFrame mit festen Spalten *und* dtypes.
+
+    die dtypes sind kein Detail: ein leerer Rahmen, dessen Spalten alle
+    object-dtype haben, faellt bei einer Boolmaske auf die Form (0, 0)
+    zusammen und verliert alle Spalten wieder - siehe DEGRADATION_DTYPEN.
+    Numerische Aggregationen (mean, nlargest) werfen auf object ebenfalls.
+    """
     return pd.DataFrame({spalte: pd.Series(dtype=typ)
-                         for spalte, typ in DEGRADATION_DTYPEN.items()})
+                         for spalte, typ in dtypen.items()})
+
+
+def _leere_degradation() -> pd.DataFrame:
+    return _leerer_rahmen(DEGRADATION_DTYPEN)
 
 
 def degradation(session, threshold: float = 1.10,
@@ -957,6 +968,11 @@ def drs_zones(session, driver: str, min_length_m: float = 100.0
                                               min_length_m=min_length_m))
 
 
+DRS_USAGE_DTYPEN = {"driver": "object", "team": "object", "drs_s": "float64",
+                    "drs_pct": "float64", "vmax_offen": "float64",
+                    "vmax_zu": "float64", "gewinn_kmh": "float64"}
+
+
 def drs_usage(session) -> pd.DataFrame:
     """DRS-zeitanteil und topspeed-gewinn je fahrer (siehe P10 VORGEHEN 1/3/4)."""
     rows = []
@@ -986,6 +1002,8 @@ def drs_usage(session) -> pd.DataFrame:
             "gewinn_kmh": round(vmax_offen - vmax_zu, 1) if pd.notna(vmax_offen)
             and pd.notna(vmax_zu) else float("nan"),
         })
+    if not rows:
+        return _leerer_rahmen(DRS_USAGE_DTYPEN)
     return pd.DataFrame(rows).sort_values("drs_pct", ascending=False,
                                           ignore_index=True)
 
@@ -1295,6 +1313,12 @@ def _zeit_bei_speed(t: np.ndarray, v: np.ndarray, ziel: float, t0: float
     return round(float(t[mask.argmax()] - t0), 2) if mask.any() else None
 
 
+START_PERF_DTYPEN = {"driver": "object", "grid": "float64",
+                     "ende_r1": "float64", "gewinn": "float64",
+                     "t_100": "float64", "t_200": "float64",
+                     "m_nach_5s": "float64"}
+
+
 def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
     """startkennzahlen je fahrer: zeit bis 100/200 km/h, distanz nach 5s,
     positionsgewinn grid -> ende runde 1 (siehe P31).
@@ -1343,6 +1367,8 @@ def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
             "t_200": _zeit_bei_speed(t, v, 200, t0),
             "m_nach_5s": round(float(nach_5s.max()), 1) if nach_5s.size else None,
         })
+    if not rows:
+        return _leerer_rahmen(START_PERF_DTYPEN)
     return pd.DataFrame(rows).sort_values("m_nach_5s", ascending=False,
                                           ignore_index=True)
 
@@ -1367,6 +1393,12 @@ def grid_lap1_positions(session) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------- verfolgung
+CLOSE_FOLLOW_DTYPEN = {"lap": "int64", "sec_fuel": "float64",
+                       "gap_median_m": "float64", "gap_min_m": "float64",
+                       "anteil_nah": "float64", "compound": "object",
+                       "tyre_life": "float64"}
+
+
 def close_following(session, driver: str, nah_schwelle_m: float = 50.0
                     ) -> pd.DataFrame:
     """abstand zum vordermann je gruener runde, treibstoffkorrigiert
@@ -1379,13 +1411,13 @@ def close_following(session, driver: str, nah_schwelle_m: float = 50.0
     laps = (session.laps.pick_drivers(driver).pick_wo_box().pick_accurate()
            .pick_track_status("1").sort_values("LapStartTime"))
     if laps.empty:
-        return pd.DataFrame()
+        return _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
     try:
         tel = laps.get_telemetry().add_driver_ahead().sort_values("SessionTime")
     except Exception:
-        return pd.DataFrame()
+        return _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
     if tel.empty:
-        return pd.DataFrame()
+        return _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
 
     grenzen = (laps[["LapNumber", "LapStartTime"]]
               .rename(columns={"LapStartTime": "SessionTime"})
@@ -1408,7 +1440,7 @@ def close_following(session, driver: str, nah_schwelle_m: float = 50.0
             "anteil_nah": 100 * (g["gap"] < nah_schwelle_m).mean(),
             "compound": lap["Compound"], "tyre_life": lap["TyreLife"],
         })
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows) if rows else _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
 
 
 def dirty_air_effect(df: pd.DataFrame) -> tuple[float, float, float, pd.DataFrame]:

@@ -151,6 +151,11 @@ def main():
     print(f"      {len(df)} trockene Sprint-Wochenenden, "
          f"{len(nass)} wegen Regen ausgeschlossen: {nass}")
     for row in df.itertuples():
+        # ein Sprint ohne einzige Ueberholung gibt keinen Faktor her
+        if not row.rate_sprint:
+            print(f"      {row.saison} {row.gp}: Sprint ohne Ueberholung, "
+                 f"Rennen {row.rate_rennen:.2f}/Runde - kein Faktor")
+            continue
         faktor = row.rate_rennen / row.rate_sprint
         print(f"      {row.saison} {row.gp}: Sprint {row.rate_sprint:.2f}/"
              f"Runde, Rennen {row.rate_rennen:.2f}/Runde ({faktor:.2f}x)")

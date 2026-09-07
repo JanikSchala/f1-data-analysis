@@ -34,10 +34,14 @@ plt.rcParams.update(matplotlib_stil())
 def sektor_tabelle(laps: pd.DataFrame) -> pd.DataFrame:
     """theoretisch beste runde (summe der bestsektoren) gegen tatsaechliche
     bestzeit."""
+    # Division statt .apply(lambda s: s.dt.total_seconds()): bei einem
+    # leeren Rahmen laeuft die Lambda nie, die Spalten behalten still
+    # timedelta64 und die Summe darunter wirft einen UFuncTypeError. Die
+    # Division ist dtype-stabil und liefert sonst dieselben Werte.
     sec = (laps.groupby("Driver")[["Sector1Time", "Sector2Time", "Sector3Time"]]
-           .min().apply(lambda s: s.dt.total_seconds()))
+           .min() / pd.Timedelta(1, "s"))
     sec["theoretisch"] = sec.sum(axis=1)
-    sec["real"] = laps.groupby("Driver")["LapTime"].min().dt.total_seconds()
+    sec["real"] = laps.groupby("Driver")["LapTime"].min() / pd.Timedelta(1, "s")
     sec["ungenutzt"] = sec["real"] - sec["theoretisch"]
     return sec.sort_values("real")
 

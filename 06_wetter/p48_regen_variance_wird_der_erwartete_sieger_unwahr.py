@@ -70,10 +70,15 @@ def zeichne_polequote(ax, daten: pd.DataFrame) -> None:
     farben = [MUTED, SERIEN[1]]
     ax.bar(labels, quote["mean"] * 100, color=farben, width=0.55)
     for i, (_lbl, row) in enumerate(quote.iterrows()):
+        # reindex() fuellt eine fehlende Klasse mit NaN - int(NaN) wirft.
+        # Eine Saison ganz ohne Regenrennen ist ein moegliches Ergebnis.
+        if pd.isna(row["count"]):
+            continue
         ax.text(i, row["mean"] * 100 + 1.5, f"n={int(row['count'])}",
                ha="center", color=MUTED, fontsize=9)
     ax.set_ylabel("Pole -> Sieg [%]")
-    ax.set_ylim(0, max(quote["mean"].max() * 100 + 12, 50))
+    hoechste = quote["mean"].max()
+    ax.set_ylim(0, max(hoechste * 100 + 12, 50) if pd.notna(hoechste) else 50)
     ax.set_title("Pole-to-Win: trocken gegen nass", loc="left", color=FG,
                 fontsize=13, pad=10)
     for side in ("top", "right"):
