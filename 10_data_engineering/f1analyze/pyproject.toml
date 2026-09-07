@@ -6,7 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "f1analyze"
 version = "0.1.0"
 description = "Wochenend-Analyzer fuer Formel-1-Renndaten, gebaut auf f1lab und FastF1."
-requires-python = ">=3.10"
+# dasselbe Minimum wie das Wurzelpaket f1lab, um das dieses hier nur ein
+# Wrapper ist - README-Badge, f1lab/pyproject.toml und ruffs target-version
+# sagen alle 3.9. Ein Wrapper kann nicht mehr verlangen als seine Basis:
+# alle Module haben "from __future__ import annotations", es gibt keine
+# match-Anweisung und keine Union ausserhalb von Annotationen.
+requires-python = ">=3.9"
 dependencies = [
     "fastf1>=3.4",
     "pandas>=2.0",
@@ -17,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff>=0.5"]
+dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]
 f1analyze = "f1analyze.cli:app"

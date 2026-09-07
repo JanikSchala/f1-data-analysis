@@ -17,12 +17,16 @@ repos:
 
   - repo: local
     hooks:
+      # dieselbe Menge wie in tests.yml. check_setup.py, conftest.py und
+      # tests/ waren hier wie dort ausgespart - ruff sah sie, mypy nie.
       - id: mypy-f1lab
-        name: mypy (f1lab + app)
-        entry: .venv/bin/python -m mypy f1lab app --ignore-missing-imports
+        name: mypy (f1lab + app + Tests)
+        entry: >
+          .venv/bin/python -m mypy f1lab app check_setup.py conftest.py tests
+          --ignore-missing-imports
         language: system
         pass_filenames: false
-        files: ^(f1lab|app)/
+        files: ^(f1lab|app|tests)/|^(check_setup|conftest)\.py$
       - id: mypy-skripte
         name: mypy (Analyseskripte)
         entry: >

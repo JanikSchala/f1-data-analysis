@@ -9,13 +9,27 @@ name: f1analyze CI
 # bemerkt, weil kein Fehler auftrat, sondern schlicht nichts passierte.
 # Hierher verschoben, damit sie tatsaechlich triggert.
 
+# f1analyze ist ein duenner Wrapper um f1lab und rechnet nichts selbst.
+# Eine Aenderung an f1lab kann diese Suite also brechen, ohne dass eine
+# Datei unter f1analyze/ angefasst wird - genau so ist der pace_table()-Fix
+# an ihr vorbeigelaufen. f1lab und die Paketdefinition gehoeren deshalb in
+# den Filter, sonst prueft die CI wieder etwas anderes als sie soll.
+#
+# Die Liste steht bewusst zweimal da: GitHub Actions wertet YAML-Anker
+# (&name/*name) nicht aus, ein Alias landet ungeloest im Filter.
 on:
   push:
     paths:
       - "10_data_engineering/f1analyze/**"
+      - "f1lab/**"
+      - "pyproject.toml"
+      - ".github/workflows/f1analyze-ci.yml"
   pull_request:
     paths:
       - "10_data_engineering/f1analyze/**"
+      - "f1lab/**"
+      - "pyproject.toml"
+      - ".github/workflows/f1analyze-ci.yml"
 
 defaults:
   run:

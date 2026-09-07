@@ -21,14 +21,20 @@ print(OK + "virtuelle Umgebung aktiv" if in_venv
       else WARN + "keine virtuelle Umgebung aktiv (.venv auswaehlen!)")
 
 print("\n=== Pakete ===")
-CORE = ["fastf1", "pandas", "numpy", "matplotlib"]
+# CORE = was ohne Extra installiert wird und ohne das die Analyseskripte
+# nicht laufen. scipy fehlte hier, obwohl es in pyproject.toml eine
+# Basis-Abhaengigkeit ist und 22 Dateien es importieren - dieses Skript
+# konnte "Alles bereit" melden und die Skripte danach trotzdem abbrechen.
+CORE = ["fastf1", "pandas", "numpy", "matplotlib", "scipy"]
 OPTIONAL = {
-    "sklearn": "Projekte 23-25 (Machine Learning)",
+    "sklearn": "Projekte 23/24/36 (Machine Learning)",
+    "torch": "Projekt 25 und die ML-Seite des Dashboards (Autoencoder)",
     "duckdb": "Projekt 26 (Data Warehouse)",
     "pyarrow": "Projekt 02 und 26 (Parquet)",
     "fastapi": "Projekt 27 (REST-API)",
     "streamlit": "Projekt 28 (Dashboard)",
     "plotly": "Projekt 28 (Dashboard)",
+    "requests": "Dashboard-Seite Engineering Tools",
     "typer": "Projekt 34 (CLI-Tool)",
 }
 

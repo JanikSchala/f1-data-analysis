@@ -23,9 +23,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev,ml,warehouse,api,dashboard]" mypy
+      # "deeplearning" (torch) fehlt hier mit Absicht: rund 500 MB pro Lauf,
+      # mypy laeuft mit --ignore-missing-imports und keine Testdatei
+      # importiert torch. tests/test_deklaration.py prueft trotzdem, dass es
+      # in pyproject.toml deklariert ist.
+      - run: pip install -e ".[dev,ml,warehouse,api,dashboard,cli]" mypy
       - run: ruff check .
-      - run: mypy f1lab app --ignore-missing-imports
+      - run: mypy f1lab app check_setup.py conftest.py tests --ignore-missing-imports
       - run: >
           mypy 01_grundlagen 02_timing 03_telemetrie 04_strecke
           05_reifen_strategie 06_wetter 07_race_control 08_historie
