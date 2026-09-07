@@ -46,7 +46,17 @@ und Verwandte; das sind die Faelle, in denen der Nutzer einen Traceback
 sieht statt einer Aussage.
 
 Braucht einen warmen FastF1-Cache mit den Zielsessions und laeuft rund
-20 Minuten - deshalb kein Test und nicht Teil der CI. Aufruf::
+20 Minuten - deshalb kein Test und nicht Teil der CI.
+
+``seiten`` dauert nochmal deutlich laenger, und das liegt an der
+Pruefumgebung, nicht an der App: unter AppTest gibt es keine
+Streamlit-Laufzeit, ``st.cache_data(persist="disk")`` bekommt ein
+DummyCacheStorage untergeschoben und speichert nichts. Jeder Lauf
+rechnet also alles neu, waehrend die App im Betrieb nur beim ersten
+Aufruf rechnet. Die ML-Seite trainiert dabei mehrere Modelle und laeuft
+in ihr Zeitlimit - das ist kein Befund ueber die Seite.
+
+Aufruf::
 
     python robustheit.py duenn
     python robustheit.py alt 05_reifen_strategie/p13_*.py
@@ -81,18 +91,25 @@ SZENARIEN = {
     "seiten": None,
 }
 
-# Die Seiten trainieren Modelle (die ML-Seite braucht allein vier
-# Minuten), die Skripte kommen mit deutlich weniger aus.
+# Die Seiten rechnen deutlich laenger als die Skripte: sie trainieren
+# Modelle und koennen den Diskcache hier nicht nutzen (siehe Modul-
+# Docstring). Die ML-Seite laeuft auch in 900 Sekunden nicht immer durch -
+# das ist ein Befund ueber die Pruefumgebung, nicht ueber die Seite.
 ZEITLIMIT_S = {"seiten": 900}
 ZEITLIMIT_STANDARD_S = 240
+# AppTest bricht selbst ab und wirft dabei einen RuntimeError. Sein Limit
+# muss klar unter dem Prozesslimit liegen, sonst laufen beide gegeneinander
+# und man sieht nicht, welches zuerst gegriffen hat.
+APPTEST_LIMIT_S = 600
 
 
 def _seite_laufen(pfad: str, q) -> None:
     """eine Dashboard-Seite ueber Streamlits AppTest durchfahren.
 
-    AppTest faengt jede Ausnahme der Seite ab und legt sie in
+    AppTest faengt jede Ausnahme der *Seite* ab und legt sie in
     ``app.exception``, statt sie durchzureichen - deshalb hier ein eigener
-    Weg statt runpy.
+    Weg statt runpy. Seine eigenen Fehler wirft es dagegen normal; der
+    Aufrufer faengt sie ab und trennt Zeitlimit von Absturz.
     """
     sys.path.insert(0, str(REPO / "app"))       # die Seiten importieren "common"
     from streamlit.testing.v1 import AppTest
@@ -109,7 +126,8 @@ def _seite_laufen(pfad: str, q) -> None:
 
     with contextlib.redirect_stdout(io.StringIO()), \
          contextlib.redirect_stderr(io.StringIO()):
-        seite = AppTest.from_file(str(REPO / pfad), default_timeout=900)
+        seite = AppTest.from_file(str(REPO / pfad),
+                                  default_timeout=APPTEST_LIMIT_S)
         seite.run()
 
     if not seite.exception:
@@ -138,7 +156,23 @@ def _lauf(pfad: str, szenario: str, q) -> None:
     f1lab.enable_cache()
 
     if szenario == "seiten":
-        _seite_laufen(pfad, q)
+        # eigenes try: _seite_laufen laeuft ausserhalb des Blocks weiter
+        # unten, und eine Ausnahme hier (AppTest selbst, ein Import) haette
+        # den Kindprozess ohne Eintrag in der Queue sterben lassen. Der
+        # Bericht sagte dann "Prozess ohne Ergebnis beendet" und
+        # verschwieg, was tatsaechlich passiert ist.
+        try:
+            _seite_laufen(pfad, q)
+        except RuntimeError as exc:
+            # AppTests eigener Abbruch. Kein Befund ueber die Seite: unter
+            # AppTest gibt es keine Streamlit-Laufzeit, persist="disk"
+            # speichert nichts, und jede Seite rechnet alles neu.
+            art = ("zeitlimit" if "timed out" in str(exc) else "umgefallen")
+            q.put((art, f"AppTest: {str(exc)[:90]}"))
+        except BaseException as exc:                # noqa: BLE001
+            q.put(("umgefallen",
+                   f"{type(exc).__name__} ausserhalb AppTest: "
+                   f"{str(exc)[:90]}"))
         return
 
     ziel = SZENARIEN[szenario]
@@ -229,7 +263,12 @@ def main() -> int:
             try:
                 art, info = q.get(timeout=10)
             except queue.Empty:
-                art, info = "zeitlimit", "Prozess ohne Ergebnis beendet"
+                # der Exit-Code sagt, ob der Prozess sauber endete (0),
+                # sich selbst beendete oder von aussen abgeschossen wurde
+                # (negativ = Signal, -9 heisst in der Regel Speichermangel).
+                art = "zeitlimit"
+                info = ("Prozess ohne Ergebnis beendet, Exit-Code "
+                        f"{prozess.exitcode}")
 
         # Skripte heissen p04_..., Seiten 18_Ueberholschwierigkeit.py -
         # bei denen ist die Nummer allein keine Auskunft.
