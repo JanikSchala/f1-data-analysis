@@ -30,6 +30,66 @@ def _skripte() -> list[pathlib.Path]:
     return sorted(WURZEL.glob("*/p*.py"))
 
 
+class TestZahlenStimmenMitDenKennzahlen:
+    """die Zahlen im Fliesstext muessen aus assets/kennzahlen.json kommen.
+
+    make_assets.py erzeugt die Grafiken *und* schreibt die Kennzahlen
+    daneben. Der README-Text zitiert sie im Fliesstext ("1124 von 1310
+    Runden", "0.002 s dahinter"). Wer die Assets neu erzeugt - anderes
+    Rennen, andere FastF1-Version, geaenderte Filterregel -, bekommt neue
+    Grafiken und neue Kennzahlen, aber der Text daneben bleibt stehen.
+    Dann behauptet das README etwas, das seine eigene Grafik widerlegt.
+
+    Geprueft werden die Zahlen, die im Text tatsaechlich vorkommen, nicht
+    alle: eine Kennzahl darf in kennzahlen.json stehen, ohne im README
+    zitiert zu werden.
+    """
+
+    @pytest.fixture(scope="class")
+    def kennzahlen(self) -> dict:
+        import json
+        pfad = WURZEL / "assets" / "kennzahlen.json"
+        if not pfad.exists():                        # pragma: no cover
+            pytest.skip("assets/kennzahlen.json fehlt")
+        return json.loads(pfad.read_text())
+
+    @staticmethod
+    def _kommt_vor(text: str, wert) -> bool:
+        """steht die Zahl als eigenstaendige Zahl im Text?
+
+        ohne Wortgrenze wuerde "1124" auch in "11245" treffen und der Test
+        waere wertlos.
+        """
+        return re.search(rf"(?<![\d.,]){re.escape(str(wert))}(?![\d])",
+                         text) is not None
+
+    def test_race_pace_zahlen(self, text, kennzahlen):
+        rp = kennzahlen["racepace"]
+        fehlend = [f"{name}={wert}" for name, wert in (
+            ("runden_gesamt", rp["runden_gesamt"]),
+            ("runden_nach_filter", rp["runden_nach_filter"]),
+        ) if not self._kommt_vor(text, wert)]
+        assert not fehlend, f"nicht im README-Text: {fehlend}"
+
+    def test_race_pace_deltas(self, text, kennzahlen):
+        """die vier Rueckstaende hinter dem Schnellsten - der Absatz
+        argumentiert damit, dass sieben Fahrer ununterscheidbar sind."""
+        deltas = [e["delta_s"] for e in kennzahlen["racepace"]["top5"][1:]]
+        fehlend = [d for d in deltas if not self._kommt_vor(text, f"{d:.3f}")]
+        assert not fehlend, f"Rueckstaende nicht im README: {fehlend}"
+
+    def test_gangkarte_zahlen(self, text, kennzahlen):
+        g = kennzahlen["gangkarte"]
+        assert self._kommt_vor(text, g["streckenlaenge_m"])
+        assert self._kommt_vor(text, g["punkte"])
+
+    def test_overlay_zahlen(self, text, kennzahlen):
+        o = kennzahlen["overlay"]
+        assert self._kommt_vor(text, f"{o['delta_s']:.3f}")
+        for v in o["vmax_kmh"].values():
+            assert self._kommt_vor(text, int(v)), v
+
+
 class TestLinks:
     def test_es_gibt_ueberhaupt_links(self, text):
         assert len(re.findall(r"\[[^\]]*\]\(([^)\s]+)\)", text)) > 50
