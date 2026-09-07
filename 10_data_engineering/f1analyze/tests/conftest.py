@@ -10,6 +10,22 @@ auf den Standardpfad ``~/f1_cache``. ein frischer Runner hat keinen warmen
 Cache. Tests gegen den eigenen ``~/f1_cache`` haengen sonst vom Zufall ab
 und sind keine echten Fixtures. der committete Ausschnitt ist
 deterministisch fuer jeden, der das Repo klont.
+
+Zur Groesse (147 MB, davon 31 MB fastf1_http_cache.sqlite): das sieht nach
+Ballast aus und ist keiner. Der sqlite haelt die *rohen* API-Antworten, die
+.ff1pkl-Dateien das daraus geparste Ergebnis - auf den ersten Blick
+dieselbe Information zweimal, und die Suite laeuft tatsaechlich gruen
+durch, wenn man die sechs grossen Antworten (zusammen 31 MB) aus dem sqlite
+loescht.
+
+Trotzdem muessen sie bleiben. fastf1 versioniert seinen Parser
+(``fastf1.req.Cache._API_CORE_VERSION``, aktuell 15) und verwirft bei einem
+Sprung *alle* .ff1pkl als veraltet. Es baut sie dann neu auf - offline aus
+genau diesen rohen Antworten. Nachgemessen: mit den grossen Antworten
+gelingt der Wiederaufbau (1129 Runden), ohne sie scheitert er mit
+DataNotLoadedError. Wer sie loescht, spart 31 MB und legt eine Zeitbombe:
+das naechste fastf1-Update mit erhoehter Parser-Version bricht die CI, und
+die Fixture laesst sich nur mit Netzzugriff neu aufnehmen.
 """
 from __future__ import annotations
 
