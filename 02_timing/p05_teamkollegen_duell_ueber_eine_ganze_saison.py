@@ -56,7 +56,10 @@ def saison_scannen(year: int) -> pd.DataFrame:
             for d in duelle:
                 rows.append({"round": rnd, "event": ev["EventName"],
                             "session": ident, **d})
-    return pd.DataFrame(rows)
+    # eine Saison ohne auswertbares Duell (frueher Abbruch, Ausfall der
+    # Sessions) darf keinen spaltenlosen Rahmen liefern - der naechste
+    # groupby("round") wuerde sonst mit einem KeyError umfallen.
+    return pd.DataFrame(rows, columns=["round", "event", "session", *f1lab.DUELL_SPALTEN])
 
 
 def elo_verlauf(duelle: pd.DataFrame, k: float = K,
@@ -72,6 +75,12 @@ def elo_verlauf(duelle: pd.DataFrame, k: float = K,
                 ra, rb, d["score_a"], k=k)
         for drv, elo in rating.items():
             verlauf.append({"round": rnd, "driver": drv, "elo": elo})
+    if not verlauf:
+        # Spaltennamen allein reichen nicht: ohne dtypes ist "elo" object,
+        # und die Sortierung des Endstands wirft "Expected numeric dtype".
+        return pd.DataFrame({"round": pd.Series(dtype="int64"),
+                             "driver": pd.Series(dtype="object"),
+                             "elo": pd.Series(dtype="float64")})
     return pd.DataFrame(verlauf)
 
 
@@ -134,6 +143,11 @@ def main():
 
     print(f"[1/3] {YEAR} scannen (Quali + Rennen, aus dem Cache) ...")
     duelle = saison_scannen(YEAR)
+    # ein einziger frueher Ausstieg statt eines Guards vor jeder Auswertung:
+    # ohne Duelle gibt es weder Elo-Verlauf noch Heatmap noch Endstand.
+    if duelle.empty:
+        raise SystemExit(f"      keine auswertbaren Teamkollegen-Duelle in "
+                         f"{YEAR} - andere Saison waehlen")
     print(f"      {len(duelle)} Duelle aus {duelle['round'].nunique()} "
          f"Wochenenden ({(duelle['session'] == 'Q').sum()} Quali, "
          f"{(duelle['session'] == 'R').sum()} Rennen)")

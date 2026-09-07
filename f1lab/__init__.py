@@ -66,6 +66,7 @@ from .core import (
     undercut_gain,
 )
 from .session import (
+    DUELL_SPALTEN,
     PaceEntry,
     blue_flags,
     cache_ready,
@@ -140,7 +141,7 @@ __all__ = [
     "enable_cache", "load", "clean_laps", "PaceEntry", "race_pace",
     "pace_table", "stints", "degradation", "degradation_by_compound",
     "pit_loss", "track_status_phases", "event_dimension", "circuit_geometry",
-    "circuit_info", "reference_lap",
+    "circuit_info", "reference_lap", "DUELL_SPALTEN",
     "circuit_dimension", "find_cache", "cached_sessions", "cache_ready",
     "ergast_retry", "season_sessions",
     "driver_braking_zones", "compare_braking_zones", "drs_zones", "drs_usage",

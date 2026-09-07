@@ -51,7 +51,12 @@ def real_race():
     """dieselbe RaceConfig, aber aus echter degradation und echtem pitloss statt von hand gesetzter zahlen."""
     f1lab.enable_cache()
     ses = f1lab.load(*REAL_EVENT, telemetry=False)
-    return ses, f1lab.race_config_from_session(ses)
+    # ohne belastbare Degradations-Fits gibt es kein Modell - eine klare
+    # Ansage statt eines Tracebacks (wie in make_assets.py).
+    try:
+        return ses, f1lab.race_config_from_session(ses)
+    except ValueError as exc:
+        raise SystemExit(f"      {exc} - anderes Rennen waehlen") from exc
 
 
 def bericht(titel: str, cfg: RaceConfig) -> None:

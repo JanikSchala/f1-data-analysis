@@ -26,7 +26,12 @@ def main():
     print(f"[1/3] {REAL_EVENT[1]} {REAL_EVENT[0]} {REAL_EVENT[2]} laden, "
          "echte RaceConfig bauen (VORGEHEN 1) ...")
     ses = f1lab.load(*REAL_EVENT, telemetry=False)
-    cfg = f1lab.race_config_from_session(ses)
+    # ohne belastbare Degradations-Fits gibt es kein Modell - eine klare
+    # Ansage statt eines Tracebacks (wie in make_assets.py).
+    try:
+        cfg = f1lab.race_config_from_session(ses)
+    except ValueError as exc:
+        raise SystemExit(f"      {exc} - anderes Rennen waehlen") from exc
     print(f"      {cfg.n_laps} Runden, Pitloss {cfg.pit_loss:.1f}s, "
          f"{len(cfg.tyres)} belastbare Mischungen")
 

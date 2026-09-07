@@ -29,6 +29,12 @@ OUT.mkdir(exist_ok=True)
 SAISON = 2024
 SANITY_EVENT = (2024, "Spain", "Q")
 
+# qualifying_track_evolution() liefert diese drei, der Scan haengt "gp" an.
+# Der leere Rueckfall muss dieselben Spalten tragen, sonst faellt der
+# Aufrufer mit KeyError "gp" um statt "keine trockenen Qualifyings" zu
+# melden.
+SCAN_SPALTEN = ["driver", "segment", "delta_s", "gp"]
+
 plt.rcParams.update(matplotlib_stil())
 
 
@@ -54,8 +60,8 @@ def saison_scan(saison: int) -> tuple[pd.DataFrame, list[str]]:
             d = d.copy()
             d["gp"] = row["event_name"]
             alle.append(d)
-    return (pd.concat(alle, ignore_index=True) if alle else pd.DataFrame(),
-            nass)
+    return (pd.concat(alle, ignore_index=True) if alle
+            else pd.DataFrame(columns=SCAN_SPALTEN), nass)
 
 
 SPRINT_QUALI_IDENT = {2023: "SS", 2024: "SQ"}  # fia-umbenennung: SS -> SQ
@@ -84,8 +90,8 @@ def sprint_quali_scan(saisons) -> tuple[pd.DataFrame, list[str]]:
                 d = d.copy()
                 d["gp"] = f"{saison} {gp}"
                 alle.append(d)
-    return (pd.concat(alle, ignore_index=True) if alle else pd.DataFrame(),
-            nass)
+    return (pd.concat(alle, ignore_index=True) if alle
+            else pd.DataFrame(columns=SCAN_SPALTEN), nass)
 
 
 def temperatur_confound(saison: int) -> pd.DataFrame:
@@ -131,7 +137,8 @@ def temperatur_confound(saison: int) -> pd.DataFrame:
                 "gp": row["event_name"], "segment": segment,
                 "pace_delta_s": (a[gemeinsam] - b[gemeinsam]).dt.total_seconds().median(),
                 "temp_delta_c": ta - tb})  # positiv = strecke kuehlt ab
-    return pd.DataFrame(zeilen)
+    return pd.DataFrame(zeilen, columns=["gp", "segment", "pace_delta_s",
+                                         "temp_delta_c"])
 
 
 def zeichne_temperatur(ax, temp_df: pd.DataFrame) -> None:
@@ -222,6 +229,11 @@ def main():
     print(f"\n[2-3/5] Saison-Scan {SAISON}, nasse Sessions raus "
          "(VORGEHEN 2-3) ...")
     deltas, nass = saison_scan(SAISON)
+    # ohne trockenes Qualifying traegt keine der folgenden Auswertungen -
+    # ein Ausstieg statt eines Guards vor jeder einzelnen.
+    if deltas.empty:
+        raise SystemExit(f"      kein trockenes Qualifying in {SAISON} "
+                         f"auswertbar ({len(nass)} wegen Regen raus)")
     print(f"      {deltas['gp'].nunique()} trockene Qualifyings, "
          f"{len(nass)} wegen Regen ausgeschlossen: {nass}")
 

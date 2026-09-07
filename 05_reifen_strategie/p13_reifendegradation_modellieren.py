@@ -95,8 +95,13 @@ def zeichne_teams(ax, deg: pd.DataFrame) -> None:
     ax.set_axisbelow(True)
 
 
-def zeichne_cliff(ax, beispiel: dict) -> None:
+def zeichne_cliff(ax, beispiel: dict | None) -> None:
     """zeichnet das stärkste cliff-beispiel als zwei geraden über die echten runden."""
+    if beispiel is None:
+        ax.text(0.5, 0.5, "kein Cliff erkannt", ha="center", va="center",
+               color=MUTED)
+        ax.axis("off")
+        return
     g = beispiel["laps"]
     ax.scatter(g["TyreLife"], g["corrected"], s=26, color=MUTED, zorder=2)
     knick = beispiel["knick_tyrelife"]
@@ -191,13 +196,20 @@ def main():
     cliffs = cliffs_suchen(laps)
     kandidaten = [(d, s) for (d, s), g in laps.groupby(["Driver", "Stint"])
                  if len(g) >= MIN_RUNDEN_CLIFF]
+    # ein kurzes oder abgebrochenes Rennen hat gar keinen Stint dieser
+    # Laenge - dann ist die Quote nicht 0 %, sondern gar nicht definiert.
+    anteil = (f"{100 * len(cliffs) / len(kandidaten):.0f} %" if kandidaten
+              else "keine Kandidaten")
     print(f"      {len(cliffs)}/{len(kandidaten)} Stints mit erkanntem Knick "
-         f"({100 * len(cliffs) / len(kandidaten):.0f} %)")
-    beispiel = max(cliffs, key=lambda c: c["slope_danach"] - c["slope_vorher"])
-    print(f"      Deutlichster Fall: {beispiel['driver']} Stint "
-         f"{beispiel['stint']} ({beispiel['compound']}) - Knick bei "
-         f"Reifenalter {beispiel['knick_tyrelife']}, "
-         f"{beispiel['slope_vorher']:+.3f} -> {beispiel['slope_danach']:+.3f} s/Runde")
+         f"({anteil})")
+    beispiel = (max(cliffs, key=lambda c: c["slope_danach"] - c["slope_vorher"])
+                if cliffs else None)
+    if beispiel is not None:
+        print(f"      Deutlichster Fall: {beispiel['driver']} Stint "
+             f"{beispiel['stint']} ({beispiel['compound']}) - Knick bei "
+             f"Reifenalter {beispiel['knick_tyrelife']}, "
+             f"{beispiel['slope_vorher']:+.3f} -> "
+             f"{beispiel['slope_danach']:+.3f} s/Runde")
 
     print("\n[5/5] ZWEITE AUSBAUSTUFE: FreshTyre und IsPersonalBest ...")
     rel = deg[deg["reliable"]]

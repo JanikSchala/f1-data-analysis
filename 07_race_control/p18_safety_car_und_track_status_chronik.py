@@ -84,7 +84,7 @@ def saison_scan() -> pd.DataFrame:
                     continue
                 zeilen.append({"gp": gp, "driver": drv, "klasse": klasse,
                                "delta_pos": pv - pn})
-    return pd.DataFrame(zeilen)
+    return pd.DataFrame(zeilen, columns=["gp", "driver", "klasse", "delta_pos"])
 
 
 def zeichne_chronik(ax, phasen: pd.DataFrame, spread: pd.Series) -> None:
@@ -154,13 +154,22 @@ def zeichne_deployment_sektoren(ax, sek: pd.DataFrame) -> None:
 
 
 def zeichne_ausbaustufe(ax, scan: pd.DataFrame) -> None:
+    if scan.empty:
+        ax.text(0.5, 0.5, "keine Boxenstopps rund um SC/VSC gefunden",
+               ha="center", va="center", color=MUTED)
+        ax.axis("off")
+        return
     g = scan.groupby("klasse")["delta_pos"].agg(["mean", "count"])
     g = g.reindex(["kurz davor", "waehrend SC/VSC"])
     farben = [SERIEN[1], SERIEN[0]]
     ax.bar(g.index, g["mean"], color=farben, width=0.5)
     ax.axhline(0, color=MUTED, lw=0.8)
-    ax.set_ylim(g["mean"].min() * 1.2, 0.22)
+    # reindex() fuellt eine fehlende Klasse mit NaN - set_ylim(NaN) wirft.
+    unten = g["mean"].min()
+    ax.set_ylim(unten * 1.2 if pd.notna(unten) else -1.0, 0.22)
     for i, (_idx, row) in enumerate(g.iterrows()):
+        if pd.isna(row["count"]):
+            continue
         ax.text(i, 0.03, f"n={int(row['count'])}", ha="center",
                va="bottom", color=MUTED, fontsize=9)
     ax.set_ylabel("mittlere Positionsaenderung\n(Runde vor Stopp -> SC-Ende)")

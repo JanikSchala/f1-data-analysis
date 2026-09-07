@@ -412,6 +412,25 @@ def stints(session) -> pd.DataFrame:
     return df.drop(columns="Stint").sort_values(["Driver", "start"])
 
 
+# Namen allein reichen hier nicht: ein leerer Rahmen, dessen Spalten alle
+# object-dtype haben, faellt bei ``deg[deg["reliable"]]`` auf die Form
+# (0, 0) zusammen - pandas kann eine object-Spalte nicht als Boolmaske
+# lesen und wirft alle Spalten weg. Der naechste Zugriff bekaeme dann
+# wieder den KeyError, den die Spaltenliste gerade verhindern sollte.
+DEGRADATION_DTYPEN = {
+    "driver": "object", "team": "object", "stint": "int64",
+    "compound": "object", "fresh": "bool", "laps": "int64",
+    "deg_s_per_lap": "float64", "base_s": "float64", "r2": "float64",
+    "reliable": "bool",
+}
+DEGRADATION_SPALTEN = list(DEGRADATION_DTYPEN)
+
+
+def _leere_degradation() -> pd.DataFrame:
+    return pd.DataFrame({spalte: pd.Series(dtype=typ)
+                         for spalte, typ in DEGRADATION_DTYPEN.items()})
+
+
 def degradation(session, threshold: float = 1.10,
                 min_laps: int = 6) -> pd.DataFrame:
     """degradation je stint, mit herausgerechnetem treibstoffeffekt.
@@ -425,7 +444,7 @@ def degradation(session, threshold: float = 1.10,
     laps["corrected"] = fuel_correct(
         laps["sec"], laps["LapNumber"], session.total_laps)
 
-    rows = []
+    rows: list[dict] = []
     for (drv, stint), g in laps.groupby(["Driver", "Stint"]):
         g = g.sort_values("TyreLife")
         if len(g) < min_laps:
@@ -450,6 +469,12 @@ def degradation(session, threshold: float = 1.10,
             "r2": round(fit.r2, 3),
             "reliable": fit.is_reliable,
         })
+    # ohne den leeren Rahmen faellt schon das sort_values() hier mit einem
+    # KeyError um, sobald kein einziger Stint lang genug fuer einen Fit ist -
+    # ein abgebrochenes Rennen reicht dafuer. Aufrufer, die auf
+    # "deg_s_per_lap" gruppieren (P13/P35/P41), traefe es genauso.
+    if not rows:
+        return _leere_degradation()
     return pd.DataFrame(rows).sort_values("deg_s_per_lap", ignore_index=True)
 
 
@@ -1479,9 +1504,15 @@ def teammate_duels(session) -> list[dict]:
     return _duelle(beste, "Team", "Driver", "LapTime")
 
 
+# die Schluessel, die _duelle() je Duell setzt. teammate_duels() gibt eine
+# Liste zurueck, kein DataFrame - wer daraus einen baut, braucht die Namen
+# auch fuer den leeren Fall (siehe P05).
+DUELL_SPALTEN = ["team", "a", "b", "score_a", "delta_pct"]
+
+
 def _duelle(tab: pd.DataFrame, team_col: str, driver_col: str,
            wert_col: str) -> list[dict]:
-    out = []
+    out: list[dict] = []
     for team, grp in tab.groupby(team_col):
         if len(grp) != 2:
             continue

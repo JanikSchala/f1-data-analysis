@@ -13,11 +13,13 @@ from fastf1.exceptions import DataNotLoadedError, ErgastInvalidRequestError
 
 import f1lab.session as session_mod
 from f1lab.session import (
+    DEGRADATION_SPALTEN,
     PACE_SPALTEN,
     TELEMETRY_MARKER,
     TIMING_MARKER,
     TRACK_STATUS,
     _duelle,
+    _leere_degradation,
     _zeit_bei_speed,
     cache_ready,
     cached_sessions,
@@ -923,7 +925,26 @@ class TestLeereErgebnisseBehaltenSpalten:
             lambda: sc_compaction(pd.DataFrame([{"lap_start": 1, "lap_end": 2}]),
                                   pd.Series({1: 30.0, 2: 10.0})),
             ["start", "ende", "baseline_s", "minimum_s", "kompaktierung_pct"]),
+        "degradation (kein Stint lang genug)": (
+            _leere_degradation, DEGRADATION_SPALTEN),
     }
+
+    def test_leere_degradation_ueberlebt_die_reliable_maske(self):
+        """Spaltennamen allein genuegen hier nicht.
+
+        deg[deg["reliable"]] ist der Standardzugriff in P13/P35/P41. Haben
+        alle Spalten object-dtype, kann pandas "reliable" nicht als
+        Boolmaske lesen und liefert einen Rahmen der Form (0, 0) - alle
+        Spalten weg, und der naechste Zugriff bekommt genau den KeyError
+        zurueck, den die Spaltenliste verhindern sollte.
+        """
+        leer = _leere_degradation()
+        rel = leer[leer["reliable"]]
+        assert list(rel.columns) == DEGRADATION_SPALTEN
+        # so greifen die Skripte real zu
+        assert rel.groupby("team")["deg_s_per_lap"].mean().empty
+        assert rel.groupby("compound")["deg_s_per_lap"].mean().empty
+        assert rel.nlargest(3, "deg_s_per_lap").empty
 
     @pytest.mark.parametrize("name", list(FAELLE))
     def test_spalten_bleiben(self, name):
