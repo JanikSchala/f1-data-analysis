@@ -124,6 +124,35 @@ class TestSessionApiSurface:
                      "stints", "track_status_phases", "enable_cache"):
             assert hasattr(f1lab, name), f"f1lab.{name} fehlt"
 
+    def test_all_zeigt_nur_auf_vorhandenes(self):
+        """__all__ ist von Hand gepflegt und driftet still.
+
+        Ein Name darin, den es nicht gibt, laesst "from f1lab import *"
+        mit einem AttributeError scheitern - beim normalen "import f1lab"
+        faellt das nie auf. Beide Listen (die Import-Zeilen und __all__)
+        werden bei jeder neuen Funktion getrennt angefasst.
+        """
+        import f1lab
+        fehlend = [n for n in f1lab.__all__ if not hasattr(f1lab, n)]
+        assert not fehlend, f"in __all__, aber nicht vorhanden: {fehlend}"
+
+    def test_all_hat_keine_doppelten(self):
+        import f1lab
+        doppelt = {n for n in f1lab.__all__ if f1lab.__all__.count(n) > 1}
+        assert not doppelt, f"doppelt in __all__: {sorted(doppelt)}"
+
+    def test_nichts_oeffentliches_fehlt_in_all(self):
+        """die andere Richtung: eine exportierte Funktion, die in __all__
+        vergessen wurde, taucht bei "import *" nicht auf und gilt damit
+        als privat, obwohl sie es nicht ist."""
+        import types
+
+        import f1lab
+        offen = {n for n in dir(f1lab) if not n.startswith("_")
+                 and not isinstance(getattr(f1lab, n), types.ModuleType)}
+        fehlend = sorted(offen - set(f1lab.__all__))
+        assert not fehlend, f"importierbar, aber nicht in __all__: {fehlend}"
+
     def test_core_functions_are_numpy_only(self):
         """core darf nicht von FastF1 abhaengen. sonst waeren die Tests
         ohne Netz nicht mehr moeglich."""
