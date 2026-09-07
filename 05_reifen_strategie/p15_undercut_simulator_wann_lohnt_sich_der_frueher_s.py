@@ -158,14 +158,26 @@ def main():
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
 
     print("\n[2/5] Pitloss (VORGEHEN 1) ...")
-    loss_in, loss_out, pitloss = pitloss_zerlegen(ses)
+    # Der ganze Simulator haengt an diesen beiden Groessen. Ein Rennen ohne
+    # verwertbare Boxenstopps oder ohne belastbaren Fit fuer beide
+    # Mischungen gibt keinen Undercut her - ein Ausstieg statt eines Guards
+    # vor jeder Folgerechnung.
+    try:
+        loss_in, loss_out, pitloss = pitloss_zerlegen(ses)
+        kontrolle = f1lab.pit_loss(ses)
+    except ValueError as exc:
+        raise SystemExit(f"      kein Pitloss messbar: {exc}") from exc
     print(f"      in-lap {loss_in:.2f}s + out-lap {loss_out:.2f}s = "
          f"{pitloss:.2f}s (f1lab.pit_loss() zur Kontrolle: "
-         f"{f1lab.pit_loss(ses):.2f}s)")
+         f"{kontrolle:.2f}s)")
 
     print("\n[3/5] Degradation je Mischung (VORGEHEN 2, aus P13-Bausteinen) ...")
     je_compound = f1lab.degradation_by_compound(ses)
     print(je_compound.to_string())
+    fehlend = [c for c in ("SOFT", "MEDIUM") if c not in je_compound.index]
+    if fehlend:
+        raise SystemExit(f"      kein belastbarer Degradations-Fit fuer "
+                         f"{', '.join(fehlend)} - anderes Rennen waehlen")
     deg_alt = float(je_compound.loc["SOFT", "mean"])
     deg_neu = float(je_compound.loc["MEDIUM", "mean"])
     print(f"      DEG_ALT (SOFT) = {deg_alt:.4f}, DEG_NEU (MEDIUM) = {deg_neu:.4f}")

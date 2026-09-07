@@ -426,8 +426,13 @@ DEGRADATION_DTYPEN = {
 DEGRADATION_SPALTEN = list(DEGRADATION_DTYPEN)
 
 
-def _leerer_rahmen(dtypen: dict[str, str]) -> pd.DataFrame:
+def leerer_rahmen(dtypen: dict[str, str]) -> pd.DataFrame:
     """leerer DataFrame mit festen Spalten *und* dtypes.
+
+    oeffentlich, weil auch Skripte die leere Form einer f1lab-Ausgabe
+    brauchen: wer einen Saison-Scan ueber mehrere Sessions zusammensetzt,
+    muss den Fall "keine einzige Session lieferte etwas" mit demselben
+    Schema beantworten (siehe P31).
 
     die dtypes sind kein Detail: ein leerer Rahmen, dessen Spalten alle
     object-dtype haben, faellt bei einer Boolmaske auf die Form (0, 0)
@@ -439,7 +444,7 @@ def _leerer_rahmen(dtypen: dict[str, str]) -> pd.DataFrame:
 
 
 def _leere_degradation() -> pd.DataFrame:
-    return _leerer_rahmen(DEGRADATION_DTYPEN)
+    return leerer_rahmen(DEGRADATION_DTYPEN)
 
 
 def degradation(session, threshold: float = 1.10,
@@ -1003,7 +1008,7 @@ def drs_usage(session) -> pd.DataFrame:
             and pd.notna(vmax_zu) else float("nan"),
         })
     if not rows:
-        return _leerer_rahmen(DRS_USAGE_DTYPEN)
+        return leerer_rahmen(DRS_USAGE_DTYPEN)
     return pd.DataFrame(rows).sort_values("drs_pct", ascending=False,
                                           ignore_index=True)
 
@@ -1368,7 +1373,7 @@ def start_performance(session, fenster_s: float = 8.0) -> pd.DataFrame:
             "m_nach_5s": round(float(nach_5s.max()), 1) if nach_5s.size else None,
         })
     if not rows:
-        return _leerer_rahmen(START_PERF_DTYPEN)
+        return leerer_rahmen(START_PERF_DTYPEN)
     return pd.DataFrame(rows).sort_values("m_nach_5s", ascending=False,
                                           ignore_index=True)
 
@@ -1411,13 +1416,13 @@ def close_following(session, driver: str, nah_schwelle_m: float = 50.0
     laps = (session.laps.pick_drivers(driver).pick_wo_box().pick_accurate()
            .pick_track_status("1").sort_values("LapStartTime"))
     if laps.empty:
-        return _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
+        return leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
     try:
         tel = laps.get_telemetry().add_driver_ahead().sort_values("SessionTime")
     except Exception:
-        return _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
+        return leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
     if tel.empty:
-        return _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
+        return leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
 
     grenzen = (laps[["LapNumber", "LapStartTime"]]
               .rename(columns={"LapStartTime": "SessionTime"})
@@ -1440,7 +1445,7 @@ def close_following(session, driver: str, nah_schwelle_m: float = 50.0
             "anteil_nah": 100 * (g["gap"] < nah_schwelle_m).mean(),
             "compound": lap["Compound"], "tyre_life": lap["TyreLife"],
         })
-    return pd.DataFrame(rows) if rows else _leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
+    return pd.DataFrame(rows) if rows else leerer_rahmen(CLOSE_FOLLOW_DTYPEN)
 
 
 def dirty_air_effect(df: pd.DataFrame) -> tuple[float, float, float, pd.DataFrame]:
@@ -1461,6 +1466,11 @@ def dirty_air_effect(df: pd.DataFrame) -> tuple[float, float, float, pd.DataFram
     d = df.dropna(subset=["gap_median_m", "tyre_life"]).copy()
     d = d[d["gap_median_m"] < 500]
     if len(d) < 5 or d["tyre_life"].nunique() < 2:
+        # der Docstring verspricht ``sec_corr`` im Rueckgaberahmen - auf
+        # diesem Pfad fehlte sie, und der Aufrufer bekam beim Ausdruck der
+        # Tabelle einen KeyError statt der NaN-Kennzahlen, die er gerade
+        # ausgewertet hat (siehe P32).
+        d["sec_corr"] = pd.Series(dtype="float64")
         return float("nan"), float("nan"), float("nan"), d
 
     fit = fit_degradation(d["tyre_life"], d["sec_fuel"])

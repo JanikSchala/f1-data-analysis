@@ -66,7 +66,9 @@ from .core import (
     undercut_gain,
 )
 from .session import (
+    CLOSE_FOLLOW_DTYPEN,
     DUELL_SPALTEN,
+    START_PERF_DTYPEN,
     PaceEntry,
     blue_flags,
     cache_ready,
@@ -94,6 +96,7 @@ from .session import (
     grid_lap1_positions,
     lap_speed_profile,
     lead_changes,
+    leerer_rahmen,
     load,
     marshal_light_labels,
     marshal_sector_labels,
@@ -142,6 +145,7 @@ __all__ = [
     "pace_table", "stints", "degradation", "degradation_by_compound",
     "pit_loss", "track_status_phases", "event_dimension", "circuit_geometry",
     "circuit_info", "reference_lap", "DUELL_SPALTEN",
+    "leerer_rahmen", "START_PERF_DTYPEN", "CLOSE_FOLLOW_DTYPEN",
     "circuit_dimension", "find_cache", "cached_sessions", "cache_ready",
     "ergast_retry", "season_sessions",
     "driver_braking_zones", "compare_braking_zones", "drs_zones", "drs_usage",

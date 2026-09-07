@@ -109,6 +109,12 @@ def main():
     print("[2/3] Bremsphasen-Report ...")
     z1 = bremsphasen_report(ses, D1)
     z2 = bremsphasen_report(ses, D2)
+    # ohne Bremszonen gibt es keinen Vergleich - und z['driver'].iloc[0]
+    # waere auf dem leeren Rahmen ein IndexError statt einer Aussage.
+    for fahrer, z in ((D1, z1), (D2, z2)):
+        if z.empty:
+            raise SystemExit(f"      keine Bremszonen fuer {fahrer} in "
+                             f"{EVENT} {SEASON} {IDENT}")
     for z in (z1, z2):
         print(f"\n=== {z['driver'].iloc[0]} - {len(z)} Bremszonen ===")
         print(z.drop(columns=["driver"]).to_string(index=False))

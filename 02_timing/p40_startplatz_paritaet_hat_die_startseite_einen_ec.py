@@ -110,6 +110,9 @@ def main():
             saison_diffs.append({"gp": gp, "season": saison,
                                  "diff": ung.mean() - ger.mean()})
 
+    if not alle:
+        raise SystemExit("      kein Rennen mit auswertbaren Starts "
+                         "gefunden - andere Saisons waehlen")
     df = pd.concat(alle, ignore_index=True)
     print(f"      {len(df)} Starts (ohne Boxenstarts) ueber "
          f"{df[['season', 'gp']].drop_duplicates().shape[0]} Rennen, "

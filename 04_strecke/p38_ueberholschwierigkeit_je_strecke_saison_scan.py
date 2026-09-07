@@ -113,12 +113,24 @@ def main():
                             & inv["telemetry"]]["event"].unique())
     geo = f1lab.circuit_dimension([(SEASON, gp) for gp in tel_rennen])
     geo = geo.merge(ueberholungen, on="gp", how="inner")
+    # circuit_dimension() setzt pd.NA, wo die Streckengeometrie fehlt - die
+    # Spalten sind dann object, und pearsonr scheitert am dtype statt an
+    # den Werten. Strecken ohne Geometrie koennen ohnehin nicht in eine
+    # Korrelation eingehen.
+    for spalte in ("corners", "length_m", "overtakes"):
+        geo[spalte] = pd.to_numeric(geo[spalte], errors="coerce")
+    geo = geo.dropna(subset=["corners", "length_m", "overtakes"])
     geo["kurven_pro_km"] = geo["corners"] / (geo["length_m"] / 1000)
     print(geo[["gp", "circuit", "corners", "length_m", "kurven_pro_km",
               "overtakes"]].to_string(index=False))
 
     print(f"\n[3/3] Korrelationen ueber {len(geo)} Strecken (VORGEHEN 4, "
          "AUSBAUSTUFE) ...")
+    # pearsonr braucht mindestens zwei Punkte; darunter wirft schon der
+    # dtype-Zugriff auf dem leeren Rahmen.
+    if len(geo) < 2:
+        raise SystemExit("      weniger als zwei Strecken mit Geometrie und "
+                         "Ueberholzahlen - keine Korrelation bildbar")
     r_len, p_len = pearsonr(geo["length_m"], geo["overtakes"])
     r_corn, p_corn = pearsonr(geo["corners"], geo["overtakes"])
     r_kpk, p_kpk = pearsonr(geo["kurven_pro_km"], geo["overtakes"])

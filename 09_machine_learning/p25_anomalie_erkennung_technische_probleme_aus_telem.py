@@ -178,6 +178,11 @@ def anomalien_finden(df: pd.DataFrame) -> pd.DataFrame:
     """IsolationForest auf sauberen Runden: kein Feld-Ereignis, keine Startrunde, beide strukturell anders und kein Defekt.
     Boxenrunden bleiben bewusst drin."""
     sauber = df[~df["neutralisiert"] & ~df["erste_runde"]].copy()
+    # groupby().transform() auf einem leeren Rahmen wirft "No objects to
+    # concatenate" - ohne saubere Runde gibt es nichts zu suchen.
+    if sauber.empty:
+        raise SystemExit("      keine sauberen Runden fuer die "
+                         "Anomalie-Erkennung uebrig")
     z = sauber.groupby("driver")[FEAT].transform(
         lambda s: (s - s.mean()) / (s.std() + 1e-9))
     iso = IsolationForest(contamination=CONTAMINATION, random_state=0)

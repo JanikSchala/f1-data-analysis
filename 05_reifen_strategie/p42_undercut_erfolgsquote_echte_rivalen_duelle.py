@@ -44,7 +44,11 @@ def saison_scan(saison: int) -> pd.DataFrame:
             duelle = duelle.copy()
             duelle["gp"] = row["event_name"]
             alle.append(duelle)
-    return pd.concat(alle, ignore_index=True) if alle else pd.DataFrame()
+    # undercut_duels() haelt seine Spalten schon fuer den leeren Fall -
+    # nur der Rueckfall "gar kein Rennen auswertbar" hatte keine.
+    return (pd.concat(alle, ignore_index=True) if alle else
+            pd.DataFrame(columns=["driver", "lap", "rival", "rival_lap",
+                                  "erfolg", "gp"]))
 
 
 def zeichne_verteilung(ax, je_rennen: pd.DataFrame) -> None:
@@ -103,6 +107,9 @@ def main():
     print(f"      {n} Duelle ueber {duelle['gp'].nunique()} Rennen gesammelt")
 
     print("\n[3/4] Statistik (VORGEHEN 3) ...")
+    if not n:
+        raise SystemExit("      kein einziges Undercut-Duell in dieser "
+                         "Saison - keine Quote zu testen")
     test = binomtest(erfolge, n, 0.5)
     ci = test.proportion_ci(confidence_level=0.95)
     print(f"      Erfolgsquote: {erfolge}/{n} = {erfolge / n:.1%}")

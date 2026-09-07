@@ -90,8 +90,11 @@ def ueberholzeitpunkte(saisons) -> tuple[pd.Series, pd.Series]:
                 anteile_s.append(ev_s["lap"] / ses_s.total_laps)
             if not ev_r.empty:
                 anteile_r.append(ev_r["lap"] / ses_r.total_laps)
-    return (pd.concat(anteile_s, ignore_index=True),
-            pd.concat(anteile_r, ignore_index=True))
+    # ohne einen einzigen trockenen Sprint bleiben beide Listen leer;
+    # pd.concat([]) wirft, eine leere Serie ist die richtige Antwort.
+    leer = pd.Series(dtype="float64")
+    return (pd.concat(anteile_s, ignore_index=True) if anteile_s else leer,
+            pd.concat(anteile_r, ignore_index=True) if anteile_r else leer)
 
 
 def zeichne_vergleich(ax, df: pd.DataFrame) -> None:

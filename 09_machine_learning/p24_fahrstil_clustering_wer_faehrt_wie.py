@@ -34,6 +34,10 @@ STRECKEN = ("Bahrain", "Spain", "Monza", "Suzuka")
 DTW_STRECKE = "Suzuka"
 QUICKLAP_SCHWELLE = 1.07
 DTW_PUNKTE, DTW_BAND = 150, 20
+# die Schluessel, die style_features() liefert - hier festgehalten, damit
+# der leere Sammler-Rahmen dieselben Spalten traegt.
+FEATURES = ("vollgas_pct", "bremsen_pct", "coasting_pct", "gas_modulation",
+            "overlap_pct", "schaltungen")
 
 plt.rcParams.update(matplotlib_stil())
 
@@ -74,7 +78,9 @@ def sammle_features() -> pd.DataFrame:
             f = style_features(tel)
             f.update({"driver": lap.Driver, "gp": gp})
             rows.append(f)
-    return pd.DataFrame(rows)
+    # ohne die Spaltennamen faellt der groupby(["gp", "driver"]) darunter
+    # mit einem KeyError um, sobald keine Strecke Telemetrie liefert.
+    return pd.DataFrame(rows, columns=[*FEATURES, "driver", "gp"])
 
 
 def dtw_distanz(a: np.ndarray, b: np.ndarray, band: int = DTW_BAND) -> float:

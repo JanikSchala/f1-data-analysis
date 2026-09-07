@@ -95,7 +95,10 @@ def main():
         teile = [f1lab.close_following(s, drv, nah_schwelle_m=NAH_SCHWELLE_M)
                 for drv in fahrer]
         teile = [t for t in teile if not t.empty]
-        gesamt = pd.concat(teile, ignore_index=True) if teile else pd.DataFrame()
+        # dieselbe leere Form wie close_following() selbst, sonst faellt
+        # dirty_air_effect() beim dropna auf die fehlenden Spalten.
+        gesamt = (pd.concat(teile, ignore_index=True) if teile else
+                  f1lab.leerer_rahmen(f1lab.CLOSE_FOLLOW_DTYPEN))
         sl, ic, rr, dd = f1lab.dirty_air_effect(gesamt)
         ergebnisse.append({"strecke": s.event["EventName"], "slope": sl,
                            "r2": rr, "n": len(dd)})

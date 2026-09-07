@@ -113,6 +113,9 @@ def datensatz_bauen(quali_mit_form: pd.DataFrame) -> pd.DataFrame:
             continue
         fp.index.name = "driver"
         frames.append(fp.reset_index().assign(season=jahr, round=rnd))
+    if not frames:
+        raise SystemExit("      kein Wochenende mit auswertbaren "
+                         "Freien-Trainings-Merkmalen - andere Saisons waehlen")
     fp_alle = pd.concat(frames, ignore_index=True)
     data = quali_mit_form.merge(fp_alle, on=["season", "round", "driver"],
                                 how="inner")

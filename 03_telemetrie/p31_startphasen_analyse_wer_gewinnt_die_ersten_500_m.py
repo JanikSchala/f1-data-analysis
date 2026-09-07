@@ -40,7 +40,13 @@ def saison_scan(events: list[str], year: int = SEASON) -> pd.DataFrame:
             zeilen.append(sp.assign(round=int(ses.event["RoundNumber"]),
                                     event=ses.event["EventName"]))
         print(f"      {ses.event['EventName']} ausgewertet")
-    return pd.concat(zeilen, ignore_index=True) if zeilen else pd.DataFrame()
+    if not zeilen:
+        # dieselben Spalten wie im gefuellten Fall, sonst faellt der
+        # groupby("driver") darunter mit einem KeyError um.
+        leer = f1lab.leerer_rahmen(f1lab.START_PERF_DTYPEN)
+        return leer.assign(round=pd.Series(dtype="int64"),
+                           event=pd.Series(dtype="object"))
+    return pd.concat(zeilen, ignore_index=True)
 
 
 def zeichne_positionsgewinn(ax, df: pd.DataFrame) -> None:
