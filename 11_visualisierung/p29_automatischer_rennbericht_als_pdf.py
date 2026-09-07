@@ -164,7 +164,14 @@ def _lade_mit_wiederholung(year: int, gp: str, versuche: int = 2):
     Ein Fehlschlag ist meist ``fastf1._api.SessionNotAvailableError``: FastF1s eigene
     Live-Timing-API meldet die Session als nicht verfügbar. Das ist kein Fehler in
     diesem Repo. Ein zweiter Versuch innerhalb desselben Laufs behebt das nicht
-    zuverlässig, hilft aber bei echter Transienz und kostet nichts."""
+    zuverlässig, hilft aber bei echter Transienz und kostet nichts.
+
+    Nachgemessen: von GitHub-Actions-Runnern aus scheitert das *immer*, auch
+    acht Tage nach dem Rennen, waehrend dieselbe Session von einem
+    gewoehnlichen Anschluss aus mit leerem Cache sofort laedt. FastF1s
+    Fehlertext ("if this session only finished recently") legt Transienz
+    nahe, die es dort nicht ist - es ist die Netzwerkroute. Der
+    Montags-Zeitplan in weekly-report.yml ist deshalb ausgebaut."""
     letzter_fehler: Exception | None = None
     for versuch in range(1, versuche + 1):
         ses = f1lab.load(year, gp, "R", telemetry=False)
@@ -180,10 +187,11 @@ def _lade_mit_wiederholung(year: int, gp: str, versuche: int = 2):
     raise RuntimeError(
         f"Rundendaten fuer {gp} {year} liessen sich nach {versuche} "
         f"Versuchen nicht laden (f1_api_support={ses.f1_api_support}) - "
-        "vermutlich meldet FastF1s Live-Timing-API die Session von dieser "
-        "Netzwerkroute aus als nicht verfuegbar (SessionNotAvailableError, "
-        "siehe Docstring), kein Code-Fehler in diesem Repo. Naechster "
-        "Montags-Lauf hat gute Chancen, anders zu laufen.") from letzter_fehler
+        "FastF1s Live-Timing-API meldet die Session von dieser Netzwerkroute "
+        "aus als nicht verfuegbar (SessionNotAvailableError, siehe "
+        "Docstring), kein Code-Fehler in diesem Repo. Von einem "
+        "gewoehnlichen Anschluss aus laedt dieselbe Session; auf "
+        "GitHub-Actions-Runnern bisher nie.") from letzter_fehler
 
 
 def build(year: int, gp: str | None, out: Path) -> None:

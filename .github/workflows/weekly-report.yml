@@ -1,13 +1,28 @@
 name: Weekly Race Report
 
-# AUSBAUSTUFE zu P29: jeden Montag automatisch den PDF-Report des
-# juengsten abgeschlossenen Rennens der laufenden Saison erzeugen und als
-# Build-Artefakt anhaengen (kein Deploy, keine Veroeffentlichung - nur im
-# "Actions"-Tab des Repos abrufbar, 90 Tage Aufbewahrung per Default).
+# AUSBAUSTUFE zu P29: den PDF-Report des juengsten abgeschlossenen Rennens
+# der laufenden Saison erzeugen und als Build-Artefakt anhaengen (kein
+# Deploy, keine Veroeffentlichung - nur im "Actions"-Tab abrufbar).
+#
+# Der Montags-Zeitplan ist ausgebaut, und zwar aus einem gemessenen Grund:
+# FastF1s Live-Timing-Quelle antwortet von GitHub-Actions-Runnern aus mit
+# SessionNotAvailableError, unabhaengig davon wie lange das Rennen her ist.
+# Beide je geplanten Laeufe sind daran gescheitert:
+#
+#   2026-08-31  Dutch Grand Prix  (Rennen 8 Tage vorher)  -> "No data"
+#   2026-09-07  Italian Grand Prix (Rennen 1 Tag vorher)  -> "No data"
+#
+# Dieselben zwei Sessions laden von einem gewoehnlichen Anschluss aus mit
+# leerem Cache anstandslos (1368 bzw. 1054 Runden). Es ist also nicht die
+# in FastF1s Fehlertext genannte Transienz ("finished recently") und auch
+# kein Fehler in diesem Repo, sondern die Netzwerkroute des Runners. Ein
+# Zeitplan, der jede Woche verlaesslich rot wird, meldet nichts mehr - er
+# gewoehnt einen nur daran, die Benachrichtigung wegzuklicken.
+#
+# workflow_dispatch bleibt: sobald die Quelle von dort aus erreichbar ist,
+# genuegt ein manueller Lauf als Gegenprobe, und der cron kann zurueck.
 on:
-  schedule:
-    - cron: "0 6 * * 1"     # jeden Montag, 06:00 UTC
-  workflow_dispatch: {}      # manuell ausloesbar zum Testen
+  workflow_dispatch: {}
 
 jobs:
   report:
@@ -17,7 +32,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      # P29 braucht fastf1, matplotlib, pandas und f1lab - alles im
+      # Basis-Paket. "pip install -r requirements.txt" zog stattdessen die
+      # gesamte Entwicklungsumgebung samt torch (rund 500 MB, ueber 90 s
+      # allein fuers Installieren) fuer ein PDF, das nichts davon anfasst.
+      - run: pip install -e .
       - name: Report fuer das juengste abgeschlossene Rennen erzeugen
         run: |
           python -u 11_visualisierung/p29_automatischer_rennbericht_als_pdf.py \
