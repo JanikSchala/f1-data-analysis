@@ -536,7 +536,7 @@ print(f1lab.degradation_by_compound(ses))
 print(f"Pitloss: {f1lab.pit_loss(ses):.2f} s")
 ```
 
-**208 Tests, alle ohne Netzzugriff:**
+**Alle Tests laufen ohne Netzzugriff:**
 
 ```bash
 pip install pytest
@@ -576,7 +576,7 @@ das Repo auf den Importpfad.
 ```
 f1lab/                installierbares Paket, core (rein) + session (FastF1)
 app/                  Streamlit-Dashboard: Start.py + 26 Seiten unter pages/
-tests/                311 Tests, laufen offline
+tests/                Testsuite, laeuft offline
 
 01_grundlagen/        Datenzugriff, Caching, Kalender als Dimensionstabelle
 02_timing/            Rundenzeiten, Pace-Ranking, Sektoren, Positionsverlauf
