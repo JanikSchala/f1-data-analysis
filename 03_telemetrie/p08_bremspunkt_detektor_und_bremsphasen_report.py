@@ -117,8 +117,8 @@ def main():
     print(f"\n{len(vgl)} Zonen gematcht (Toleranz {TOLERANZ_M:.0f} m):")
     print(vgl[["start_m", "delta_m", "spaeter"]].to_string(index=False))
 
-    l1 = ses.laps.pick_drivers(D1).pick_fastest()
-    l2 = ses.laps.pick_drivers(D2).pick_fastest()
+    l1 = f1lab.reference_lap(ses, D1)
+    l2 = f1lab.reference_lap(ses, D2)
     schneller = D1 if l1["LapTime"] < l2["LapTime"] else D2
     diff = abs((l1["LapTime"] - l2["LapTime"]).total_seconds())
     spaeter_zonen = (vgl["spaeter"] == D2).sum()

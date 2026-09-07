@@ -63,8 +63,8 @@ def main():
 
     print(f"[1/4] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
-    lap1 = ses.laps.pick_drivers(D1).pick_fastest()
-    lap2 = ses.laps.pick_drivers(D2).pick_fastest()
+    lap1 = f1lab.reference_lap(ses, D1)
+    lap2 = f1lab.reference_lap(ses, D2)
     print(f"      {D1} {lap1['LapTime']}  |  {D2} {lap2['LapTime']}")
 
     t1 = lap1.get_car_data().add_distance()

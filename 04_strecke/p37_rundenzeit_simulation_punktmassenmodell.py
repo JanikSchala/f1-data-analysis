@@ -89,7 +89,7 @@ def main():
          "Streckenprofil (VORGEHEN 1) ...")
     ses_ref = f1lab.load(*REFERENZ, telemetry=True)
     dist, kappa, speed_real = f1lab.lap_speed_profile(ses_ref)
-    t_real = float(ses_ref.laps.pick_fastest()["LapTime"].total_seconds())
+    t_real = float(f1lab.reference_lap(ses_ref)["LapTime"].total_seconds())
     print(f"      {len(dist)} Telemetriepunkte, echte Rundenzeit {t_real:.3f}s")
 
     print("\n[2/3] Kalibrierung gegen die echte Geschwindigkeitsspur "
@@ -116,7 +116,7 @@ def main():
         except Exception:
             continue
         d2, k2, _ = f1lab.lap_speed_profile(ses)
-        t2_real = float(ses.laps.pick_fastest()["LapTime"].total_seconds())
+        t2_real = float(f1lab.reference_lap(ses)["LapTime"].total_seconds())
         _, t2_sim = f1lab.simulate_lap(d2, k2, params["mu_g"], params["a_accel"],
                                        params["a_brake"], params["v_top"])
         diff_pct = 100 * (t2_sim - t2_real) / t2_real

@@ -47,6 +47,13 @@ def zeichne_wetterprofil(ax, ses) -> None:
 
 
 def zeichne_temperatureffekt(ax, erg: dict) -> None:
+    # wie zeichne_phasen(): keine bildbare Regression ist eine leere
+    # Aussage, kein Fehler.
+    if erg["n"] == 0:
+        ax.text(0.5, 0.5, "keine belastbare Regression", ha="center",
+               va="center", color=MUTED)
+        ax.axis("off")
+        return
     d = erg["dry"]
     ax.scatter(d["TrackTemp"], d["partial"], s=10, color=MUTED, alpha=0.4,
               edgecolors="none")
@@ -79,8 +86,13 @@ def zeichne_phasen(ax, phasen: pd.DataFrame, ses) -> None:
         ax.spines[side].set_visible(False)
 
 
-def zeichne_klassifikator(ax, je_runde: pd.DataFrame, y: np.ndarray,
-                          pred: np.ndarray) -> None:
+def zeichne_klassifikator(ax, je_runde: pd.DataFrame | None,
+                          y: np.ndarray | None, pred: np.ndarray | None) -> None:
+    if je_runde is None or y is None or pred is None:
+        ax.text(0.5, 0.5, "kein Klassifikator fuer dieses Rennen",
+               ha="center", va="center", color=MUTED)
+        ax.axis("off")
+        return
     richtig = pred == y
     for label, istnass, marker in ((0, False, "o"), (1, True, "^")):
         m = (y == label)
@@ -119,14 +131,23 @@ def main():
 
     print("\n[3/4] Temperatureffekt (VORGEHEN 3) ...")
     erg = f1lab.temperature_effect(merged)
-    print(f"      naive gepoolte Regression: {erg['naiv_slope']:+.4f} s/°C, "
-         f"R²={erg['naiv_r2']:.3f} - praktisch kein Signal")
-    print(f"      kontrolliert (Fahrer-Median abgezogen, TyreLife als "
-         f"zweite Variable, n={erg['n']}):")
-    print(f"        R² nur TyreLife:        {erg['r2_tyre_only']:.3f}")
-    print(f"        R² + TrackTemp:         {erg['r2_voll']:.3f}")
-    print(f"        TrackTemp-Koeffizient:  {erg['coef_temp']:+.4f} s/°C "
-         f"(se={erg['se_temp']:.4f}, t={erg['coef_temp'] / erg['se_temp']:.1f})")
+    # {"n": 0} heisst: keine belastbare Regression. das passiert bei einem
+    # abgebrochenen oder durchgehend nassen Rennen und ist keine Stoerung,
+    # sondern das Ergebnis - nur eben eins ohne Koeffizienten.
+    # kein return: der Nass-Teil [4/4] laedt ein eigenes Rennen und haengt
+    # nicht an dieser Regression.
+    if erg["n"] == 0:
+        print("      zu wenige trockene, gewertete Runden mit vollstaendigen "
+             "Werten - keine belastbare Regression fuer dieses Rennen")
+    else:
+        print(f"      naive gepoolte Regression: {erg['naiv_slope']:+.4f} s/°C, "
+             f"R²={erg['naiv_r2']:.3f} - praktisch kein Signal")
+        print(f"      kontrolliert (Fahrer-Median abgezogen, TyreLife als "
+             f"zweite Variable, n={erg['n']}):")
+        print(f"        R² nur TyreLife:        {erg['r2_tyre_only']:.3f}")
+        print(f"        R² + TrackTemp:         {erg['r2_voll']:.3f}")
+        print(f"        TrackTemp-Koeffizient:  {erg['coef_temp']:+.4f} s/°C "
+             f"(se={erg['se_temp']:.4f}, t={erg['coef_temp'] / erg['se_temp']:.1f})")
 
     print(f"\n[4/4] {NASS_EVENT[0]} {NASS_EVENT[1]} laden (VORGEHEN 4 + "
          f"AUSBAUSTUFE) ...")
@@ -140,14 +161,21 @@ def main():
     )[["nass", "start_min", "end_min"]].to_string(index=False))
 
     print("\n      Klassifikator (AUSBAUSTUFE) ...")
-    je_runde, y, pred = f1lab.wet_dry_classifier(ses_nass)
-    acc = (pred == y).mean()
-    basislinie = max(y.mean(), 1 - y.mean())
-    print(f"      n={len(y)} Runden, Leave-one-out-Trefferquote: {acc:.3f} "
-         f"(Mehrheitsklasse waere {basislinie:.3f})")
-    print(f"      Konfusionsmatrix:\n{confusion_matrix(y, pred)}")
-    print(f"      Speed-Trap trocken: {je_runde.loc[y == 0, 'mean_speedFL'].mean():.1f} km/h, "
-         f"nass: {je_runde.loc[y == 1, 'mean_speedFL'].mean():.1f} km/h")
+    # ein durchgehend trockenes Rennen hat nur eine Klasse - dann gibt es
+    # nichts zu klassifizieren, und das ist kein Fehler.
+    try:
+        je_runde, y, pred = f1lab.wet_dry_classifier(ses_nass)
+    except ValueError as exc:
+        print(f"      {exc}")
+        je_runde = y = pred = None
+    else:
+        acc = (pred == y).mean()
+        basislinie = max(y.mean(), 1 - y.mean())
+        print(f"      n={len(y)} Runden, Leave-one-out-Trefferquote: {acc:.3f} "
+             f"(Mehrheitsklasse waere {basislinie:.3f})")
+        print(f"      Konfusionsmatrix:\n{confusion_matrix(y, pred)}")
+        print(f"      Speed-Trap trocken: {je_runde.loc[y == 0, 'mean_speedFL'].mean():.1f} km/h, "
+             f"nass: {je_runde.loc[y == 1, 'mean_speedFL'].mean():.1f} km/h")
 
     print("\nGrafik ...")
     fig, ax = plt.subplots(2, 2, figsize=(15, 10))

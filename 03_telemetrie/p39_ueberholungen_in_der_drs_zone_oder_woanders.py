@@ -145,14 +145,14 @@ def main():
     print("\n[2/3] DRS-Zonen und Abgleich (VORGEHEN 3-4) ...")
     q = f1lab.load(REFERENZ[0], int(ses.event["RoundNumber"]), "Q",
                    telemetry=True)
-    lap = q.laps.pick_fastest()
+    lap = f1lab.reference_lap(q)
     zonen = f1lab.drs_zones(q, str(lap["Driver"]))
     print(zonen.round(0).to_string(index=False))
     anteil = 100 * orte["in_drs_zone"].mean()
     print(f"\n      {int(orte['in_drs_zone'].sum())}/{len(orte)} lokalisierte "
          f"Ueberholungen in einer DRS-Zone ({anteil:.1f}%)")
 
-    ref_lap = ses.laps.pick_fastest()
+    ref_lap = f1lab.reference_lap(ses)
     tel = ref_lap.get_telemetry().add_distance()
     ref_xy = tel[["X", "Y"]].to_numpy(dtype=float) / 10
     dist = tel["Distance"].to_numpy()

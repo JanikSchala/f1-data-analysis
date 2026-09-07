@@ -18,11 +18,6 @@ def race_pace(session, threshold: float = 1.07) -> pd.DataFrame:
     return f1lab.pace_table(session, threshold=threshold)
 
 
-def degradation(session, threshold: float = 1.10, min_laps: int = 6) -> pd.DataFrame:
-    """degradation je Stint, mit Treibstoffkorrektur."""
-    return f1lab.degradation(session, threshold=threshold, min_laps=min_laps)
-
-
 def degradation_by_compound(session, **kwargs) -> pd.DataFrame:
     """mittlere Degradation je Reifenmischung, nur belastbare Fits."""
     return f1lab.degradation_by_compound(session, **kwargs)

@@ -575,7 +575,8 @@ das Repo auf den Importpfad.
 
 ```
 f1lab/                installierbares Paket, core (rein) + session (FastF1)
-tests/                208 Tests, laufen offline
+app/                  Streamlit-Dashboard: Start.py + 26 Seiten unter pages/
+tests/                311 Tests, laufen offline
 
 01_grundlagen/        Datenzugriff, Caching, Kalender als Dimensionstabelle
 02_timing/            Rundenzeiten, Pace-Ranking, Sektoren, Positionsverlauf

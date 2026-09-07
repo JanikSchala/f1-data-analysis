@@ -75,7 +75,7 @@ def main():
     nutzung = f1lab.drs_usage(ses)
     print(nutzung.round(1).to_string(index=False))
 
-    lap = ses.laps.pick_fastest()
+    lap = f1lab.reference_lap(ses)
     zonen_monza = f1lab.drs_zones(ses, str(lap["Driver"]), min_length_m=MIN_ZONE_M)
     print(f"\nDRS-Zonen {EVENT} {SEASON} (schnellste Runde {lap['Driver']}):")
     print(zonen_monza.round(0).to_string(index=False))
@@ -87,7 +87,7 @@ def main():
     zonen = {}
     laengen = {}
     for jahr, s in sessions.items():
-        beste = s.laps.pick_fastest()
+        beste = f1lab.reference_lap(s)
         car = beste.get_car_data().add_distance()
         zonen[jahr] = f1lab.drs_zones(s, str(beste["Driver"]),
                                       min_length_m=MIN_ZONE_M)

@@ -33,7 +33,7 @@ plt.rcParams.update(matplotlib_stil())
 
 def speed_profil(ses) -> tuple[np.ndarray, dict]:
     """interpoliert speed ueber relativedistance der pole-runde."""
-    lap = ses.laps.pick_fastest()
+    lap = f1lab.reference_lap(ses)
     tel = lap.get_telemetry().add_distance().add_relative_distance()
     rel = tel["RelativeDistance"].to_numpy()
     v = tel["Speed"].to_numpy()

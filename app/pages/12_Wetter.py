@@ -157,18 +157,15 @@ with tab_phasen:
 with tab_klass:
     st.markdown("##### Nass/Trocken allein aus Rundenzeit-Streuung und "
                "Speed-Trap erkennen")
-    laps_ok = ses.laps.pick_accurate()
-    mehrheit = laps_ok.groupby("LapNumber")["Compound"].agg(
-        lambda s: s.value_counts().idxmax())
-    hat_beide = mehrheit.isin(["INTERMEDIATE", "WET"]).any() and \
-        (~mehrheit.isin(["INTERMEDIATE", "WET"])).any()
-
-    if not hat_beide:
-        st.info("Diese Session hat keinen Mischungswechsel zwischen Slicks "
-               "und Regenreifen - der Klassifikator braucht beide Klassen, "
-               "um kreuzvalidiert zu werden.")
-    else:
+    # die Vorbedingung stand frueher hier nachgebaut - auf den rohen
+    # Mischungs-Mehrheiten, waehrend f1lab intern auf Runden mit mindestens
+    # 10 gewerteten Zeiten filtert. Die Pruefung konnte also durchgehen und
+    # die Funktion trotzdem umfallen. Jetzt sagt f1lab selbst Bescheid.
+    try:
         je_runde, y, pred = f1lab.wet_dry_classifier(ses)
+    except ValueError as exc:
+        st.info(f"Kein Klassifikator fuer diese Session: {exc}")
+    else:
         richtig = pred == y
         acc = richtig.mean()
         basislinie = max(y.mean(), 1 - y.mean())

@@ -1584,8 +1584,20 @@ def wet_dry_classifier(session) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     (siehe P17 AUSBAUSTUFE). keine compound-spalte als feature, nur was
     auch ohne boxenfunk beobachtbar waere.
 
-    braucht mindestens eine runde je klasse (nass/trocken), sonst wirft
-    ``LeaveOneOut`` einen fehler. das prueft der aufrufer.
+    braucht mindestens eine runde je klasse (nass/trocken). fehlt das,
+    kommt eine klare ausnahme statt sklearns "Cannot perform LeaveOneOut
+    with n_samples=0".
+
+    die pruefung lag frueher beim aufrufer - im docstring stand "das prueft
+    der aufrufer", und das skript tat es nicht. die app tat es zwar, aber
+    auf den *rohen* mehrheiten statt auf dem hier gefilterten rahmen
+    (``n >= 10`` runden je feld), womit ihre pruefung durchgehen konnte,
+    waehrend hier trotzdem eine klasse fehlt. eine vorbedingung, die zwei
+    aufrufer unterschiedlich nachbauen, gehoert in die funktion.
+
+    Raises:
+        ValueError: keine auswertbaren runden oder nur eine der beiden
+            klassen vertreten.
     """
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import LeaveOneOut, cross_val_predict
@@ -1596,6 +1608,9 @@ def wet_dry_classifier(session) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
         std_sec=("sec", "std"), mean_speedFL=("SpeedFL", "mean"),
         n=("sec", "count")).dropna()
     je_runde = je_runde[je_runde["n"] >= 10]
+    if je_runde.empty:
+        raise ValueError("keine Runde mit mindestens 10 gewerteten Zeiten - "
+                         "zu wenig Feld fuer den Klassifikator")
 
     mehrheit = laps.groupby("LapNumber")["Compound"].agg(
         lambda s: s.value_counts().idxmax())
@@ -1605,6 +1620,11 @@ def wet_dry_classifier(session) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
 
     X = je_runde[["std_sec", "mean_speedFL"]].to_numpy()
     y = je_runde["nass"].to_numpy()
+    if len(np.unique(y)) < 2:
+        nur = "nass" if y[0] else "trocken"
+        raise ValueError(f"alle {len(y)} auswertbaren Runden sind {nur} - der "
+                         "Klassifikator braucht beide Klassen fuer die "
+                         "Kreuzvalidierung")
     pred = cross_val_predict(LogisticRegression(), X, y, cv=LeaveOneOut())
     return je_runde, y, pred
 

@@ -67,7 +67,7 @@ def main():
 
     print(f"[1/2] {EVENT} {SEASON} {IDENT} laden (mit Telemetrie) ...")
     ses = f1lab.load(SEASON, EVENT, IDENT, telemetry=True)
-    lap = ses.laps.pick_fastest()
+    lap = f1lab.reference_lap(ses)
     tel = lap.get_telemetry()
     print(f"      Schnellste Runde: {lap['Driver']}, {lap['LapTime']}")
 

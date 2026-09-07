@@ -83,7 +83,7 @@ def save(fig, name: str) -> None:
 def gear_map(year=2024, gp="Belgium"):
     print(f"[1/23] Gangwechsel-Karte  {gp} {year}")
     ses = f1lab.load(year, gp, "Q", telemetry=True)
-    lap = ses.laps.pick_fastest()
+    lap = f1lab.reference_lap(ses)
     tel = lap.get_telemetry()
 
     x = tel["X"].to_numpy(float)
@@ -124,8 +124,8 @@ def gear_map(year=2024, gp="Belgium"):
 def telemetry_overlay(year=2024, gp="Japan", d1="VER", d2="NOR"):
     print(f"[2/23] Telemetrie-Overlay  {gp} {year}  {d1} vs {d2}")
     ses = f1lab.load(year, gp, "Q", telemetry=True)
-    lap1 = ses.laps.pick_drivers(d1).pick_fastest()
-    lap2 = ses.laps.pick_drivers(d2).pick_fastest()
+    lap1 = f1lab.reference_lap(ses, d1)
+    lap2 = f1lab.reference_lap(ses, d2)
     t1 = lap1.get_car_data().add_distance()
     t2 = lap2.get_car_data().add_distance()
     dlt, ref, _ = delta_time(lap1, lap2)
@@ -407,7 +407,7 @@ def lap_simulation(ref=(2024, "Bahrain", "Q")):
     print(f"[8/23] Rundenzeit-Simulation  {ref[1]} {ref[0]} {ref[2]}")
     ses_ref = f1lab.load(*ref, telemetry=True)
     dist, kappa, speed_real = f1lab.lap_speed_profile(ses_ref)
-    t_real = float(ses_ref.laps.pick_fastest()["LapTime"].total_seconds())
+    t_real = float(f1lab.reference_lap(ses_ref)["LapTime"].total_seconds())
 
     params = f1lab.calibrate_lap_model(dist, kappa, speed_real)
     v_sim, t_sim = f1lab.simulate_lap(dist, kappa, params["mu_g"],
@@ -564,6 +564,13 @@ def weather_effect(event=("Japan", 2024, "R")):
     ses = f1lab.load(event[1], event[0], event[2], telemetry=False, weather=True)
     merged = f1lab.weather_join(ses)
     erg = f1lab.temperature_effect(merged)
+    # temperature_effect() liefert nur {"n": 0}, wenn die Regression nicht
+    # bildbar ist (zu wenige trockene Runden, oder TrackTemp/TyreLife ohne
+    # Streuung). Ohne diese Abfrage endet das in einem KeyError auf "dry"
+    # statt in einer Aussage.
+    if erg["n"] == 0:
+        raise SystemExit(f"    kein Temperatureffekt bildbar fuer {event[0]} "
+                         f"{event[1]} - anderes Rennen fuer die Grafik waehlen")
 
     d = erg["dry"]
     fig, ax = plt.subplots(figsize=(9, 5.5))
