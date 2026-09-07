@@ -138,6 +138,17 @@ class TestVollstaendigkeit:
         assert not falsch, (
             f"{n} Skripte vorhanden, README nennt aber {sorted(set(falsch))}")
 
+    def test_werkzeuge_auf_oberster_ebene_sind_gelistet(self, text):
+        """der Aufbau-Abschnitt nennt die Ordner und die Skripte daneben.
+
+        Ein neues Werkzeug, das dort fehlt, existiert fuer jeden Leser
+        nicht - genau so ist robustheit.py beim Hinzufuegen durchgerutscht.
+        conftest.py bleibt aussen vor: pytest-Innereien, kein Werkzeug.
+        """
+        werkzeuge = {p.name for p in WURZEL.glob("*.py")} - {"conftest.py"}
+        fehlend = sorted(w for w in werkzeuge if w not in text)
+        assert not fehlend, f"nicht im README erwaehnt: {fehlend}"
+
     def test_dashboard_seitenzahl(self, text):
         n = len(list((WURZEL / "app" / "pages").glob("*.py")))
         assert f"{n} Seiten" in text, (

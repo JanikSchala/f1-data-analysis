@@ -594,6 +594,7 @@ tests/                Testsuite, laeuft offline
 
 make_assets.py        erzeugt die Grafiken oben
 check_setup.py        prüft Umgebung, Pakete, Cache und API-Zugriff
+robustheit.py         fährt alle Analysen gegen Grenzfall-Sessions
 ```
 
 Jedes Skript läuft eigenständig, mit knappen Kommentaren statt eines
