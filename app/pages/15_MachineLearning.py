@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import torch
 from common import (
     achse,
     hinweis,
@@ -48,10 +47,21 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from torch import nn
 
 import f1lab
 from f1lab import design as d
+
+# torch steckt in der Extra-Gruppe "deeplearning" (rund 500 MB) und wird
+# nur vom Autoencoder im Anomalie-Reiter gebraucht. Ein Import auf
+# Modulebene liesse die ganze Seite abstuerzen, sobald jemand nur
+# ".[dashboard]" installiert hat - vier von fuenf Reitern kommen mit
+# sklearn aus. Der Reiter sagt dann, was fehlt.
+try:
+    import torch
+    from torch import nn
+    TORCH_DA = True
+except ImportError:                                     # pragma: no cover
+    TORCH_DA = False
 
 pfad = setup("Machine Learning", "Quali-Vorhersage, Fahrstil-Clustering, "
                                  "Anomalie-Erkennung und Rennergebnis-"
@@ -461,31 +471,38 @@ AE_BOTTLENECK = 8
 AE_EPOCHS = 80
 
 
-class LapAutoencoder(nn.Module):
+def _lap_autoencoder(n_channels, n_points, bottleneck=AE_BOTTLENECK):
     """1D-Conv-Autoencoder fuer telemetriespuren (siehe P25 zweite
     AUSBAUSTUFE). schmaler flaschenhals, damit das netz eine "normale"
-    rundenform komprimiert statt sie auswendig zu lernen."""
+    rundenform komprimiert statt sie auswendig zu lernen.
 
-    def __init__(self, n_channels=None, n_points=TRACE_PUNKTE,
-                bottleneck=AE_BOTTLENECK):
-        n_channels = len(TRACE_KANAELE) if n_channels is None else n_channels
-        super().__init__()
-        halb = n_points // 4
-        self.halb, self.kanaele_innen = halb, 32
-        self.encoder = nn.Sequential(
-            nn.Conv1d(n_channels, 16, kernel_size=4, stride=2, padding=1), nn.ReLU(),
-            nn.Conv1d(16, 32, kernel_size=4, stride=2, padding=1), nn.ReLU())
-        self.zu_bottleneck = nn.Linear(32 * halb, bottleneck)
-        self.von_bottleneck = nn.Linear(bottleneck, 32 * halb)
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose1d(32, 16, kernel_size=4, stride=2, padding=1), nn.ReLU(),
-            nn.ConvTranspose1d(16, n_channels, kernel_size=4, stride=2, padding=1))
+    Die Klasse steht in der Funktion statt auf Modulebene: sie erbt von
+    nn.Module, und der Name existiert nur, wenn torch installiert ist.
+    """
+    class LapAutoencoder(nn.Module):
+        def __init__(self):
+            super().__init__()
+            halb = n_points // 4
+            self.halb, self.kanaele_innen = halb, 32
+            self.encoder = nn.Sequential(
+                nn.Conv1d(n_channels, 16, kernel_size=4, stride=2, padding=1),
+                nn.ReLU(),
+                nn.Conv1d(16, 32, kernel_size=4, stride=2, padding=1), nn.ReLU())
+            self.zu_bottleneck = nn.Linear(32 * halb, bottleneck)
+            self.von_bottleneck = nn.Linear(bottleneck, 32 * halb)
+            self.decoder = nn.Sequential(
+                nn.ConvTranspose1d(32, 16, kernel_size=4, stride=2, padding=1),
+                nn.ReLU(),
+                nn.ConvTranspose1d(16, n_channels, kernel_size=4, stride=2,
+                                   padding=1))
 
-    def forward(self, x):
-        z = self.encoder(x)
-        b = self.zu_bottleneck(z.flatten(1))
-        z2 = self.von_bottleneck(b).view(-1, self.kanaele_innen, self.halb)
-        return self.decoder(z2)
+        def forward(self, x):
+            z = self.encoder(x)
+            b = self.zu_bottleneck(z.flatten(1))
+            z2 = self.von_bottleneck(b).view(-1, self.kanaele_innen, self.halb)
+            return self.decoder(z2)
+
+    return LapAutoencoder()
 
 
 def _lap_traces(ses, laps_index):
@@ -511,7 +528,7 @@ def _autoencoder_scores(spuren, seed: int = 0):
     std = spuren.std(axis=(0, 2), keepdims=True) + 1e-6
     x = torch.tensor((spuren - mean) / std, dtype=torch.float32)
 
-    modell = LapAutoencoder(n_channels=spuren.shape[1], n_points=spuren.shape[2])
+    modell = _lap_autoencoder(spuren.shape[1], spuren.shape[2])
     opt = torch.optim.Adam(modell.parameters(), lr=1e-3, weight_decay=1e-5)
     verlust_fn = nn.MSELoss()
     modell.train()
@@ -597,7 +614,13 @@ def _anomalie_daten():
     phasen = f1lab.track_status_phases(ses)
     ausfall_tab = _ausfall_analyse(df, sauber, ses)
 
-    # zweite AUSBAUSTUFE: derselbe vergleich wie im P25-skript
+    # zweite AUSBAUSTUFE: derselbe vergleich wie im P25-skript. Braucht
+    # als einziger Teil der Seite torch; ohne die Extra-Gruppe
+    # "deeplearning" bleibt der Vergleich leer und der Reiter sagt das.
+    if not TORCH_DA:
+        leer = pd.DataFrame()
+        return df, sauber, phasen, ausfall_tab, leer, leer, float("nan"), []
+
     spuren, index = _lap_traces(ses, sauber.index)
     fehler = _autoencoder_scores(spuren)
     sauber_ae = sauber.loc[index].copy()
@@ -683,49 +706,55 @@ with tab_anom:
                 "als Anomalie-Score, trainiert auf derselben sauberen "
                 "Grundgesamtheit wie der IsolationForest oben (siehe P25).")
 
-        k2 = st.columns(2)
-        k2[0].metric("Spearman-Korrelation der beiden Scores", f"{ae_korr:.3f}",
-                    help="Nahe 0 heisst: die beiden Verfahren flaggen "
-                         "weitgehend unterschiedliche Runden.")
-        geflaggt_ae = int((anomalien_ae["anomalie"] == -1).sum())
-        k2[1].metric("Autoencoder geflaggt", f"{geflaggt_ae} ({CONTAMINATION:.0%})")
+        if not TORCH_DA:
+            st.info("PyTorch ist nicht installiert - der Autoencoder-"
+                   "Vergleich bleibt aus. Alles darueber laeuft ohne ihn. "
+                   "Nachinstallieren mit "
+                   "`pip install -e \".[deeplearning]\"` (rund 500 MB).")
+        else:
+            k2 = st.columns(2)
+            k2[0].metric("Spearman-Korrelation der beiden Scores", f"{ae_korr:.3f}",
+                        help="Nahe 0 heisst: die beiden Verfahren flaggen "
+                             "weitgehend unterschiedliche Runden.")
+            geflaggt_ae = int((anomalien_ae["anomalie"] == -1).sum())
+            k2[1].metric("Autoencoder geflaggt", f"{geflaggt_ae} ({CONTAMINATION:.0%})")
 
-        iso_s = anomalien.loc[ae_gemeinsam, "score"]
-        ae_s = anomalien_ae.loc[ae_gemeinsam, "score"]
-        iso_flag = anomalien.loc[ae_gemeinsam, "anomalie"] == -1
-        ae_flag = anomalien_ae.loc[ae_gemeinsam, "anomalie"] == -1
-        gruppen = [("keins", ~iso_flag & ~ae_flag, d.MUTED, 5),
-                  ("nur IsolationForest", iso_flag & ~ae_flag, d.SERIEN[0], 8),
-                  ("nur Autoencoder", ~iso_flag & ae_flag, d.SERIEN[1], 8),
-                  ("beide", iso_flag & ae_flag, d.SERIEN[2], 11)]
-        fig_ae = go.Figure()
-        for label, maske, farbe, groesse in gruppen:
-            fig_ae.add_trace(go.Scatter(
-                x=iso_s[maske], y=ae_s[maske], mode="markers",
-                marker={"color": farbe, "size": groesse}, name=label,
-                hovertemplate=f"{label}<br>IsolationForest %{{x:.2f}}<br>"
-                              "Autoencoder %{y:.2f}<extra></extra>"))
-        zeige(fig_ae, hoehe=420, xaxis=achse("IsolationForest-Score"),
-             yaxis=achse("Autoencoder-Rekonstruktionsfehler"))
+            iso_s = anomalien.loc[ae_gemeinsam, "score"]
+            ae_s = anomalien_ae.loc[ae_gemeinsam, "score"]
+            iso_flag = anomalien.loc[ae_gemeinsam, "anomalie"] == -1
+            ae_flag = anomalien_ae.loc[ae_gemeinsam, "anomalie"] == -1
+            gruppen = [("keins", ~iso_flag & ~ae_flag, d.MUTED, 5),
+                      ("nur IsolationForest", iso_flag & ~ae_flag, d.SERIEN[0], 8),
+                      ("nur Autoencoder", ~iso_flag & ae_flag, d.SERIEN[1], 8),
+                      ("beide", iso_flag & ae_flag, d.SERIEN[2], 11)]
+            fig_ae = go.Figure()
+            for label, maske, farbe, groesse in gruppen:
+                fig_ae.add_trace(go.Scatter(
+                    x=iso_s[maske], y=ae_s[maske], mode="markers",
+                    marker={"color": farbe, "size": groesse}, name=label,
+                    hovertemplate=f"{label}<br>IsolationForest %{{x:.2f}}<br>"
+                                  "Autoencoder %{y:.2f}<extra></extra>"))
+            zeige(fig_ae, hoehe=420, xaxis=achse("IsolationForest-Score"),
+                 yaxis=achse("Autoencoder-Rekonstruktionsfehler"))
 
-        st.markdown("###### Ausfallanalyse mit Autoencoder-Flags")
-        tabelle(ausfall_tab_ae.rename(columns={
-            "driver": "Fahrer", "status": "Status",
-            "letzte_runde": "Letzte Runde",
-            "anomalien_boxenrunden": "Anomalien (Box)",
-            "anomalien_auf_strecke": "Anomalien (Strecke)",
-            "runden_vorlauf_auf_strecke": "Runden Vorlauf (Strecke)"}))
-        hinweis("Der Autoencoder zeigt hier fuer alle vier Ausfaelle mehr "
-                "Vorlauf als der IsolationForest oben - aber Vorsicht mit "
-                "dem Schluss \"also besser\": PER und SAI schieden durch "
-                "eine Kollision aus, die sich mechanisch nicht ueber Dutzende "
-                "Runden ankuendigen kann. Dass ausgerechnet dort die groessten "
-                "Vorlaufzeiten stehen, ist eher ein Hinweis, dass die globale "
-                "(nicht fahrerweise) Normalisierung des Autoencoders "
-                "Strecken-/Verkehrsmuster statt individueller "
-                "Fahrzeugabweichungen lernt - eine Lektion ueber "
-                "Normalisierung, kein bestaetigter Fund ueber die Autos "
-                "(siehe P25).")
+            st.markdown("###### Ausfallanalyse mit Autoencoder-Flags")
+            tabelle(ausfall_tab_ae.rename(columns={
+                "driver": "Fahrer", "status": "Status",
+                "letzte_runde": "Letzte Runde",
+                "anomalien_boxenrunden": "Anomalien (Box)",
+                "anomalien_auf_strecke": "Anomalien (Strecke)",
+                "runden_vorlauf_auf_strecke": "Runden Vorlauf (Strecke)"}))
+            hinweis("Der Autoencoder zeigt hier fuer alle vier Ausfaelle mehr "
+                    "Vorlauf als der IsolationForest oben - aber Vorsicht mit "
+                    "dem Schluss \"also besser\": PER und SAI schieden durch "
+                    "eine Kollision aus, die sich mechanisch nicht ueber Dutzende "
+                    "Runden ankuendigen kann. Dass ausgerechnet dort die groessten "
+                    "Vorlaufzeiten stehen, ist eher ein Hinweis, dass die globale "
+                    "(nicht fahrerweise) Normalisierung des Autoencoders "
+                    "Strecken-/Verkehrsmuster statt individueller "
+                    "Fahrzeugabweichungen lernt - eine Lektion ueber "
+                    "Normalisierung, kein bestaetigter Fund ueber die Autos "
+                    "(siehe P25).")
 
 # =================================================== renn-/podium-vorhersage
 RENN_JAHRE = (2022, 2023, 2024)

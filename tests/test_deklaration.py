@@ -102,6 +102,65 @@ PAKETE = {
 }
 
 
+class TestOptionalIstWirklichOptional:
+    """was in einer Extra-Gruppe steht, darf das Dashboard nicht mitreissen.
+
+    torch liegt in der Gruppe "deeplearning" (rund 500 MB) und wird nur vom
+    Autoencoder auf einer einzigen Reiter-Haelfte gebraucht. Ein
+    ungeschuetztes ``import torch`` auf Modulebene liess die ganze Seite
+    abstuerzen, sobald jemand nur ".[dashboard]" installiert hatte - genau
+    so ist es in der CI aufgeschlagen, nachdem torch ueberhaupt erst
+    deklariert wurde. Eine Abhaengigkeit als optional zu deklarieren und
+    sie dann hart zu importieren ist schlimmer als beides nicht zu tun.
+
+    statisch geprueft: der Rauchtest in test_app_seiten.py faengt es zwar
+    auch, aber nur in einer Umgebung ohne torch. Hier faellt es ueberall
+    auf.
+    """
+
+    GRUPPE = "deeplearning"
+
+    def _optionale_module(self) -> set[str]:
+        import tomllib
+        gruppe = tomllib.loads(
+            (WURZEL / "pyproject.toml").read_text()
+        )["project"]["optional-dependencies"][self.GRUPPE]
+        return {spec.split(">")[0].split("=")[0].strip().lower()
+                for spec in gruppe}
+
+    def test_gruppe_existiert_und_ist_nicht_leer(self):
+        assert self._optionale_module()
+
+    def test_app_importiert_sie_nur_geschuetzt(self):
+        optional = self._optionale_module()
+        ungeschuetzt = []
+        for pfad in sorted((WURZEL / "app").rglob("*.py")):
+            baum = ast.parse(pfad.read_text())
+            # alles, was in einem try steht, gilt als abgesichert
+            in_try = set()
+            for knoten in ast.walk(baum):
+                if isinstance(knoten, ast.Try):
+                    for kind in ast.walk(knoten):
+                        in_try.add(id(kind))
+            for knoten in ast.walk(baum):
+                if isinstance(knoten, ast.Import):
+                    namen = [a.name for a in knoten.names]
+                elif isinstance(knoten, ast.ImportFrom) and knoten.module:
+                    namen = [knoten.module]
+                else:
+                    continue
+                if id(knoten) in in_try:
+                    continue
+                for name in namen:
+                    if name.split(".")[0].lower() in optional:
+                        ungeschuetzt.append(
+                            f"{pfad.relative_to(WURZEL)}:{knoten.lineno} {name}")
+
+        assert not ungeschuetzt, (
+            f"Gruppe '{self.GRUPPE}' ist optional, wird aber ungeschuetzt "
+            f"importiert: {ungeschuetzt}")
+
+
 class TestJederImportIstDeklariert:
     @pytest.mark.parametrize("paket", list(PAKETE))
     def test_es_gibt_ueberhaupt_importe(self, paket):
