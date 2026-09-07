@@ -32,6 +32,13 @@ Szenarien:
     Ergast/jolpica antwortet nicht. Trifft die Historie-Skripte, die
     ihre Daten nicht aus dem Live-Timing-Feed holen.
 
+``seiten``
+    Kein Szenario, sondern eine andere Oberflaeche: alle Dashboard-Seiten
+    gegen den *warmen* Cache. Der Rauchtest in tests/test_app_seiten.py
+    deckt nur den leeren Cache ab - und leer heisst: keine Session, also
+    auch keine kaputte. Genau dort lag der Fehler, an dem zwei Seiten beim
+    Saison-Scan umfielen, und der sich erst mit echten Daten zeigt.
+
 Bewertet wird nach Absturzart, nicht nach Erfolg: ein Skript darf
 abbrechen, wenn es nichts auszuwerten gibt - es muss dann nur sagen,
 *dass* nichts da ist. Umfaellt heisst KeyError, IndexError, ValueError
@@ -43,13 +50,16 @@ Braucht einen warmen FastF1-Cache mit den Zielsessions und laeuft rund
 
     python robustheit.py duenn
     python robustheit.py alt 05_reifen_strategie/p13_*.py
+    python robustheit.py seiten
 """
 from __future__ import annotations
 
 import argparse
 import contextlib
 import io
+import logging
 import multiprocessing as mp
+import queue
 import runpy
 import sys
 import traceback
@@ -68,9 +78,48 @@ SZENARIEN = {
     "duenn": (2021, "Belgium", "R"),
     "alt": (2018, "Austria", "R"),
     "ergast": None,
+    "seiten": None,
 }
 
-ZEITLIMIT_S = 240
+# Die Seiten trainieren Modelle (die ML-Seite braucht allein vier
+# Minuten), die Skripte kommen mit deutlich weniger aus.
+ZEITLIMIT_S = {"seiten": 900}
+ZEITLIMIT_STANDARD_S = 240
+
+
+def _seite_laufen(pfad: str, q) -> None:
+    """eine Dashboard-Seite ueber Streamlits AppTest durchfahren.
+
+    AppTest faengt jede Ausnahme der Seite ab und legt sie in
+    ``app.exception``, statt sie durchzureichen - deshalb hier ein eigener
+    Weg statt runpy.
+    """
+    sys.path.insert(0, str(REPO / "app"))       # die Seiten importieren "common"
+    from streamlit.testing.v1 import AppTest
+
+    # AppTest laeuft ohne Streamlit-Laufzeit und warnt darueber je Seite
+    # einmal - in einem Bericht ueber 27 Seiten sind das 27 Zeilen ohne
+    # Aussage. Der Logger muss namentlich getroffen werden: er traegt ein
+    # eigenes Level, ein ERROR auf dem Eltern-Logger "streamlit" laesst
+    # die Warnung durch. Das Level erst nach dem Import setzen, Streamlit
+    # richtet sein Logging beim Import selbst ein.
+    logging.getLogger(
+        "streamlit.runtime.scriptrunner_utils.script_run_context"
+    ).setLevel(logging.ERROR)
+
+    with contextlib.redirect_stdout(io.StringIO()), \
+         contextlib.redirect_stderr(io.StringIO()):
+        seite = AppTest.from_file(str(REPO / pfad), default_timeout=900)
+        seite.run()
+
+    if not seite.exception:
+        q.put(("ok", ""))
+        return
+    fehler = seite.exception[0]
+    spur = [z for z in (fehler.stack_trace or [])
+            if "/app/" in z or "/f1lab/" in z]
+    wo = spur[-1].strip().splitlines()[0][-80:] if spur else "?"
+    q.put(("umgefallen", f"{fehler.message[:70]} | {wo}"))
 
 
 def _lauf(pfad: str, szenario: str, q) -> None:
@@ -87,8 +136,12 @@ def _lauf(pfad: str, szenario: str, q) -> None:
     import f1lab.session as sm
 
     f1lab.enable_cache()
-    ziel = SZENARIEN[szenario]
 
+    if szenario == "seiten":
+        _seite_laufen(pfad, q)
+        return
+
+    ziel = SZENARIEN[szenario]
     if ziel is not None:
         echt_load = f1lab.load
 
@@ -108,7 +161,7 @@ def _lauf(pfad: str, szenario: str, q) -> None:
         # ueber das Untermodul darauf zu.
         f1lab.load = stub_load                          # type: ignore[assignment]
         sm.load = stub_load                             # type: ignore[assignment]
-    else:
+    elif szenario == "ergast":
         def stub_ergast(fn, *a, versuche=5, pause=3.0,
                         leer_bei_fehlschlag=False, **kw):
             if leer_bei_fehlschlag:
@@ -142,44 +195,68 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("szenario", choices=sorted(SZENARIEN))
     p.add_argument("skripte", nargs="*",
-                   help="Standard: alle 51 Analyseskripte")
+                   help="Standard: alle 51 Analyseskripte, bei 'seiten' "
+                        "alle Dashboard-Seiten")
     a = p.parse_args()
 
-    skripte = a.skripte or sorted(
-        str(q.relative_to(REPO)) for q in REPO.glob("*/p*.py"))
+    if a.szenario == "seiten":
+        ziele = a.skripte or [str(q.relative_to(REPO)) for q in
+                              [REPO / "app" / "Start.py",
+                               *sorted((REPO / "app" / "pages").glob("*.py"))]]
+    else:
+        ziele = a.skripte or sorted(
+            str(q.relative_to(REPO)) for q in REPO.glob("*/p*.py"))
+    skripte = ziele
 
-    umgefallen, sauber, ok = [], [], []
+    grenze = ZEITLIMIT_S.get(a.szenario, ZEITLIMIT_STANDARD_S)
+    umgefallen, sauber, ok, zeitlimit = [], [], [], []
     for pfad in skripte:
         q: mp.Queue = mp.Queue()
         prozess = mp.Process(target=_lauf, args=(pfad, a.szenario, q))
         prozess.start()
-        prozess.join(ZEITLIMIT_S)
+        prozess.join(grenze)
         if prozess.is_alive():
             prozess.terminate()
             prozess.join()
-            art, info = "zeitlimit", f"> {ZEITLIMIT_S} s"
+            art, info = "zeitlimit", f"> {grenze} s"
         else:
-            art, info = q.get() if not q.empty() else ("zeitlimit",
-                                                       "kein Ergebnis")
+            # kurzer Nachlauf statt q.empty(): die Queue schreibt in einem
+            # eigenen Thread, nach join() ist ein Eintrag noch nicht
+            # zwingend sichtbar. Ein erfolgreicher Lauf wurde dadurch als
+            # "kein Ergebnis" gemeldet. Nicht gleich mit q.get(grenze)
+            # warten - dann haette ein hart abgestuerzter Kindprozess das
+            # volle Limit blockiert, statt sofort aufzufallen.
+            try:
+                art, info = q.get(timeout=10)
+            except queue.Empty:
+                art, info = "zeitlimit", "Prozess ohne Ergebnis beendet"
 
-        kurz = Path(pfad).name.split("_")[0]
+        # Skripte heissen p04_..., Seiten 18_Ueberholschwierigkeit.py -
+        # bei denen ist die Nummer allein keine Auskunft.
+        kurz = (Path(pfad).stem if a.szenario == "seiten"
+                else Path(pfad).name.split("_")[0])
         if art == "umgefallen":
             umgefallen.append((kurz, pfad, info))
-            print(f"  UMGEFALLEN  {kurz}  {info}", flush=True)
+            print(f"  UMGEFALLEN  {kurz:<26} {info}", flush=True)
         elif art == "sauber":
             sauber.append(kurz)
-            print(f"  sauber      {kurz}  {info}", flush=True)
+            print(f"  sauber      {kurz:<26} {info}", flush=True)
         elif art == "ok":
             ok.append(kurz)
             print(f"  ok          {kurz}", flush=True)
         else:
-            print(f"  {art}   {kurz}  {info}", flush=True)
+            # ein abgewuergter Lauf hat nichts bewiesen und darf nicht
+            # unter den Tisch fallen - frueher zaehlte er in keiner der
+            # drei Listen und fehlte damit in der Zusammenfassung ganz.
+            zeitlimit.append((kurz, pfad, info))
+            print(f"  ZEITLIMIT   {kurz:<26} {info}", flush=True)
 
     print(f"\n=== {a.szenario}: {len(ok)} durchgelaufen, {len(sauber)} "
-          f"sauber abgebrochen, {len(umgefallen)} umgefallen ===")
-    for kurz, pfad, info in umgefallen:
+          f"sauber abgebrochen, {len(umgefallen)} umgefallen, "
+          f"{len(zeitlimit)} am Zeitlimit ===")
+    for kurz, pfad, info in umgefallen + zeitlimit:
         print(f"  {kurz:<5} {info}\n        {pfad}")
-    return 1 if umgefallen else 0
+    return 1 if (umgefallen or zeitlimit) else 0
 
 
 if __name__ == "__main__":
