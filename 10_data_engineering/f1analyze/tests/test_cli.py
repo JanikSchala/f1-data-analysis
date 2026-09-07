@@ -69,3 +69,36 @@ def test_garbage_event_name_is_fuzzy_matched_not_rejected(race_session):
     wuerde sonst mit DataNotLoadedError scheitern."""
     result = runner.invoke(app, ["pace", "2024", "komplett falsche Strecke Bahrain"])
     assert result.exit_code == 0
+
+
+def test_telemetry_command_runs(quali_session_tel):
+    result = runner.invoke(app, ["telemetry", str(FIXTURE_SEASON),
+                                 FIXTURE_EVENT, "VER", "PER"])
+    assert result.exit_code == 0, result.stdout
+    assert "Bremszonen" in result.stdout
+
+
+def test_telemetry_command_meldet_unbekannten_fahrer(quali_session_tel):
+    """pick_fastest() gibt None zurueck, wenn ein Fahrer keine gewertete
+    Runde hat - ein vertipptes Kuerzel reicht dafuer. Vorher endete das in
+    einem rohen TypeError ('NoneType' object is not subscriptable) mitten
+    in einer f-Formatierung, jetzt in einer Meldung und Exit-Code 1.
+
+    Der Fall ist nicht konstruiert: dieselbe Klasse hat in diesem
+    Repository neun Skripte umgeworfen (Spa 2021, wo keine einzige Runde
+    IsPersonalBest ist).
+    """
+    result = runner.invoke(app, ["telemetry", str(FIXTURE_SEASON),
+                                 FIXTURE_EVENT, "VER", "XXX"])
+    assert result.exit_code == 1
+    assert "XXX" in result.stdout
+    assert "keine gewertete schnellste Runde" in result.stdout
+
+
+def test_report_command_schreibt_pdf(race_session, quali_session, tmp_path):
+    ziel = tmp_path / "wochenende.pdf"
+    result = runner.invoke(app, ["report", str(FIXTURE_SEASON), FIXTURE_EVENT,
+                                 "--out", str(ziel)])
+    assert result.exit_code == 0, result.stdout
+    assert ziel.exists()
+    assert ziel.read_bytes()[:5] == b"%PDF-"

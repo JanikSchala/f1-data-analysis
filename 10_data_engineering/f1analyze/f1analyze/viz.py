@@ -25,8 +25,17 @@ def plot_pace(pace_df: pd.DataFrame, titel: str) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(10, max(4, 0.32 * len(pace_df))))
     df = pace_df.sort_values("delta_s")
     farben = [SERIEN[0] if i < 3 else MUTED for i in range(len(df))]
+    # matplotlib lehnt negative xerr rundheraus ab. pace_table() rundet
+    # delta_s, ci_lo und ci_hi unabhaengig voneinander auf drei Stellen -
+    # liegen zwei davon dicht beieinander, kann die Untergrenze dadurch um
+    # 0.001 ueber den Punktwert rutschen. Ein Scan ueber 183 gecachte
+    # Rennen findet keinen einzigen solchen Fall, das hier haertet also
+    # den Rundungsrand ab und behebt nichts Beobachtetes. Null ist die
+    # richtige Darstellung eines entarteten Intervalls.
+    unten = (df["delta_s"] - df["ci_lo"]).clip(lower=0)
+    oben = (df["ci_hi"] - df["delta_s"]).clip(lower=0)
     ax.barh(df["driver"], df["delta_s"], color=farben, height=0.6,
-           xerr=[df["delta_s"] - df["ci_lo"], df["ci_hi"] - df["delta_s"]],
+           xerr=[unten, oben],
            error_kw={"ecolor": MUTED, "elinewidth": 1, "capsize": 2})
     ax.invert_yaxis()
     ax.set_xlabel("Delta zum Schnellsten [s]")
