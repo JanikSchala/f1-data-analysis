@@ -589,3 +589,72 @@ class TestVerkehrsSzenario:
     def test_unmoegliche_stoppzahl_nennt_die_moeglichen(self, rennen):
         with pytest.raises(ValueError, match=r"\[2, 3, 4\]"):
             f1lab.traffic_scenario(rennen, 9)
+
+
+class TestStreckengeometrie:
+    """Die Kurven-Funktionen brauchen die MultiViewer-API, deren Antwort
+    im requests-Cache liegt (14 KB, gezielt in die Fixture geholt).
+
+    Ohne sie war diese ganze Gruppe offline nicht pruefbar - rund 85
+    Zeilen, in denen die Kurvenliste einer fremden API auf die
+    Referenzrunde projiziert wird. Genau die Sorte Code, bei der ein
+    Vorzeichen- oder Achsenfehler ein plausibles, aber falsches Ergebnis
+    liefert.
+    """
+
+    def test_bahrain_hat_fuenfzehn_kurven(self, quali_tel):
+        assert len(f1lab.circuit_info(quali_tel).corners) == 15
+
+    def test_kurven_liegen_der_reihe_nach_auf_der_runde(self, quali_tel):
+        """Jede Kurve wird auf den naechstgelegenen Punkt der
+        Referenzrunde projiziert. Die Distanzen muessen danach in
+        Kurvenreihenfolge aufsteigen - tun sie das nicht, hat die
+        Projektion eine Kurve auf die falsche Streckenseite gelegt."""
+        cl = f1lab.corner_labels(quali_tel)
+        assert len(cl) == 15
+        assert cl["label"].tolist() == [f"T{i}" for i in range(1, 16)]
+        assert cl["Distance"].is_monotonic_increasing
+        laenge = f1lab.lap_speed_profile(quali_tel)[0][-1]
+        assert cl["Distance"].between(0, laenge).all()
+
+    def test_kurvengeschwindigkeiten_je_fahrer(self, quali_tel):
+        """20 Fahrer x 15 Kurven. T1 ist die langsamste Kurve in Bahrain
+        (enge Rechts nach der Start-Ziel-Geraden), T12 die schnellste -
+        ein vertauschtes Fenster wuerde diese Ordnung kippen."""
+        cs = f1lab.corner_speeds(quali_tel)
+        assert cs.shape == (20, 15)
+        mittel = cs.mean()
+        assert mittel.idxmin() == "T1"
+        assert mittel.min() == pytest.approx(68, abs=8)
+        assert mittel.idxmax() == "T12"
+        assert mittel.max() == pytest.approx(263, abs=10)
+
+    def test_marshal_punkte_auf_derselben_referenzrunde(self, quali_tel):
+        """Sektorgrenzen und Lichttafeln kommen aus zwei getrennten
+        Punktlisten derselben API und werden mit derselben
+        Naechster-Nachbar-Projektion auf die Runde gelegt."""
+        for tabelle in (f1lab.marshal_sector_labels(quali_tel),
+                        f1lab.marshal_light_labels(quali_tel)):
+            assert len(tabelle) == 18
+            assert list(tabelle.columns) == ["number", "distance"]
+            assert tabelle["distance"].is_monotonic_increasing
+
+    def test_geometrie_misst_die_gefahrene_linie(self, quali_tel):
+        """Nicht die offizielle Streckenlaenge: die Ideallinie schneidet
+        Kurven und faellt kuerzer aus (5338 m gegen 5412 m offiziell).
+        Genau diese Abweichung ist im Docstring der Funktion als
+        erwartetes Verhalten festgehalten."""
+        g = f1lab.circuit_geometry(quali_tel)
+        assert g["corners"] == 15
+        assert g["length_m"] == pytest.approx(5338, abs=30)
+        assert g["length_m"] < 5412
+        assert g["elev_span_m"] == pytest.approx(16.7, abs=2.0)
+        assert g["elev_gain_m"] > g["elev_span_m"]   # Summe > Spannweite
+
+    def test_circuit_dimension_als_tabelle(self):
+        cd = f1lab.circuit_dimension([(2024, "Bahrain")])
+        assert len(cd) == 1
+        z = cd.iloc[0]
+        assert z["circuit"] == "Sakhir"
+        assert z["corners"] == 15
+        assert z["length_m"] == pytest.approx(5338, abs=30)
