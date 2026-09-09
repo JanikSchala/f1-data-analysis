@@ -1263,16 +1263,34 @@ def overtake_locations(session, drs_session=None, drs_referenz: str | None = Non
     zone_ends = zonen["end_m"].to_numpy() if not zonen.empty else np.array([])
 
     rows = []
+    # dieselbe Runde desselben Fahrers kommt mehrfach vor, sobald jemand
+    # in einer Runde zwei oder drei Autos ueberholt (Bahrain 2024: 180
+    # Ereignisse auf nur 136 verschiedenen Runden). add_driver_ahead()
+    # ist der teuerste Schritt der Funktion - ihn je Runde nur einmal zu
+    # rechnen spart ein Viertel der Laufzeit und aendert nichts am
+    # Ergebnis, weil es woertlich derselbe Aufruf ist.
+    #
+    # Nicht weiter gebuendelt, obwohl es verlockend aussieht: einmal
+    # add_driver_ahead() ueber die ganze Fahrer-Telemetrie und danach je
+    # Runde schneiden waere viermal schneller, findet aber nur 117 der 140
+    # Ueberholorte - get_telemetry() auf einer einzelnen Runde liefert
+    # Randproben, die ein Zeitfenster-Schnitt nicht hat. Nachgemessen,
+    # nicht vermutet.
+    telemetrie: dict[tuple[str, int], pd.DataFrame | None] = {}
     for e in events.itertuples():
         loser_nr = code_zu_nummer.get(e.loser)
         if loser_nr is None:
             continue
-        try:
-            lap = session.laps.pick_drivers(e.gainer).pick_laps(e.lap)
-            tel = lap.get_telemetry().add_distance().add_driver_ahead()
-        except Exception:
-            continue
-        if tel.empty:
+        schluessel = (e.gainer, e.lap)
+        if schluessel not in telemetrie:
+            try:
+                lap = session.laps.pick_drivers(e.gainer).pick_laps(e.lap)
+                telemetrie[schluessel] = (lap.get_telemetry().add_distance()
+                                          .add_driver_ahead())
+            except Exception:
+                telemetrie[schluessel] = None
+        tel = telemetrie[schluessel]
+        if tel is None or tel.empty:
             continue
 
         treffer = tel[(tel["DriverAhead"] == loser_nr)
