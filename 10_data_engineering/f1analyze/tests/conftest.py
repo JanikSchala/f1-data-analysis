@@ -26,6 +26,24 @@ gelingt der Wiederaufbau (1129 Runden), ohne sie scheitert er mit
 DataNotLoadedError. Wer sie loescht, spart 31 MB und legt eine Zeitbombe:
 das naechste fastf1-Update mit erhoehter Parser-Version bricht die CI, und
 die Fixture laesst sich nur mit Netzzugriff neu aufnehmen.
+
+Nicht nur diese Suite haengt daran: tests/test_session_fixture.py im
+Wurzelverzeichnis prueft f1lab.session gegen denselben Cache (dessen
+Ladefunktionen brauchen eine echte Session, sind ohne Fixture also gar
+nicht offline testbar). Dafuer liegen hier drei Dinge, die f1analyze
+selbst nicht braucht - zusammen 47 KB, aber sie tragen rund ein Drittel
+der Abdeckung von session.py:
+
+- ``weather_data.ff1pkl`` (12/8 KB, Rennen/Qualifying) fuer
+  weather_join, weather_phases, temperature_effect
+- ``race_control_messages.ff1pkl`` (8/4 KB) fuer die Strafen- und
+  Track-Limit-Parser samt beider Gegenpruefungen
+- eine einzelne Antwort im http-Cache
+  (``api.multiviewer.app/api/v1/circuits/63/2024``, 14 KB) fuer die
+  Kurven- und Marshal-Projektionen
+
+Wer die Fixture neu aufnimmt, muss diese drei mitnehmen, sonst faellt
+die Suite im Wurzelverzeichnis aus.
 """
 from __future__ import annotations
 
