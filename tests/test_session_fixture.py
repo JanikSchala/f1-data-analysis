@@ -273,3 +273,100 @@ class TestGegenprobeZuFastf1:
         assert set(sauber.index) <= set(rennen.laps.index)
         assert not sauber["LapTime"].isna().any()
         assert isinstance(sauber, pd.DataFrame)
+
+
+class TestUeberholorte:
+    """overtake_locations() ist die aufwendigste Funktion in session.py:
+    sie verknuepft Ueberholereignisse aus den Positionsdaten mit der
+    Telemetrie beider Fahrer und schlaegt das Ergebnis gegen die DRS-Zonen
+    einer zweiten Session. Vier Datenquellen, eine Aussage.
+    """
+
+    @pytest.fixture(scope="class")
+    def orte(self, rennen_tel, quali_tel):
+        return f1lab.overtake_locations(rennen_tel, drs_session=quali_tel)
+
+    def test_jeder_ort_liegt_auf_der_strecke(self, orte, quali_tel):
+        assert len(orte) == 140
+        assert list(orte.columns) == ["gainer", "loser", "lap",
+                                      "distance_m", "in_drs_zone"]
+        laenge = f1lab.lap_speed_profile(quali_tel)[0][-1]
+        assert orte["distance_m"].min() >= 0
+        assert orte["distance_m"].max() <= laenge
+
+    def test_nicht_jede_ueberholung_laesst_sich_lokalisieren(
+            self, orte, rennen_tel):
+        """140 von 180: fuer den Rest fehlt die Telemetrie eines der
+        beiden Fahrer. Waeren es alle, wuerde die Funktion raten."""
+        assert len(orte) < len(f1lab.overtake_events(rennen_tel))
+
+    def test_die_mehrheit_faellt_in_eine_drs_zone(self, orte):
+        """Bahrain 2024: 117 von 140 lokalisierten Ueberholungen liegen in
+        einer DRS-Zone. Die Zahl ist die eigentliche Aussage von P39 - ein
+        Fehler in der Zonenzuordnung wuerde sie kippen, ohne dass sonst
+        etwas auffaellt."""
+        assert orte["in_drs_zone"].dtype == bool
+        assert int(orte["in_drs_zone"].sum()) == 117
+
+    def test_niemand_ueberholt_sich_selbst(self, orte):
+        assert (orte["gainer"] != orte["loser"]).all()
+
+
+class TestStartaufstellung:
+    def test_grid_gegen_runde_eins(self, rennen_tel):
+        """der Gewinn ist die Differenz, nicht neu gezaehlt - ein
+        Vorzeichenfehler faellt sonst niemandem auf."""
+        g = f1lab.grid_lap1_positions(rennen_tel)
+        assert len(g) == 20
+        assert list(g.columns) == ["driver_number", "grid", "lap1", "gewinn"]
+        assert (g["gewinn"] == g["grid"] - g["lap1"]).all()
+        # was einer gewinnt, verliert ein anderer
+        assert g["gewinn"].sum() == pytest.approx(0.0)
+
+    def test_feldstreckung_je_runde(self, rennen):
+        """Sekunden zwischen Erstem und Letztem, je Runde.
+
+        Waechst ueber das Rennen, weil das Feld auseinanderfaehrt. Die
+        beiden Randwerte stehen als Zahl da, nicht nur als ">0" und
+        "waechst": beim Gegenpruefen hat eine Mutation (Betrag plus eins)
+        genau diese beiden weichen Zusicherungen ueberlebt.
+        """
+        spread = f1lab.field_spread(rennen)
+        assert len(spread) == 57
+        assert (spread > 0).all()
+        assert spread.iloc[-1] > spread.iloc[0]
+        assert spread.min() == pytest.approx(16.3, abs=0.5)
+        assert spread.max() == pytest.approx(210.4, abs=1.0)
+
+
+class TestLeereAberGueltigeErgebnisse:
+    """Faelle, in denen "nichts gefunden" die richtige Antwort ist.
+
+    Solche Rueckgaben sind die haeufigste Fehlerquelle in diesem
+    Repository gewesen: leer ist nicht dasselbe wie kaputt, aber ohne
+    Spalten wird daraus beim Aufrufer ein KeyError.
+    """
+
+    def test_ohne_safety_car_bleibt_die_tabelle_leer_aber_vollstaendig(
+            self, rennen):
+        """Bahrain 2024 hatte keine Safety-Car-Phase."""
+        sc = f1lab.sc_deployment_sectors(rennen)
+        assert sc.empty
+        assert list(sc.columns) == ["time", "driver", "sector"]
+
+    def test_trockenes_rennen_hat_keinen_klassifikator(self, rennen):
+        """wet_dry_classifier braucht beide Klassen. Frueher stand die
+        Pruefung im Docstring ("das prueft der aufrufer") und nirgends im
+        Code; jetzt sagt die Funktion selbst, was fehlt."""
+        with pytest.raises(ValueError, match="trocken"):
+            f1lab.wet_dry_classifier(rennen)
+
+
+class TestKalender:
+    def test_event_dimension_deckt_die_saison_ab(self):
+        """laeuft ohne Session-Download, nur aus dem Kalender."""
+        ed = f1lab.event_dimension([2024])
+        assert len(ed) == 24                       # 24 Rennen 2024
+        assert ed["season"].eq(2024).all()
+        assert ed["round"].tolist() == list(range(1, 25))
+        assert ed["is_sprint"].sum() == 6          # sechs Sprint-Wochenenden
