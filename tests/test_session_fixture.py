@@ -370,3 +370,107 @@ class TestKalender:
         assert ed["season"].eq(2024).all()
         assert ed["round"].tolist() == list(range(1, 25))
         assert ed["is_sprint"].sum() == 6          # sechs Sprint-Wochenenden
+
+
+@pytest.fixture(scope="module")
+def rennen_voll():
+    """Rennen mit Wetter und Race-Control-Meldungen.
+
+    Beides liegt als eigene Pickle-Datei im Cache und wird von
+    Session.load() nur auf Anforderung geladen - zusammen 17 KB neben den
+    147 MB Telemetrie, aber sie schalten neun weitere f1lab-Funktionen
+    fuer Offline-Tests frei.
+    """
+    return _laden_mit("R", weather=True, messages=True)
+
+
+def _laden_mit(ident: str, **kw):
+    f1lab.enable_cache(path=FIXTURE, offline=True)
+    return f1lab.load(2024, "Bahrain", ident, **kw)
+
+
+class TestWetter:
+    def test_weather_join_haengt_die_messwerte_an(self, rennen_voll):
+        """jede gewertete Runde bekommt den naechstgelegenen Messpunkt.
+        Weniger Zeilen als clean_laps(), weil zusaetzlich Boxenrunden
+        rausfallen."""
+        m = f1lab.weather_join(rennen_voll)
+        assert len(m) == 1006
+        for spalte in ("AirTemp", "TrackTemp", "Humidity", "Rainfall",
+                       "WindSpeed"):
+            assert spalte in m.columns
+        assert not m["TrackTemp"].isna().any()
+
+    def test_bahrain_2024_war_durchgehend_trocken(self, rennen_voll):
+        m = f1lab.weather_join(rennen_voll)
+        assert m["Rainfall"].sum() == 0
+        phasen = f1lab.weather_phases(rennen_voll)
+        assert len(phasen) == 1
+        assert phasen.iloc[0]["nass"] is False or not phasen.iloc[0]["nass"]
+
+    def test_temperatureffekt_reproduziert_den_p17_befund(self, rennen_voll):
+        """Der Kern von P17, an einem anderen Rennen: die naive gepoolte
+        Regression findet praktisch nichts (R² 0.003), erst mit
+        Fahrer-Median-Bereinigung und Reifenalter als zweiter Variable
+        wird der Effekt sichtbar (R² 0.50 -> 0.61, Koeffizient +0.45 s/°C
+        bei einem Standardfehler von 0.03).
+
+        Genau diese Gegenueberstellung ist die Aussage der Funktion - ein
+        Test nur auf "gibt ein dict zurueck" wuerde sie nicht schuetzen.
+        """
+        e = f1lab.temperature_effect(f1lab.weather_join(rennen_voll))
+        assert e["n"] == 1002
+        assert abs(e["naiv_r2"]) < 0.05                  # naiv: kein Signal
+        assert e["r2_voll"] > e["r2_tyre_only"] > 0.4    # kontrolliert schon
+        assert e["coef_temp"] == pytest.approx(0.448, abs=0.01)
+        assert e["coef_temp"] / e["se_temp"] > 10        # klar von 0 getrennt
+
+
+class TestRaceControl:
+    def test_track_limits_werden_erkannt(self, rennen_voll):
+        """20 Meldungen an vier Kurven. Die Regex hat bei ihrer
+        Einfuehrung 0 von 6 Meldungen getroffen (siehe P19) - deshalb
+        steht hier eine Zahl und nicht nur "nicht leer"."""
+        tl = f1lab.parse_track_limits(rennen_voll.race_control_messages)
+        assert len(tl) == 20
+        assert list(tl.columns) == ["lap", "nr", "driver", "turn"]
+        assert sorted(tl["turn"].unique()) == [4, 10, 13, 15]
+        assert tl["driver"].nunique() == 10
+
+    def test_keine_strafen_ist_ein_ergebnis_mit_spalten(self, rennen_voll):
+        """Bahrain 2024 hatte keine Zeitstrafe. Der leere Rahmen muss
+        trotzdem seine Spalten tragen - genau diese Klasse hat P19 fuer
+        die ganze Saison 2018 zum Absturz gebracht."""
+        pen = f1lab.parse_penalties(rennen_voll.race_control_messages)
+        assert pen.empty
+        assert list(pen.columns) == ["lap", "strafmass", "nr", "driver",
+                                     "grund"]
+
+    def test_blaue_flaggen_treffen_die_ueberrundeten(self, rennen_voll):
+        """aus Flag/RacingNumber statt aus dem Freitext. Die Spitze der
+        Liste ist kein Vergehen, sondern "wurde am oeftesten
+        ueberrundet" - Sargeant im langsamsten Auto des Feldes."""
+        bf = f1lab.blue_flags(rennen_voll, rennen_voll.race_control_messages)
+        assert len(bf) == 26
+        assert list(bf.columns) == ["time", "lap", "driver", "nr"]
+        assert bf.groupby("driver").size().idxmax() == "SAR"
+
+    def test_gegenpruefung_text_gegen_geloeschte_runden(self, rennen_voll):
+        """20 Deleted-Runden in den Lap-Daten, 18 Meldungen mit
+        eindeutiger Rundennummer, keine davon ohne Entsprechung. Die
+        Differenz sind Meldungen ohne explizite Runde ("NEXT LAP"), kein
+        Fehler - deshalb wird auf 0 fehlende geprueft, nicht auf
+        Gleichheit der beiden Zahlen."""
+        fehlend, deleted, n_mit_runde = f1lab.track_limit_crosscheck(
+            rennen_voll, rennen_voll.race_control_messages)
+        assert len(deleted) == 20
+        assert n_mit_runde == 18
+        assert fehlend.empty
+        assert list(fehlend.columns) == ["driver", "runde"]
+
+    def test_umgekehrte_gegenpruefung(self, rennen_voll):
+        """DeletedReason -> gibt es eine Textmeldung dazu? Die andere
+        Richtung derselben Pruefung."""
+        fehlend = f1lab.deleted_reason_crosscheck(
+            rennen_voll, rennen_voll.race_control_messages)
+        assert fehlend.empty
