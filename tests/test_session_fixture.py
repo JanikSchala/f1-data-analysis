@@ -474,3 +474,118 @@ class TestRaceControl:
         fehlend = f1lab.deleted_reason_crosscheck(
             rennen_voll, rennen_voll.race_control_messages)
         assert fehlend.empty
+
+
+class TestDrsNutzung:
+    def test_drs_anteil_je_fahrer(self, quali_tel):
+        """Zeitanteil mit offenem DRS und der Topspeed-Gewinn dadurch.
+
+        Im Qualifying darf jeder DRS frei nutzen (keine
+        Ein-Sekunden-Regel wie im Rennen), die Werte liegen deshalb eng
+        beieinander - genau das macht sie als Test brauchbar: ein Fehler
+        in der Flankenerkennung wuerde einzelne Fahrer ausreissen lassen.
+        """
+        d = f1lab.drs_usage(quali_tel)
+        assert len(d) == 20
+        assert list(d.columns) == list(f1lab.session.DRS_USAGE_DTYPEN)
+        assert d["drs_pct"].is_monotonic_decreasing      # absteigend sortiert
+        assert d["drs_pct"].between(20, 30).all()
+        assert (d["vmax_offen"] > d["vmax_zu"]).all()    # offen ist schneller
+        assert d["gewinn_kmh"].median() == pytest.approx(12.5, abs=1.0)
+
+
+class TestDirtyAir:
+    """Der Kern von P32, an zwei Fahrern desselben Rennens.
+
+    Verstappen fuehrte in Bahrain 2024 von Runde 1 bis ins Ziel - vor ihm
+    war niemand, er kann per Definition keine Dirty Air gehabt haben.
+    Perez dahinter schon. Beide Faelle durch dieselbe Funktion zu
+    schicken, ist schaerfer als jeder Einzeltest: ein Effekt, der auch
+    beim Fuehrenden anschlaegt, waere ein Rechenfehler.
+    """
+
+    def test_der_fuehrende_hat_keine_dirty_air(self, rennen_tel):
+        cf = f1lab.close_following(rennen_tel, "VER")
+        assert len(cf) == 50
+        assert cf["anteil_nah"].max() == 0.0
+        slope, _inter, r2, d = f1lab.dirty_air_effect(cf)
+        assert len(d) == 0
+        assert slope != slope                            # NaN
+        assert r2 != r2
+        assert "sec_corr" in d.columns                   # Spalte trotzdem da
+
+    def test_der_verfolger_zeigt_einen_messbaren_effekt(self, rennen_tel):
+        cf = f1lab.close_following(rennen_tel, "PER")
+        assert len(cf) == 51
+        assert list(cf.columns) == list(f1lab.CLOSE_FOLLOW_DTYPEN)
+        slope, _inter, r2, d = f1lab.dirty_air_effect(cf)
+        assert len(d) == 46
+        assert slope == pytest.approx(0.0082, abs=0.002)  # s je Prozent nah
+        assert r2 == pytest.approx(0.39, abs=0.05)
+        assert slope > 0                     # naeher dran heisst langsamer
+
+
+class TestMiniSektoren:
+    def test_wer_gewinnt_welchen_abschnitt(self, quali_tel):
+        """25 Abschnitte, drei Fahrer, je Abschnitt genau ein Sieger.
+
+        Die Zeit wird ueber die Distanz interpoliert, nicht die
+        Geschwindigkeit gemittelt - nur Zeit ist additiv. Ein Fehler
+        darin wuerde die Siegerverteilung kippen, ohne dass sonst etwas
+        auffaellt.
+        """
+        r = f1lab.mini_sectors(quali_tel, ["VER", "PER", "LEC"], n=25)
+        assert set(r) == {"telemetrie", "edges", "gewinner", "dauer"}
+        assert len(r["gewinner"]) == 25
+        assert r["dauer"].shape == (25, 3)
+        assert set(r["gewinner"]) <= {"VER", "PER", "LEC"}
+        # der schnellste Fahrer der Session gewinnt die meisten Abschnitte
+        import collections
+        haeufigkeit = collections.Counter(r["gewinner"])
+        assert haeufigkeit["VER"] == 13
+        assert sum(haeufigkeit.values()) == 25
+        # der Sieger je Abschnitt ist der mit der kleinsten Zeit
+        for i, sieger in enumerate(r["gewinner"]):
+            assert r["dauer"].iloc[i].idxmin() == sieger
+
+
+class TestDegradationJeMischung:
+    def test_reproduziert_den_p13_befund(self, rennen):
+        """P13 hat fuer Bahrain 2024 unabhaengig 0.095 s/Runde auf Hard
+        und 0.124 auf Soft ermittelt. Der weiche Reifen baut schneller ab
+        - faellt diese Ordnung um, stimmt die Fuel-Korrektur oder der Fit
+        nicht mehr."""
+        dc = f1lab.degradation_by_compound(rennen)
+        assert list(dc.index) == ["HARD", "SOFT"]
+        assert dc.loc["HARD", "mean"] == pytest.approx(0.097, abs=0.01)
+        assert dc.loc["SOFT", "mean"] == pytest.approx(0.133, abs=0.01)
+        assert dc.loc["SOFT", "mean"] > dc.loc["HARD", "mean"]
+        assert dc["stints"].sum() == 59      # nur belastbare Fits
+
+
+class TestVerkehrsSzenario:
+    def test_die_kette_laeuft_auf_echten_daten_durch(self, rennen):
+        """f1lab.traffic_scenario() bindet fuenf core-Funktionen
+        aneinander (RaceConfig, Optimum, Frontier, Rundenzeiten,
+        Verkehrskosten). Jede einzeln ist in test_core.py geprueft - hier
+        zaehlt, dass sie auf echten Daten zusammenpassen."""
+        erg = f1lab.traffic_scenario(rennen, 3)
+        assert erg["moegliche_stopps"] == [2, 3, 4]
+        assert erg["hero"].n_stops == 2
+        assert erg["alt"].n_stops == 3
+        assert len(erg["hero_zeiten"]) == 57
+        assert len(erg["rivale_zeiten"]) == 57
+
+    def test_mehr_stopps_kosten_mehr_verkehr(self, rennen):
+        """Der Befund aus P41: der Dreistopp faehrt mit frischeren Reifen
+        schneller an den Rivalen heran und verbringt dadurch laenger in
+        Ueberhol-Reichweite - der Verkehrsaufschlag ist gut doppelt so
+        hoch wie beim Zweistopp."""
+        erg = f1lab.traffic_scenario(rennen, 3)
+        assert erg["alt_kosten"] > erg["hero_kosten"]
+        assert erg["hero_kosten"] == pytest.approx(6.5, abs=1.0)
+        assert erg["alt_kosten"] == pytest.approx(14.6, abs=2.0)
+
+    def test_unmoegliche_stoppzahl_nennt_die_moeglichen(self, rennen):
+        with pytest.raises(ValueError, match=r"\[2, 3, 4\]"):
+            f1lab.traffic_scenario(rennen, 9)
