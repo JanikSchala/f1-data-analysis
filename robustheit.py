@@ -28,6 +28,15 @@ Szenarien:
     heute selbstverstaendlich sind, sind nur teilweise gefuellt: 31 % der
     Stints haben keine Stint-Nummer (2024: 0 %).
 
+``rot``
+    Monaco 2024 R - Rennen mit rotem Start. Eine Unterbrechung zerreisst
+    die Zeitachse: Runden tragen dann "Rundenzeiten" von ueber 40 Minuten,
+    und der letzte Statuswechsel kann nach dem Ende der Rundendaten
+    liegen. Beides hat hier schon je einen echten Bug ausgeloest
+    (``pit_loss`` schaetzte 2431 s statt 55 s, ``track_status_phases``
+    meldete eine Dauer von -207,5 s). Beide sind gefixt - das Szenario
+    fragt, ob sonst noch etwas an dieser Zeitachse haengt.
+
 ``ergast``
     Ergast/jolpica antwortet nicht. Trifft die Historie-Skripte, die
     ihre Daten nicht aus dem Live-Timing-Feed holen.
@@ -87,6 +96,7 @@ ROH = (KeyError, IndexError, ValueError, AttributeError, TypeError,
 SZENARIEN = {
     "duenn": (2021, "Belgium", "R"),
     "alt": (2018, "Austria", "R"),
+    "rot": (2024, "Monaco", "R"),
     "ergast": None,
     "seiten": None,
 }

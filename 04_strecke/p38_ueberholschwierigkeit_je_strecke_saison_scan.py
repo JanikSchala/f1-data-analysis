@@ -138,11 +138,19 @@ def main():
     print(f"      Kurvenzahl:    r={r_corn:+.3f}  p={p_corn:.3f}")
     print(f"      Kurven/km:     r={r_kpk:+.3f}  p={p_kpk:.3f}")
 
+    # der Robustheitscheck nimmt Monaco heraus - danach koennen weniger
+    # als zwei Strecken uebrig sein, auch wenn die Pruefung oben passte.
+    # Der Guard dort deckt nur geo ab, nicht diese abgeleitete Teilmenge.
     ohne_monaco = geo[geo["circuit"] != "Monaco"]
-    r_om, p_om = pearsonr(ohne_monaco["kurven_pro_km"], ohne_monaco["overtakes"])
+    if len(ohne_monaco) >= 2:
+        r_om, p_om = pearsonr(ohne_monaco["kurven_pro_km"],
+                              ohne_monaco["overtakes"])
+        print(f"\n      AUSBAUSTUFE ohne Monaco (n={len(ohne_monaco)}): "
+             f"r={r_om:+.3f}  p={p_om:.3f}")
+    else:
+        print(f"\n      AUSBAUSTUFE ohne Monaco: nur {len(ohne_monaco)} "
+             "Strecke uebrig, kein Robustheitscheck moeglich")
     r_sp, p_sp = spearmanr(geo["kurven_pro_km"], geo["overtakes"])
-    print(f"\n      AUSBAUSTUFE ohne Monaco (n={len(ohne_monaco)}): "
-         f"r={r_om:+.3f}  p={p_om:.3f}")
     print(f"      AUSBAUSTUFE Spearman (n={len(geo)}):        "
          f"r={r_sp:+.3f}  p={p_sp:.3f}")
 
