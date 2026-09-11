@@ -35,6 +35,17 @@ N_SIM = 50_000
 
 
 def punkte_array(tabelle: dict) -> np.ndarray:
+    """punktetabelle als array ueber die zielpositionen.
+
+    identisch zu P21s gleichnamiger funktion, und zwar bewusst: ein
+    strukturvergleich der beiden skripte hat genau diese fuenf zeilen als
+    einzige echte dopplung gefunden, alles andere (saison_verlauf, die vier
+    zeichenfunktionen, main) weicht in 3-6 zeilen fachlich ab - anderer
+    Ergast-endpunkt, constructorId statt driverId, andere beschriftung. eine
+    gemeinsame funktion braeuchte drei parameter fuer koerper von 10-16
+    zeilen, also mehr abstraktion als ersparnis. fuenf zeilen allein lohnen
+    keine gemeinsame heimat in f1lab - selbe begruendung wie bei P36/P49.
+    """
     arr = np.zeros(25)
     for platz, pkt in tabelle.items():
         arr[platz] = pkt
