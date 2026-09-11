@@ -153,6 +153,42 @@ class TestRennverlauf:
         assert all(set(f1lab.DUELL_SPALTEN) <= set(d) for d in duelle)
         assert all(d["a"] != d["b"] for d in duelle)
 
+    def test_teamkollegen_duelle_im_qualifying(self, quali_tel, rennen):
+        """der zweite Zweig derselben Funktion.
+
+        ``teammate_duels`` verzweigt auf ``session.name``: Rennen und
+        Sprint gehen ueber pace_table (bereinigt, treibstoffkorrigiert),
+        alles andere ueber die schnellste gueltige, nicht gestrichene
+        Runde je Fahrer. Der Test darueber trifft nur den ersten Zweig.
+
+        Dass der zweite wirklich etwas anderes rechnet und nicht nur
+        derselbe Pfad unter anderem Namen ist, zeigt der Vergleich: in
+        Bahrain 2024 fallen Quali- und Renn-Sieger bei vier der zehn
+        Teams auseinander (Alpine, Ferrari, Kick Sauber, Williams). Eine
+        Mutation, die den Zweig auf pace_table umbiegt, faellt hier auf.
+
+        Was dieser Test NICHT abdeckt: den not_deleted_mask-Filter im
+        selben Zweig. Bahrain 2024 Q hat unter den 85 gewerteten Runden
+        keine einzige gestrichene, der Filter ist auf dieser Session also
+        wirkungslos - keine Zusicherung kann ihn hier von seiner
+        Abwesenheit unterscheiden. Die Maske selbst hat eigene Tests
+        (siehe tests/test_core.py), ihre Anwendung an dieser Stelle
+        braeuchte eine Session mit gestrichenen Bestzeiten.
+        """
+        q = {d["team"]: d for d in f1lab.teammate_duels(quali_tel)}
+        assert len(q) == 10
+        assert all(set(f1lab.DUELL_SPALTEN) <= set(d) for d in q.values())
+        assert all(d["a"] != d["b"] for d in q.values())
+
+        assert q["Ferrari"]["a"] == "LEC"
+        assert q["Red Bull Racing"]["a"] == "VER"
+        # Bottas und Zhou trennen 0.001 Prozent, praktisch ein Gleichstand
+        assert q["Kick Sauber"]["delta_pct"] < 0.01
+
+        r = {d["team"]: d for d in f1lab.teammate_duels(rennen)}
+        anders = {t for t in q if q[t]["a"] != r[t]["a"]}
+        assert anders == {"Alpine", "Ferrari", "Kick Sauber", "Williams"}
+
     def test_phasen_decken_die_session_ab(self, rennen):
         phasen = f1lab.track_status_phases(rennen)
         assert len(phasen) == 7
