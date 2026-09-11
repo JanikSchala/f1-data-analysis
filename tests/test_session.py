@@ -1055,3 +1055,195 @@ class TestLeereErgebnisseBehaltenSpalten:
         got = aufruf()
         for spalte in erwartet:
             assert got[spalte].empty
+
+
+class TestSiegAttributionSignale:
+    """sieg_attribution() sammelt sechs Signale und uebergibt sie an
+    core.sieg_grund().
+
+    Die Entscheidungslogik selbst ist in test_core.py geprueft. Hier geht
+    es um die Verdrahtung davor: welches Signal wird aus welchen Daten
+    gebildet. Ein vertauschter Zugriff - Boxenstopp aus der falschen
+    Spalte, Safety-Car-Fenster um eine Runde daneben - liefert eine
+    plausible Kategorie, nur die falsche.
+
+    Bewusst mit gebauten Szenarien statt echter Rennen: die Funktion liest
+    ausser ``session.results`` nur sechs Modulfunktionen, die sich
+    ersetzen lassen. Ein echtes Rennen zeigt immer nur *ein* Signal, und
+    die Fixture um fuenf Rennen zu erweitern haette 30 MB gekostet - fuer
+    einen einzigen Zweig. Dass die Funktion auf echten Daten stimmt, deckt
+    tests/test_session_fixture.py ab (Bahrain 2024, Start-Vorteil).
+    """
+
+    SIEGER, RIVALE = "AAA", "BBB"
+
+    class _Session:
+        def __init__(self, results):
+            self.results = results
+
+    def _bauen(self, monkeypatch, *, riv_status="Finished",
+               riv_letzte_runde=10, riv_positionen=None, phasen=None,
+               stint_start=None, wechsel_runde=None, wechsel_alter=None):
+        """Grundszenario: zehn Runden, der Sieger uebernimmt in Runde 5.
+
+        Bis Runde 4 fuehrt der Rivale, danach der Sieger - damit ist
+        ``entscheidende_runde`` 5 und ``alter_fuehrender`` der Rivale.
+        Jeder Parameter schaltet genau eines der sechs Signale scharf.
+        """
+        runden = list(range(1, 11))
+        sieger_pos = [2, 2, 2, 2] + [1] * 6
+        if riv_positionen is None:
+            riv_positionen = [1, 1, 1, 1] + [2] * 6
+        riv_positionen = list(riv_positionen)
+        # ein ausgefallener Rivale hat ab seiner letzten Runde keine
+        # Position mehr - das unterscheidet DNF von "faellt zurueck"
+        riv_spalte = [p if r <= riv_letzte_runde else np.nan
+                      for r, p in zip(runden, riv_positionen, strict=True)]
+
+        pos = pd.DataFrame({self.SIEGER: sieger_pos, self.RIVALE: riv_spalte},
+                           index=pd.Index(runden, name="LapNumber"))
+        results = pd.DataFrame({
+            "Position": [1.0, 2.0],
+            "Abbreviation": [self.SIEGER, self.RIVALE],
+            "GridPosition": [2.0, 1.0],
+            "Status": ["Finished", riv_status],
+            "Time": [pd.NaT, pd.Timedelta(np.timedelta64(5, "s"))],
+        })
+        wechsel = pd.DataFrame(
+            [{"neuer_fuehrender": self.SIEGER,
+              "alter_fuehrender": wechsel_alter or self.RIVALE,
+              "lap": wechsel_runde}] if wechsel_runde else [],
+            columns=["neuer_fuehrender", "alter_fuehrender", "lap"])
+        phasen_df = pd.DataFrame(
+            phasen or [], columns=["label", "lap_start", "lap_end"])
+        # jeder fahrer hat immer den stint ab runde 1, auch ohne jeden
+        # boxenstopp - ohne ihn im fake waere die untere fenstergrenze
+        # der pitstop-pruefung nie erreichbar, obwohl sie real ueber
+        # "hat gepittet" gegen "ist nur losgefahren" entscheidet
+        stint_zeilen = [{"Driver": self.RIVALE, "start": 1}]
+        if stint_start:
+            stint_zeilen.append({"Driver": self.RIVALE, "start": stint_start})
+        stints_df = pd.DataFrame(stint_zeilen, columns=["Driver", "start"])
+
+        monkeypatch.setattr(session_mod, "position_progression", lambda s: pos)
+        monkeypatch.setattr(session_mod, "lead_changes", lambda s: wechsel)
+        monkeypatch.setattr(session_mod, "track_status_phases",
+                            lambda s: phasen_df)
+        monkeypatch.setattr(session_mod, "stints", lambda s: stints_df)
+        monkeypatch.setattr(session_mod, "pace_table",
+                            lambda s, **kw: pd.DataFrame(
+                                {"driver": [self.SIEGER, self.RIVALE]}))
+        monkeypatch.setattr(session_mod, "undercut_duels",
+                            lambda s, **kw: pd.DataFrame(
+                                columns=["driver", "erfolg"]))
+        return session_mod.sieg_attribution(self._Session(results))
+
+    def test_die_entscheidende_runde_ist_die_letzte_uebernahme(
+            self, monkeypatch):
+        """nicht die erste: wer die Fuehrung mehrfach verliert und
+        zurueckgewinnt, hat sie erst beim letzten Mal behalten."""
+        erg = self._bauen(monkeypatch)
+        assert erg["entscheidende_runde"] == 5
+        assert erg["alter_fuehrender"] == self.RIVALE
+        assert erg["sieger"] == self.SIEGER
+        assert erg["fuehrungsrunden"] == 6
+        assert erg["fuehrungsanteil"] == 0.6
+
+    def test_ausfall_des_rivalen(self, monkeypatch):
+        """Status ungleich "Finished" *und* letzte Runde nahe am Wechsel.
+        Beides zusammen - ein Ausfall zwanzig Runden spaeter erklaert die
+        Fuehrungsuebernahme nicht."""
+        erg = self._bauen(monkeypatch, riv_status="Engine",
+                          riv_letzte_runde=6)
+        assert erg["grund"] == "Ausfall des Rivalen"
+
+    def test_spaeter_ausfall_erklaert_den_wechsel_nicht(self, monkeypatch):
+        """derselbe Status, aber der Rivale faehrt noch fuenf Runden
+        weiter - dann war der Ausfall nicht die Ursache."""
+        erg = self._bauen(monkeypatch, riv_status="Engine",
+                          riv_letzte_runde=10)
+        assert erg["grund"] != "Ausfall des Rivalen"
+
+    def test_safety_car_fenster(self, monkeypatch):
+        erg = self._bauen(monkeypatch,
+                          phasen=[{"label": "safety car", "lap_start": 4,
+                                   "lap_end": 6}])
+        assert erg["grund"] == "Safety-Car-Wende"
+        assert erg["sc_phasen"] == 1
+
+    def test_phase_weit_weg_zaehlt_nicht(self, monkeypatch):
+        erg = self._bauen(monkeypatch,
+                          phasen=[{"label": "safety car", "lap_start": 8,
+                                   "lap_end": 9}])
+        assert erg["grund"] != "Safety-Car-Wende"
+
+    def test_laengst_beendete_phase_zaehlt_nicht(self, monkeypatch):
+        """das fenster hat zwei grenzen, nicht nur eine.
+
+        eine phase, die lange VOR dem wechsel schon vorbei war, erklaert
+        ihn genauso wenig wie eine, die erst danach kommt. ohne die
+        lap_end-haelfte der pruefung wuerde jedes rennen mit einem
+        safety car in runde 1 jeden spaeteren wechsel als
+        Safety-Car-Wende ausgeben.
+        """
+        erg = self._bauen(monkeypatch,
+                          phasen=[{"label": "safety car", "lap_start": 1,
+                                   "lap_end": 2}])
+        assert erg["grund"] != "Safety-Car-Wende"
+
+    def test_startstint_allein_ist_kein_boxenstopp(self, monkeypatch):
+        """ohne zusaetzlichen stint hat der rivale nur den start-stint.
+
+        das ist kein boxenstopp. faellt die untere fenstergrenze weg,
+        zaehlt jedes rennen als Strategie/Boxenstopp, weil ein stint ab
+        runde 1 immer existiert.
+        """
+        erg = self._bauen(monkeypatch, wechsel_runde=5)
+        assert erg["grund"] != "Strategie/Boxenstopp"
+
+    def test_boxenstopp_des_rivalen(self, monkeypatch):
+        """ein Stint des Rivalen, der im Fenster um die entscheidende
+        Runde beginnt - er war also in der Box, als er die Fuehrung
+        verlor."""
+        erg = self._bauen(monkeypatch, stint_start=5)
+        assert erg["grund"] == "Strategie/Boxenstopp"
+
+    def test_echte_ueberholung(self, monkeypatch):
+        """lead_changes() schliesst Boxen- und Nicht-Gruen-Runden aus -
+        ein Eintrag dort ist deshalb selbst schon der Beleg."""
+        erg = self._bauen(monkeypatch, wechsel_runde=5)
+        assert erg["grund"] == "Erkaempft auf der Strecke"
+        assert erg["anzahl_fuehrungswechsel_sieger"] == 1
+
+    def test_ueberholung_gegen_einen_dritten_zaehlt_nicht(self, monkeypatch):
+        """lead_changes() und position_progression() koennen sich
+        widersprechen, weil lead_changes boxenstopp- und nicht-gruene
+        runden ausschliesst. wer laut positionsverlauf vorher fuehrte,
+        muss deshalb derselbe sein wie der ueberholte - sonst belegt der
+        eintrag ein anderes manoever als das, was hier erklaert wird.
+        """
+        erg = self._bauen(monkeypatch, wechsel_runde=5, wechsel_alter="XXX")
+        assert erg["grund"] != "Erkaempft auf der Strecke"
+
+    def test_einbruch_des_rivalen(self, monkeypatch):
+        """kein Ausfall, kein Stopp, kein Safety Car - der Rivale
+        verliert nach dem Wechsel einfach weiter Plaetze. Der Fall aus
+        Grossbritannien 2018 (Bottas mit spaetem Plattfuss, klassifiziert
+        trotzdem regulaer)."""
+        erg = self._bauen(monkeypatch,
+                          riv_positionen=[1, 1, 1, 1, 2, 3, 4, 5, 5, 5])
+        assert erg["grund"] == "Einbruch des Rivalen"
+
+    def test_ohne_signal_bleibt_es_ungeklaert(self, monkeypatch):
+        """der ehrliche Auffangfall: die Fuehrung wechselt, aber keines
+        der Signale erklaert wodurch."""
+        erg = self._bauen(monkeypatch)
+        assert erg["grund"] == "Ungeklaert"
+
+    def test_boxenstopp_schlaegt_einbruch(self, monkeypatch):
+        """ein Boxenstopp ist ein direkter Beleg, eine Positionsfolge nur
+        eine Beobachtung. Faellt der Rivale nach seinem Stopp weiter
+        zurueck, ist trotzdem der Stopp die Erklaerung."""
+        erg = self._bauen(monkeypatch, stint_start=5,
+                          riv_positionen=[1, 1, 1, 1, 2, 3, 4, 5, 5, 5])
+        assert erg["grund"] == "Strategie/Boxenstopp"
