@@ -1855,6 +1855,13 @@ def sc_compaction(neutral: pd.DataFrame, spread: pd.Series) -> pd.DataFrame:
                                          "minimum_s", "kompaktierung_pct"])
 
 
+# die Spalten, die sc_deployment_sectors() liefert. Beide Rueckgabewege
+# muessen sie tragen: der leere Fall ist nicht nur "keine Deployment-
+# Meldung", sondern auch "Meldung ja, aber kein Fahrer hatte davor schon
+# eine Runde begonnen".
+SC_DEPLOY_SPALTEN = ["time", "driver", "sector"]
+
+
 def sc_deployment_sectors(session) -> pd.DataFrame:
     """in welchem timing-sektor stand jeder fahrer im moment einer safety-
     car-deployment-meldung (siehe P18-erweiterung)? nutzt
@@ -1870,7 +1877,7 @@ def sc_deployment_sectors(session) -> pd.DataFrame:
     ts = session.track_status
     deploy = ts.loc[ts["Status"] == "4", "Time"]
     if deploy.empty:
-        return pd.DataFrame(columns=["time", "driver", "sector"])
+        return pd.DataFrame(columns=SC_DEPLOY_SPALTEN)
 
     laps = session.laps.dropna(subset=["LapStartTime"]).sort_values("LapStartTime")
     zeilen = []
@@ -1889,7 +1896,7 @@ def sc_deployment_sectors(session) -> pd.DataFrame:
             else:
                 sektor = 3
             zeilen.append({"time": t, "driver": str(drv), "sector": sektor})
-    return pd.DataFrame(zeilen)
+    return pd.DataFrame(zeilen, columns=SC_DEPLOY_SPALTEN)
 
 
 # VORGEHEN 2 (P19): reale FIA-meldungen nennen strafmass und fahrer in

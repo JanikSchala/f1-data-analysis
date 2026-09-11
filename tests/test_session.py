@@ -17,6 +17,7 @@ from f1lab.session import (
     DEGRADATION_SPALTEN,
     DRS_ZONEN_DTYPEN,
     PACE_SPALTEN,
+    SC_DEPLOY_SPALTEN,
     TELEMETRY_MARKER,
     TIMING_MARKER,
     TRACK_STATUS,
@@ -35,6 +36,7 @@ from f1lab.session import (
     parse_track_limits,
     reference_lap,
     sc_compaction,
+    sc_deployment_sectors,
     season_sessions,
     temperature_effect,
 )
@@ -1022,6 +1024,15 @@ class TestLeereErgebnisseBehaltenSpalten:
             list(BREMSZONEN_DTYPEN)),
         "drs_zones (keine offene Zone)": (
             lambda: leerer_rahmen(DRS_ZONEN_DTYPEN), list(DRS_ZONEN_DTYPEN)),
+        "sc_deployment_sectors (Meldung, aber keine Runde davor)": (
+            lambda: sc_deployment_sectors(_FakeSCSession(
+                status=["4"], zeiten=[10.0],
+                runden=[("VER", 50.0, 60.0, 70.0)])),
+            SC_DEPLOY_SPALTEN),
+        "sc_deployment_sectors (keine Meldung)": (
+            lambda: sc_deployment_sectors(_FakeSCSession(
+                status=["1"], zeiten=[10.0], runden=[])),
+            SC_DEPLOY_SPALTEN),
     }
 
     def test_leere_degradation_ueberlebt_die_reliable_maske(self):
@@ -1055,6 +1066,109 @@ class TestLeereErgebnisseBehaltenSpalten:
         got = aufruf()
         for spalte in erwartet:
             assert got[spalte].empty
+
+
+class _FakeSCSession:
+    """nur die beiden Felder, die sc_deployment_sectors() liest.
+
+    ``track_status`` und ``laps`` sind gewoehnliche DataFrames - die
+    Funktion ruft keine FastF1-Methode darauf auf. Deshalb braucht der
+    Test keine echte Session und die Fixture kein zusaetzliches Rennen.
+    """
+
+    def __init__(self, *, status, zeiten, runden):
+        self.track_status = pd.DataFrame({
+            "Status": status,
+            "Time": [pd.Timedelta(seconds=z) for z in zeiten]})
+        # runden: (fahrer, startzeit, ende sektor 1, ende sektor 2) in s;
+        # None fuer ein Sektorende bedeutet "nicht gemessen"
+        self.laps = pd.DataFrame([{
+            "Driver": d,
+            "LapStartTime": pd.Timedelta(seconds=start),
+            "Sector1SessionTime": (pd.NaT if s1 is None
+                                   else pd.Timedelta(seconds=s1)),
+            "Sector2SessionTime": (pd.NaT if s2 is None
+                                   else pd.Timedelta(seconds=s2)),
+        } for d, start, s1, s2 in runden],
+            columns=["Driver", "LapStartTime",
+                     "Sector1SessionTime", "Sector2SessionTime"])
+
+
+class TestScDeploymentSektoren:
+    """in welchem Timing-Sektor stand jeder Fahrer beim Safety-Car-Einsatz?
+
+    Die Funktion war bis hierhin praktisch ungetestet: die Fixture
+    (Bahrain 2024) hat nur Track-Status 1 und 2, nie 4 - der bestehende
+    Test traf deshalb ausschliesslich den Frueh-Ausstieg, die eigentliche
+    Sektor-Zuordnung mit ihren vier Zweigen lief nie.
+    """
+
+    @staticmethod
+    def _einsatz(t_deploy, runden):
+        return sc_deployment_sectors(_FakeSCSession(
+            status=["1", "4"], zeiten=[0.0, t_deploy], runden=runden))
+
+    def test_vor_dem_ersten_sektorende_ist_sektor_eins(self):
+        erg = self._einsatz(55.0, [("VER", 50.0, 60.0, 70.0)])
+        assert list(erg["sector"]) == [1]
+
+    def test_zwischen_den_sektorenden_ist_sektor_zwei(self):
+        erg = self._einsatz(65.0, [("VER", 50.0, 60.0, 70.0)])
+        assert list(erg["sector"]) == [2]
+
+    def test_nach_dem_zweiten_sektorende_ist_sektor_drei(self):
+        erg = self._einsatz(75.0, [("VER", 50.0, 60.0, 70.0)])
+        assert list(erg["sector"]) == [3]
+
+    def test_die_grenze_selbst_gehoert_zum_frueheren_sektor(self):
+        """genau auf dem Sektorende: die Runde ist dort gerade noch im
+        ersten Sektor, nicht schon im zweiten. Ein Wechsel von <= auf <
+        verschiebt jeden Grenzfall um einen Sektor."""
+        assert list(self._einsatz(
+            60.0, [("VER", 50.0, 60.0, 70.0)])["sector"]) == [1]
+        assert list(self._einsatz(
+            70.0, [("VER", 50.0, 60.0, 70.0)])["sector"]) == [2]
+
+    def test_ohne_sektorzeiten_bleibt_der_sektor_offen(self):
+        """eine Runde ohne gemessene Sektorzeiten (Ausfall, Abbruch) hat
+        keinen Sektor - None ist die ehrliche Antwort, nicht Sektor 3.
+        Die Aufrufer filtern genau darauf mit dropna(subset=["sector"]).
+        """
+        erg = self._einsatz(75.0, [("VER", 50.0, None, 70.0)])
+        assert erg["sector"].isna().all()
+
+    def test_es_zaehlt_die_zuletzt_begonnene_runde(self):
+        """ein Fahrer hat mehrere Runden vor dem Zeitpunkt begonnen -
+        massgeblich ist die juengste davon. Die aeltere wuerde hier einen
+        anderen Sektor liefern und faellt damit auf."""
+        erg = self._einsatz(65.0, [
+            ("VER", 10.0, 20.0, 30.0),     # laengst vorbei
+            ("VER", 50.0, 60.0, 70.0)])    # die laufende
+        assert list(erg["sector"]) == [2]
+
+    def test_wer_noch_keine_runde_begonnen_hat_faellt_heraus(self):
+        """Deployment in Runde 1, ein Fahrer ist noch gar nicht los -
+        er bekommt keine Zeile statt einer erfundenen."""
+        erg = self._einsatz(55.0, [
+            ("VER", 50.0, 60.0, 70.0),
+            ("PER", 90.0, 100.0, 110.0)])
+        assert list(erg["driver"]) == ["VER"]
+
+    def test_jeder_fahrer_bekommt_je_meldung_eine_zeile(self):
+        erg = sc_deployment_sectors(_FakeSCSession(
+            status=["4", "1", "4"], zeiten=[55.0, 60.0, 75.0],
+            runden=[("VER", 50.0, 60.0, 70.0), ("PER", 50.0, 62.0, 72.0)]))
+        assert len(erg) == 4
+        assert sorted(erg["driver"].unique()) == ["PER", "VER"]
+        assert erg["time"].nunique() == 2
+
+    def test_nur_deployment_meldungen_zaehlen(self):
+        """Status 4 ist Safety Car. Gruen (1), Gelb (2) und VSC (6) sind
+        andere Zustaende und duerfen keine Zeile erzeugen."""
+        erg = sc_deployment_sectors(_FakeSCSession(
+            status=["1", "2", "6"], zeiten=[10.0, 20.0, 30.0],
+            runden=[("VER", 5.0, 15.0, 25.0)]))
+        assert erg.empty
 
 
 class TestSiegAttributionSignale:
