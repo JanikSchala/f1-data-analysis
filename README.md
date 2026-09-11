@@ -372,10 +372,9 @@ Teamebene: pro verbleibendem Event werden zwei unabhängige Positionen je
 Konstrukteur gezogen, nicht eine — ein Team bringt zwei Autos an den Start,
 beide Punkte zählen. Läuft auf der echten, laufenden Saison.
 
-Aktueller Stand: **Mercedes führt mit 425 Punkten** vor Ferrari (338) und
-McLaren (263) — die Simulation der Restsaison gibt Mercedes eine
-**Titelchance von 99,8 %**, für Ferrari bleiben 0,2 %, der Rest praktisch
-nichts.
+Aktueller Stand: **Mercedes führt mit 468 Punkten** vor Ferrari (346) und
+McLaren (287) — die Simulation der Restsaison gibt Mercedes eine
+**Titelchance von 100 %**, der Rest praktisch nichts.
 
 *Code: [`08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py`](08_historie/p45_konstrukteurs_wm_simulator_wer_gewinnt_das_team.py)*
 
@@ -428,13 +427,13 @@ Garantie.
 ![Regen-Variance 2018-2026](assets/regen_variance.png)
 
 Gewinnt der Fahrer auf Startplatz 1 im Regen seltener, und wird das Feld
-stärker durcheinandergewirbelt? Über 185 Rennen (2018–2026, 17 davon nass)
+stärker durcheinandergewirbelt? Über 185 Rennen (2018–2026, 16 davon nass)
 zeigen beide Kennzahlen genau die erwartete Richtung: Pole-to-Win fällt von
-**55,4 % im Trockenen auf 35,3 % im Regen**, die mittlere Positionsänderung
-Start-zu-Ziel steigt von 3,30 auf 4,00 Plätze.
+**55,0 % im Trockenen auf 37,5 % im Regen**, die mittlere Positionsänderung
+Start-zu-Ziel steigt von 3,30 auf 4,15 Plätze.
 
-Die ehrliche Einschränkung: bei nur 17 nassen Rennen sind beide Effekte
-**nicht statistisch signifikant** (Fisher-Exact-Test p = 0,13, Mann-Whitney-U
+Die ehrliche Einschränkung: bei nur 16 nassen Rennen sind beide Effekte
+**nicht statistisch signifikant** (Fisher-Exact-Test p = 0,20, Mann-Whitney-U
 p = 0,11). Ein echter Effekt in dieser Richtung ist plausibel — beweisen
 lässt er sich mit den verfügbaren Daten nicht. Genau dieser Unterschied
 zwischen "sieht danach aus" und "ist statistisch abgesichert" steckt oft

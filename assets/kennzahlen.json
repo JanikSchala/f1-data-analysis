@@ -252,19 +252,19 @@
   "konstrukteurs_wm": {
     "saison": 2026,
     "fuehrend": "Mercedes",
-    "titelchance_pct": 99.9,
+    "titelchance_pct": 100.0,
     "standings_top3": [
       {
         "team": "Mercedes",
-        "punkte": 425.0
+        "punkte": 468.0
       },
       {
         "team": "Ferrari",
-        "punkte": 338.0
+        "punkte": 346.0
       },
       {
         "team": "McLaren",
-        "punkte": 263.0
+        "punkte": 287.0
       }
     ]
   },
@@ -302,11 +302,11 @@
       2026
     ],
     "rennen": 185,
-    "rennen_nass": 17,
-    "pole_quote_trocken_pct": 55.4,
-    "pole_quote_nass_pct": 35.3,
+    "rennen_nass": 16,
+    "pole_quote_trocken_pct": 55.0,
+    "pole_quote_nass_pct": 37.5,
     "durcheinander_median_trocken": 3.3,
-    "durcheinander_median_nass": 4.0
+    "durcheinander_median_nass": 4.15
   },
   "rennsieg": {
     "zeitraum": [

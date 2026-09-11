@@ -63,6 +63,44 @@ class TestZahlenStimmenMitDenKennzahlen:
         return re.search(rf"(?<![\d.,]){re.escape(str(wert))}(?![\d])",
                          text) is not None
 
+    @classmethod
+    def _kommt_vor_de(cls, text: str, wert: float) -> bool:
+        """wie _kommt_vor, aber fuer deutsche Zahlschreibweise im Fliesstext.
+
+        kennzahlen.json haelt 55.0, das README schreibt "55,0 %"; 3.3 steht
+        dort als "3,30", und ein glatter Wert wie 100.0 als "100". Geprueft
+        wird deshalb gegen mehrere zulaessige Schreibweisen statt gegen eine.
+        """
+        formen = {f"{wert:.1f}".replace(".", ","),
+                  f"{wert:.2f}".replace(".", ",")}
+        if float(wert).is_integer():
+            formen.add(str(int(wert)))
+        return any(cls._kommt_vor(text, f) for f in formen)
+
+    def test_regen_variance_zahlen(self, text, kennzahlen):
+        """P48 ist ein Nullbefund - er lebt davon, dass Quoten UND
+        p-Werte stimmen. Beide sind schon einmal still verrutscht, als
+        ein Rennen unter die Nass-Schwelle fiel."""
+        r = kennzahlen["regen_variance"]
+        fehlend = [f"{name}={wert}" for name, wert in (
+            ("rennen", r["rennen"]),
+            ("rennen_nass", r["rennen_nass"]),
+            ("pole_quote_trocken_pct", r["pole_quote_trocken_pct"]),
+            ("pole_quote_nass_pct", r["pole_quote_nass_pct"]),
+            ("durcheinander_median_trocken", r["durcheinander_median_trocken"]),
+            ("durcheinander_median_nass", r["durcheinander_median_nass"]),
+        ) if not self._kommt_vor_de(text, wert)]
+        assert not fehlend, f"nicht im README-Text: {fehlend}"
+
+    def test_konstrukteurs_wm_zahlen(self, text, kennzahlen):
+        """haengt an der laufenden Saison und veraltet damit von selbst,
+        sobald ein Rennen mehr gefahren ist."""
+        k = kennzahlen["konstrukteurs_wm"]
+        fehlend = [f"{e['team']}={e['punkte']}" for e in k["standings_top3"]
+                   if not self._kommt_vor_de(text, e["punkte"])]
+        assert not fehlend, f"Punktestaende nicht im README: {fehlend}"
+        assert self._kommt_vor_de(text, k["titelchance_pct"])
+
     def test_race_pace_zahlen(self, text, kennzahlen):
         rp = kennzahlen["racepace"]
         fehlend = [f"{name}={wert}" for name, wert in (
