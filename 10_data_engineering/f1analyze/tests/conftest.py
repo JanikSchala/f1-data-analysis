@@ -44,6 +44,17 @@ der Abdeckung von session.py:
 
 Wer die Fixture neu aufnimmt, muss diese drei mitnehmen, sonst faellt
 die Suite im Wurzelverzeichnis aus.
+
+Kostenwarnung fuer jede kuenftige Aenderung am sqlite: git speichert
+Binaerdateien ohne Delta. Eine Ergaenzung von 14 KB (die MultiViewer-
+Antwort oben) hat deshalb rund 17 MB Historie gekostet - die Datei liegt
+seither vollstaendig ein zweites Mal im Pack, das dadurch von etwa 23 auf
+40 MB gewachsen ist. Der Betrag haengt an der Dateigroesse, nicht an der
+Aenderung: die naechste Zeile kostet wieder denselben Preis.
+
+Wer also noch etwas braucht, sollte alles auf einmal aufnehmen statt in
+mehreren Schritten. Die .ff1pkl-Dateien daneben sind davon nicht
+betroffen - sie sind einzeln klein und werden je Datei ersetzt.
 """
 from __future__ import annotations
 
