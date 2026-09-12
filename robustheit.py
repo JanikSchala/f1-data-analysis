@@ -87,9 +87,17 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
 
-# Ein Skript, das hiermit umfaellt, zeigt dem Nutzer einen Traceback
-# statt einer Aussage. Alles andere (SystemExit, fachliche Ausnahmen wie
-# DataNotLoadedError) gilt als sauberer Abbruch.
+# Ein Skript, das hiermit umfaellt, zeigt dem Nutzer einen Traceback tief
+# in pandas oder numpy - die Sorte Fehler, um die es hier geht.
+#
+# Wichtig fuer die Zusammenfassung unten: nur SystemExit endet wirklich
+# ohne Traceback und zaehlt deshalb als "ok". Alles ausserhalb von ROH
+# landet in "sauber" - das heisst nicht traceback-frei, sondern nur
+# "nicht aus der bekannten Absturzfamilie". Eine HTTPError aus einem
+# ungeschuetzten urlopen sieht fuer den Nutzer genauso aus wie ein
+# KeyError. Genau so ist mir einer durchgerutscht (P27, siehe dortigen
+# Smoke-Test), weil die Zeile mitten im Lauf stand und die
+# Zusammenfassung sie nicht wiederholte.
 ROH = (KeyError, IndexError, ValueError, AttributeError, TypeError,
        ZeroDivisionError)
 
@@ -291,7 +299,7 @@ def main() -> int:
             umgefallen.append((kurz, pfad, info))
             print(f"  UMGEFALLEN  {kurz:<26} {info}", flush=True)
         elif art == "sauber":
-            sauber.append(kurz)
+            sauber.append((kurz, info))
             print(f"  sauber      {kurz:<26} {info}", flush=True)
         elif art == "ok":
             ok.append(kurz)
@@ -308,6 +316,14 @@ def main() -> int:
           f"{len(zeitlimit)} am Zeitlimit ===")
     for kurz, pfad, info in umgefallen + zeitlimit:
         print(f"  {kurz:<5} {info}\n        {pfad}")
+    # auch die sauberen Abbrueche hier wiederholen: sie sind keine
+    # Tracebacks weniger, nur andere. Stand ihre Zeile allein mitten im
+    # Lauf, liest man sie zwischen 50 anderen nicht mehr.
+    if sauber:
+        print("\n  sauber abgebrochen - jeder davon ist eine Ausnahme, "
+              "nur keine aus der bekannten Familie:")
+        for kurz, info in sauber:
+            print(f"  {kurz:<5} {info}")
     return 1 if (umgefallen or zeitlimit) else 0
 
 
