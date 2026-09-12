@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import warnings
 from pathlib import Path
 
@@ -59,6 +60,14 @@ def _skript_importieren(rel_pfad: str):
     spec = importlib.util.spec_from_file_location(pfad.stem, pfad)
     assert spec is not None and spec.loader is not None
     modul = importlib.util.module_from_spec(spec)
+    # der sys.modules-Eintrag ist nicht optional, auch wenn es so aussieht:
+    # Pydantic loest Vorwaertsreferenzen (StrategyOut -> list[StintOut] in
+    # P27) ueber den Namensraum des definierenden Moduls auf und findet den
+    # nur ueber sys.modules[__module__]. Ohne die Zeile antwortet der
+    # /strategy-Endpunkt mit 500 statt 200 - und zwar nur auf diesem
+    # Ladeweg, beim direkten Skriptaufruf nicht. Steht so auch in der
+    # importlib-Doku zu spec_from_file_location.
+    sys.modules[spec.name] = modul
     spec.loader.exec_module(modul)
     return modul
 
