@@ -6,6 +6,7 @@ import statistics
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 import warnings
 from collections import OrderedDict
@@ -303,6 +304,32 @@ def _server_starten():
     raise RuntimeError("Server nicht erreichbar")
 
 
+def _pruefe(basis: str, pfad: str, timeout: float) -> bytes | None:
+    """einen endpunkt aufrufen und das ergebnis melden, statt daran zu
+    sterben. gibt den rumpf zurueck, oder None wenn der aufruf scheiterte.
+
+    urlopen wirft bei jedem status ab 400 eine HTTPError. Ohne diesen
+    helfer reisst der erste fehlschlagende endpunkt den ganzen smoke-test
+    mit, und der nutzer sieht einen urllib-traceback statt der liste,
+    welche endpunkte gehen und welche nicht - das gegenteil dessen,
+    wofuer ein smoke-test da ist.
+
+    ein 404 ist hier oft die richtige antwort und kein fehler: fragt man
+    nach einem fahrer ohne gewertete runde (Perez in Monaco 2024, eine
+    einzige runde nach der startkollision), soll die API genau das sagen.
+    """
+    try:
+        with urllib.request.urlopen(f"{basis}{pfad}", timeout=timeout) as resp:
+            rumpf = resp.read()
+            print(f"      GET {pfad} -> {resp.status}")
+            return rumpf
+    except urllib.error.HTTPError as exc:
+        print(f"      GET {pfad} -> {exc.code} {exc.reason}")
+    except urllib.error.URLError as exc:
+        print(f"      GET {pfad} -> nicht erreichbar ({exc.reason})")
+    return None
+
+
 def _request_dauer(url: str) -> float:
     t0 = time.perf_counter()
     with urllib.request.urlopen(url, timeout=15) as resp:
@@ -325,34 +352,28 @@ def smoke_test_und_benchmark():
     print("[1/3] uvicorn lokal starten und Endpunkte pruefen (VORGEHEN 5) ...")
     server, basis = _server_starten()
     try:
-        r = urllib.request.urlopen(f"{basis}/sessions/2024", timeout=10)
-        n_events = len(json.loads(r.read()))
-        print(f"      GET /sessions/2024 -> {r.status}, {n_events} Events")
+        endpunkte = [
+            ("/sessions/2024", 10),
+            ("/laps/2024/Bahrain/R?driver=VER", 10),
+            ("/telemetry/2024/Bahrain/R/VER?points=200", 15),
+            ("/compare/2024/Bahrain/R?driver_a=VER&driver_b=PER&points=200", 15),
+            ("/strategy/2024/Bahrain", 15),
+            ("/traffic/2024/Bahrain?alt_stops=3", 30),
+            ("/overtakes/2024/Bahrain/R", 90),
+        ]
+        antworten = {pfad: _pruefe(basis, pfad, t) for pfad, t in endpunkte}
+        fehlend = [pfad for pfad, rumpf in antworten.items() if rumpf is None]
 
-        r = urllib.request.urlopen(
-            f"{basis}/laps/2024/Bahrain/R?driver=VER", timeout=10)
-        print(f"      GET /laps/2024/Bahrain/R?driver=VER -> {r.status}")
-
-        r = urllib.request.urlopen(
-            f"{basis}/telemetry/2024/Bahrain/R/VER?points=200", timeout=15)
-        print(f"      GET /telemetry/.../VER -> {r.status}")
-
-        r = urllib.request.urlopen(
-            f"{basis}/compare/2024/Bahrain/R?driver_a=VER&driver_b=PER"
-            f"&points=200", timeout=15)
-        print(f"      GET /compare/...VER-PER -> {r.status}")
-
-        r = urllib.request.urlopen(f"{basis}/strategy/2024/Bahrain", timeout=15)
-        print(f"      GET /strategy/2024/Bahrain -> {r.status}")
-
-        r = urllib.request.urlopen(
-            f"{basis}/traffic/2024/Bahrain?alt_stops=3", timeout=30)
-        print(f"      GET /traffic/2024/Bahrain?alt_stops=3 -> {r.status}")
-
-        r = urllib.request.urlopen(f"{basis}/overtakes/2024/Bahrain/R", timeout=90)
-        n_ov = len(json.loads(r.read()))
-        print(f"      GET /overtakes/2024/Bahrain/R -> {r.status}, "
-             f"{n_ov} lokalisierte Ueberholungen")
+        sessions = antworten["/sessions/2024"]
+        if sessions is not None:
+            print(f"      -> {len(json.loads(sessions))} Events im Kalender")
+        overtakes = antworten["/overtakes/2024/Bahrain/R"]
+        if overtakes is not None:
+            print(f"      -> {len(json.loads(overtakes))} lokalisierte "
+                 "Ueberholungen")
+        if fehlend:
+            print(f"      {len(fehlend)} von {len(endpunkte)} Endpunkten haben "
+                 "nicht geantwortet (siehe oben)")
         print(f"      Swagger: {basis}/docs")
 
         print("\n[2/3] Benchmark: kalt (Cache-Miss) vs. warm (Cache-Hit) "
